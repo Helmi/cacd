@@ -329,6 +329,10 @@ export class ConfigurationManager {
 		return presets.presets.find(p => p.id === id);
 	}
 
+	getAllPresets(): CommandPreset[] {
+		return this.getCommandPresets().presets;
+	}
+
 	addPreset(preset: CommandPreset): void {
 		const presets = this.getCommandPresets();
 

@@ -33,6 +33,10 @@ interface MenuProps {
 	onDismissError?: () => void;
 	projectName?: string;
 	multiProject?: boolean;
+	webConfig?: {
+		url: string;
+		token: string;
+	};
 }
 
 interface CommonItem {
@@ -87,6 +91,7 @@ const Menu: React.FC<MenuProps> = ({
 	onDismissError,
 	projectName,
 	multiProject = false,
+	webConfig,
 }) => {
 	const [baseWorktrees, setBaseWorktrees] = useState<Worktree[]>([]);
 	const [defaultBranch, setDefaultBranch] = useState<string | null>(null);
@@ -534,6 +539,23 @@ const Menu: React.FC<MenuProps> = ({
 					</Text>
 				)}
 			</Box>
+
+			{webConfig && (
+				<Box
+					borderStyle="round"
+					borderColor="blue"
+					paddingX={1}
+					marginBottom={1}
+					flexDirection="column"
+				>
+					<Text bold color="blue">
+						Web Interface Available
+					</Text>
+					<Text>
+						Link: <Text color="cyan" underline>{webConfig.url}/?token={webConfig.token}</Text>
+					</Text>
+				</Box>
+			)}
 
 			<Box marginBottom={1}>
 				<Text dimColor>

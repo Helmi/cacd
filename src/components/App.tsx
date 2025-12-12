@@ -27,6 +27,7 @@ import {configurationManager} from '../services/configurationManager.js';
 import {ENV_VARS} from '../constants/env.js';
 import {MULTI_PROJECT_ERRORS} from '../constants/error.js';
 import {projectManager} from '../services/projectManager.js';
+import {coreService} from '../services/coreService.js';
 
 type View =
 	| 'menu'
@@ -47,18 +48,26 @@ type View =
 interface AppProps {
 	devcontainerConfig?: DevcontainerConfig;
 	multiProject?: boolean;
+	webConfig?: {
+		url: string;
+		token: string;
+	};
 }
 
-const App: React.FC<AppProps> = ({devcontainerConfig, multiProject}) => {
+const App: React.FC<AppProps> = ({
+	devcontainerConfig,
+	multiProject,
+	webConfig,
+}) => {
 	const {exit} = useApp();
 	const [view, setView] = useState<View>(
 		multiProject ? 'project-list' : 'menu',
 	);
-	const [sessionManager, setSessionManager] = useState<SessionManager>(() =>
-		globalSessionOrchestrator.getManagerForProject(),
+	const [sessionManager, setSessionManager] = useState<SessionManager>(
+		coreService.sessionManager,
 	);
 	const [worktreeService, setWorktreeService] = useState(
-		() => new WorktreeService(),
+		coreService.worktreeService,
 	);
 	const [activeSession, setActiveSession] = useState<ISession | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -69,6 +78,24 @@ const App: React.FC<AppProps> = ({devcontainerConfig, multiProject}) => {
 	const [selectedProject, setSelectedProject] = useState<GitProject | null>(
 		null,
 	); // Store selected project in multi-project mode
+
+	useEffect(() => {
+		const handleServiceUpdate = ({
+			sessionManager,
+			worktreeService,
+		}: {
+			sessionManager: SessionManager;
+			worktreeService: WorktreeService;
+		}) => {
+			setSessionManager(sessionManager);
+			setWorktreeService(worktreeService);
+		};
+
+		coreService.on('servicesUpdated', handleServiceUpdate);
+		return () => {
+			coreService.off('servicesUpdated', handleServiceUpdate);
+		};
+	}, []);
 
 	// State for remote branch disambiguation
 	const [pendingWorktreeCreation, setPendingWorktreeCreation] = useState<{
@@ -521,22 +548,14 @@ const App: React.FC<AppProps> = ({devcontainerConfig, multiProject}) => {
 
 		// Set the selected project and update services
 		setSelectedProject(project);
-		setWorktreeService(new WorktreeService(project.path));
-		// Get or create session manager for this project
-		const projectSessionManager =
-			globalSessionOrchestrator.getManagerForProject(project.path);
-		setSessionManager(projectSessionManager);
-		// Add to recent projects
-		projectManager.addRecentProject(project);
+		coreService.selectProject(project);
 		navigateWithClear('menu');
 	};
 
 	const handleBackToProjectList = () => {
 		// Sessions persist in their project-specific managers
 		setSelectedProject(null);
-		setWorktreeService(new WorktreeService()); // Reset to default
-		// Reset to global session manager for project list view
-		setSessionManager(globalSessionOrchestrator.getManagerForProject());
+		coreService.resetProject();
 
 		navigateWithClear('project-list', () => {
 			setMenuKey(prev => prev + 1);
@@ -575,6 +594,7 @@ const App: React.FC<AppProps> = ({devcontainerConfig, multiProject}) => {
 				onDismissError={() => setError(null)}
 				projectName={selectedProject?.name}
 				multiProject={multiProject}
+				webConfig={webConfig}
 			/>
 		);
 	}
