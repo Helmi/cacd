@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { TerminalView } from './components/TerminalView';
 import { PresetSelector } from './components/PresetSelector';
-import { Terminal, GitBranch, FolderGit2, ChevronDown } from 'lucide-react'; 
+import { Settings } from './components/Settings';
+import { Terminal, GitBranch, FolderGit2, ChevronDown, Settings as SettingsIcon } from 'lucide-react'; 
 
 // Helper to get token
 const getToken = () => {
@@ -50,7 +51,7 @@ function App() {
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'session' | 'worktree' | 'preset-selection' | null>(null);
+  const [viewMode, setViewMode] = useState<'session' | 'worktree' | 'preset-selection' | 'settings' | null>(null);
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   
   const [authError, setAuthError] = useState<boolean>(false);
@@ -277,11 +278,28 @@ function App() {
                 </div>
             </div>
         </div>
+        
+        {/* Footer */}
+        <div className="p-4 border-t border-gray-800 bg-gray-900/30">
+            <button
+                onClick={() => setViewMode('settings')}
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors ${
+                    viewMode === 'settings' 
+                        ? 'bg-blue-600 text-white' 
+                        : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+            >
+                <SettingsIcon className="w-4 h-4" />
+                Settings
+            </button>
+        </div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 bg-black">
-          {viewMode === 'session' && selectedId ? (
+          {viewMode === 'settings' ? (
+              <Settings token={token || ''} onClose={() => setViewMode(null)} />
+          ) : viewMode === 'session' && selectedId ? (
               <TerminalView 
                   key={selectedId} 
                   sessionId={selectedId} 
