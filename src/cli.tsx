@@ -5,6 +5,7 @@ import meow from 'meow';
 import App from './components/App.js';
 import {worktreeConfigManager} from './services/worktreeConfigManager.js';
 import {globalSessionOrchestrator} from './services/globalSessionOrchestrator.js';
+import {apiServer} from './services/apiServer.js';
 
 const cli = meow(
 	`
@@ -15,12 +16,14 @@ const cli = meow(
 	  --help                Show help
 	  --version             Show version
 	  --multi-project       Enable multi-project mode
+	  --web                 Start the web interface
 	  --devc-up-command     Command to start devcontainer
 	  --devc-exec-command   Command to execute in devcontainer
 
 	Examples
 	  $ ccmanager
 	  $ ccmanager --multi-project
+	  $ ccmanager --web
 	  $ ccmanager --devc-up-command "devcontainer up --workspace-folder ." --devc-exec-command "devcontainer exec --workspace-folder ."
 `,
 	{
@@ -71,6 +74,22 @@ if (cli.flags.multiProject && !process.env['CCMANAGER_MULTI_PROJECT_ROOT']) {
 // Initialize worktree config manager
 worktreeConfigManager.initialize();
 
+// Start API Server
+const port = 3000;
+let webConfig = undefined;
+
+try {
+	// Start on default port 3000
+	const address = await apiServer.start(port);
+	webConfig = {
+		url: address,
+		token: apiServer.getToken(),
+	};
+} catch (err) {
+	// Log error but don't fail startup
+	// We can't see this log easily in TUI mode, but it's there for debugging if redirected
+}
+
 // Prepare devcontainer config
 const devcontainerConfig =
 	cli.flags.devcUpCommand && cli.flags.devcExecCommand
@@ -84,6 +103,7 @@ const devcontainerConfig =
 const appProps = {
 	...(devcontainerConfig ? {devcontainerConfig} : {}),
 	multiProject: cli.flags.multiProject,
+	webConfig,
 };
 
 const app = render(<App {...appProps} />);
