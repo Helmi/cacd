@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Save, Plus, Trash2, X } from 'lucide-react';
+import { Save, Plus, Trash2, X, Info } from 'lucide-react';
 
 interface SettingsProps {
     token: string;
@@ -12,6 +12,7 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
+    const [showAutoApprovalInfo, setShowAutoApprovalInfo] = useState(false);
 
     useEffect(() => {
         fetchConfig();
@@ -122,7 +123,31 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
                         <div className="space-y-8 max-w-2xl">
                             {/* Auto Approval */}
                             <section className="space-y-4">
-                                <h3 className="text-lg font-medium text-white border-b border-gray-800 pb-2">Auto-Approval</h3>
+                                <div className="flex items-center gap-2 border-b border-gray-800 pb-2">
+                                    <h3 className="text-lg font-medium text-white">Auto-Approval</h3>
+                                    <button 
+                                        onClick={() => setShowAutoApprovalInfo(!showAutoApprovalInfo)}
+                                        className="text-gray-500 hover:text-blue-400 transition-colors"
+                                        title="What is this?"
+                                    >
+                                        <Info className="w-4 h-4" />
+                                    </button>
+                                </div>
+
+                                {showAutoApprovalInfo && (
+                                    <div className="bg-blue-900/20 border border-blue-800 rounded p-4 text-sm text-gray-300 space-y-2">
+                                        <p>
+                                            <strong className="text-blue-400">What is Auto-Approval?</strong><br/>
+                                            It allows CCManager to automatically approve safe commands (like "Run npm install?") requested by the AI assistant.
+                                        </p>
+                                        <ul className="list-disc list-inside space-y-1 pl-2 opacity-90">
+                                            <li>Scans terminal for confirmation prompts.</li>
+                                            <li>Verifies if the command is safe to run.</li>
+                                            <li><strong>Timeout:</strong> Limits how long the verification process can take (default 30s). If it takes longer, it defaults to manual approval for safety.</li>
+                                        </ul>
+                                    </div>
+                                )}
+
                                 <div className="flex items-center gap-3">
                                     <input
                                         type="checkbox"
