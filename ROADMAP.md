@@ -40,9 +40,11 @@
 - [x] **Multi-Project:** Auto-enabled mode when `CCMANAGER_MULTI_PROJECT_ROOT` env var is present.
 
 ### Phase 5: UI/UX Refinement & Power Features
-- [ ] **Visual Overhaul:**
-    - [ ] **Color Scheme:** Implement a cohesive, professional color palette (e.g., Dracula, Nord, or custom).
-    - [ ] **Typography:** Unify UI and Terminal fonts using **JetBrains Mono** (Web fonts for UI, `fontFamily` config for xterm.js).
+- [ ] **Visual Overhaul: "Terminal-Native UI"**
+    - [ ] **Concept:** A seamless "Command Center" interface where the UI blends with the terminal.
+    - [ ] **Design:** Unified background color, borders resembling tmux/vim, minimalist aesthetic.
+    - [ ] **Typography:** Use **JetBrains Mono** universally (UI & Terminal).
+    - [ ] **Theming Engine:** Switchable themes (Dracula, Nord, etc.) that apply to both React UI and xterm.js instantly.
 - [ ] **Advanced Session Management:**
     - [ ] **Cross-Project View:** A "Global Dashboard" showing active sessions across *all* projects simultaneously.
     - [ ] **Split View:** Ability to view multiple terminals side-by-side (grid layout).
