@@ -51,8 +51,8 @@
     - [ ] **Git Integration:** Show `git diff`, file status, or commit history in the right sidebar for the active session's worktree.
 
 ## 🔮 Future / Ideas
-- [ ] **Mobile Optimization:** Optimize Web UI layout for phone/tablet control.
-- [ ] **Log Viewer:** Stream `ccmanager.log` to a Web UI tab for debugging.
+- [ ] **Mobile Optimization:** Focused "Monitoring Mode" for phones (view sessions, simple inputs).
+- [ ] **Log Viewer:** Accessible debug view for `ccmanager.log` (hidden/advanced option).
 - [ ] **Theme Support:** Dark/Light mode toggle for Web UI.
 - [ ] **File Explorer:** Simple file tree view for browsing worktrees remotely.
 - [ ] **Session Persistence:** Re-attach to sessions after server restart (requires backend changes).
