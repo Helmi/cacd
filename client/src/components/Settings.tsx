@@ -267,7 +267,7 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
                                                 className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white w-full focus:outline-none focus:border-blue-500 text-sm"
                                                 placeholder="../{branch}"
                                             />
-                                            <p className="text-xs text-gray-500">Use <span className="font-mono text-gray-300">{'{branch}'}</span> as a placeholder.</p>
+                                            <p className="text-xs text-gray-500">Use <span className="font-mono text-gray-300">{'{branch}'}</span> or <span className="font-mono text-gray-300">{'{project}'}</span> as placeholders.</p>
                                         </div>
                                     )}
                                 </div>
