@@ -55,4 +55,7 @@
 - [ ] **Log Viewer:** Accessible debug view for `ccmanager.log` (hidden/advanced option).
 - [ ] **Theme Support:** Dark/Light mode toggle for Web UI.
 - [ ] **File Explorer:** Simple file tree view for browsing worktrees remotely.
-- [ ] **Session Persistence:** Re-attach to sessions after server restart (requires backend changes).
+- [ ] **Daemon Mode:** Run CCManager as a background service (headless).
+    - Decouple completely from TUI lifecycle.
+    - **Authentication:** Implement persistent auth (User/Pass or fixed token) for headless security.
+    - **Persistence:** Sessions survive UI disconnects/restarts naturally.
