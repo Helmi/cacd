@@ -60,6 +60,11 @@ if (!process.stdin.isTTY || !process.stdout.isTTY) {
 }
 
 // Check for CCMANAGER_MULTI_PROJECT_ROOT when using --multi-project
+// Also auto-enable multi-project mode if the env var is set
+if (process.env['CCMANAGER_MULTI_PROJECT_ROOT']) {
+	cli.flags.multiProject = true;
+}
+
 if (cli.flags.multiProject && !process.env['CCMANAGER_MULTI_PROJECT_ROOT']) {
 	console.error(
 		'Error: CCMANAGER_MULTI_PROJECT_ROOT environment variable must be set when using --multi-project',
