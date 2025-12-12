@@ -53,6 +53,7 @@ function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'session' | 'worktree' | 'preset-selection' | 'settings' | null>(null);
   const [showProjectMenu, setShowProjectMenu] = useState(false);
+  const [projectSearch, setProjectSearch] = useState('');
   
   const [authError, setAuthError] = useState<boolean>(false);
 
@@ -189,7 +190,10 @@ function App() {
             {/* Project Switcher */}
             <div className="relative">
                 <button 
-                    onClick={() => setShowProjectMenu(!showProjectMenu)}
+                    onClick={() => {
+                        setShowProjectMenu(!showProjectMenu);
+                        if (!showProjectMenu) setProjectSearch(''); // Reset search on open
+                    }}
                     className="w-full flex items-center justify-between bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded text-sm transition-colors border border-gray-700"
                 >
                     <span className="flex items-center gap-2 truncate">
@@ -200,16 +204,35 @@ function App() {
                 </button>
                 
                 {showProjectMenu && (
-                    <div className="absolute top-full left-0 w-full mt-1 bg-gray-800 border border-gray-700 rounded shadow-xl z-50 max-h-60 overflow-y-auto">
-                        {projects.map(p => (
-                            <button
-                                key={p.path}
-                                onClick={() => handleSelectProject(p.path)}
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700 truncate"
-                            >
-                                {p.name}
-                            </button>
-                        ))}
+                    <div className="absolute top-full left-0 w-full mt-1 bg-gray-800 border border-gray-700 rounded shadow-xl z-50 flex flex-col">
+                        <div className="p-2 border-b border-gray-700 sticky top-0 bg-gray-800 rounded-t">
+                            <input
+                                type="text"
+                                value={projectSearch}
+                                onChange={(e) => setProjectSearch(e.target.value)}
+                                placeholder="Filter projects..."
+                                className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
+                                autoFocus
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </div>
+                        <div className="max-h-60 overflow-y-auto">
+                            {projects
+                                .filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase()))
+                                .map(p => (
+                                    <button
+                                        key={p.path}
+                                        onClick={() => handleSelectProject(p.path)}
+                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700 truncate"
+                                    >
+                                        {p.name}
+                                    </button>
+                                ))
+                            }
+                            {projects.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase())).length === 0 && (
+                                <div className="px-3 py-2 text-xs text-gray-500 text-center">No projects found</div>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
