@@ -8,7 +8,7 @@ interface SettingsProps {
 
 export const Settings = ({ token, onClose }: SettingsProps) => {
     const [config, setConfig] = useState<any>(null);
-    const [activeTab, setActiveTab] = useState<'general' | 'presets' | 'hooks' | 'shortcuts'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'presets' | 'hooks' | 'worktreeHooks' | 'shortcuts'>('general');
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
@@ -91,8 +91,9 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
                         {[
                             { id: 'general', label: 'General' },
                             { id: 'presets', label: 'Command Presets' },
-                            { id: 'hooks', label: 'Hooks' },
                             { id: 'shortcuts', label: 'Shortcuts' },
+                            { id: 'hooks', label: 'Status Hooks' },
+                            { id: 'worktreeHooks', label: 'Worktree Hooks' },
                         ].map((tab) => (
                             <button
                                 key={tab.id}
@@ -300,10 +301,133 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
                         </div>
                     )}
 
-                    {/* Hooks and Shortcuts placeholders */}
-                    {activeTab === 'hooks' && <div className="text-gray-500">Status Hooks configuration coming soon...</div>}
-                    {activeTab === 'shortcuts' && <div className="text-gray-500">Shortcuts configuration coming soon...</div>}
+                    {activeTab === 'shortcuts' && (
+                        <div className="space-y-6">
+                            <h3 className="text-lg font-medium text-white border-b border-gray-800 pb-2">Keyboard Shortcuts</h3>
+                            <div className="space-y-4">
+                                {Object.entries(config.shortcuts || {}).map(([key, shortcut]: [string, any]) => (
+                                    <div key={key} className="flex items-center justify-between bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+                                        <span className="text-gray-300 font-medium capitalize">
+                                            {key.replace(/([A-Z])/g, ' $1').trim()}
+                                        </span>
+                                        <div className="flex items-center gap-3">
+                                            {['ctrl', 'alt', 'shift'].map(mod => (
+                                                <div key={mod} className="flex items-center gap-1">
+                                                    <input
+                                                        type="checkbox"
+                                                        id={`${key}-${mod}`}
+                                                        checked={shortcut[mod] || false}
+                                                        onChange={(e) => updateConfig(['shortcuts', key, mod], e.target.checked)}
+                                                        className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-600"
+                                                    />
+                                                    <label htmlFor={`${key}-${mod}`} className="text-xs text-gray-400 uppercase">{mod}</label>
+                                                </div>
+                                            ))}
+                                            <div className="w-px h-6 bg-gray-700 mx-2" />
+                                            <div className="flex items-center gap-2">
+                                                <label className="text-xs text-gray-400 uppercase">Key</label>
+                                                <input
+                                                    type="text"
+                                                    value={shortcut.key}
+                                                    onChange={(e) => updateConfig(['shortcuts', key, 'key'], e.target.value)}
+                                                    className="w-16 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-center uppercase"
+                                                    maxLength={5}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="text-xs text-gray-500">Note: Ctrl+C, Ctrl+D, and Ctrl+[ are reserved and cannot be used.</p>
+                        </div>
+                    )}
 
+                    {activeTab === 'hooks' && (
+                        <div className="space-y-6">
+                            <h3 className="text-lg font-medium text-white border-b border-gray-800 pb-2">Status Hooks</h3>
+                            <p className="text-sm text-gray-400">Run shell commands when session state changes.</p>
+                            
+                            <div className="space-y-4">
+                                {['idle', 'busy', 'waiting_input', 'pending_auto_approval'].map((status) => (
+                                    <div key={status} className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-gray-300 font-medium capitalize">
+                                                On {status.replace(/_/g, ' ')}
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <label className="text-sm text-gray-400">Enabled</label>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={config.statusHooks?.[status]?.enabled || false}
+                                                    onChange={(e) => {
+                                                        const hooks = { ...(config.statusHooks || {}) };
+                                                        if (!hooks[status]) hooks[status] = { command: '', enabled: false };
+                                                        hooks[status].enabled = e.target.checked;
+                                                        updateConfig(['statusHooks'], hooks);
+                                                    }}
+                                                    className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-600"
+                                                />
+                                            </div>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={config.statusHooks?.[status]?.command || ''}
+                                            onChange={(e) => {
+                                                const hooks = { ...(config.statusHooks || {}) };
+                                                if (!hooks[status]) hooks[status] = { command: '', enabled: false };
+                                                hooks[status].command = e.target.value;
+                                                updateConfig(['statusHooks'], hooks);
+                                            }}
+                                            placeholder={`Command to run when ${status}...`}
+                                            className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white text-sm"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'worktreeHooks' && (
+                        <div className="space-y-6">
+                            <h3 className="text-lg font-medium text-white border-b border-gray-800 pb-2">Worktree Hooks</h3>
+                            <p className="text-sm text-gray-400">Run shell commands after worktree creation.</p>
+                            
+                            <div className="space-y-4">
+                                <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-gray-300 font-medium">Post Creation</span>
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-sm text-gray-400">Enabled</label>
+                                            <input
+                                                type="checkbox"
+                                                checked={config.worktreeHooks?.post_creation?.enabled || false}
+                                                onChange={(e) => {
+                                                    const hooks = { ...(config.worktreeHooks || {}) };
+                                                    if (!hooks.post_creation) hooks.post_creation = { command: '', enabled: false };
+                                                    hooks.post_creation.enabled = e.target.checked;
+                                                    updateConfig(['worktreeHooks'], hooks);
+                                                }}
+                                                className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-600"
+                                            />
+                                        </div>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={config.worktreeHooks?.post_creation?.command || ''}
+                                        onChange={(e) => {
+                                            const hooks = { ...(config.worktreeHooks || {}) };
+                                            if (!hooks.post_creation) hooks.post_creation = { command: '', enabled: false };
+                                            hooks.post_creation.command = e.target.value;
+                                            updateConfig(['worktreeHooks'], hooks);
+                                        }}
+                                        placeholder="Command to run after worktree creation (e.g. npm install)"
+                                        className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-white text-sm"
+                                    />
+                                    <p className="text-xs text-gray-500">Variables available: $WORKTREE_PATH, $BRANCH_NAME, $GIT_ROOT</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
