@@ -26,9 +26,12 @@
     - "Start Session" flow with **Command Preset Selection**.
     - **Project Switcher** for Multi-Project navigation.
 - [x] **Settings Editor:** Full UI for configuring:
-    - General Defaults (Auto-Directory, etc.)
-    - Command Presets (Add/Edit/Delete profiles).
-    - Auto-Approval settings (with Info tooltip).
+    - [x] General Defaults (Auto-Directory, etc.)
+    - [x] Command Presets (Add/Edit/Delete profiles).
+    - [x] Auto-Approval settings (with Info tooltip).
+    - [x] Shortcuts: Keybinding configuration.
+    - [x] Status Hooks: Lifecycle hooks (Idle/Busy/Waiting).
+    - [x] Worktree Hooks: Post-creation hooks.
 
 ### Phase 4: Integration & Security
 - [x] **Authentication:** Secure Token-based access (Random UUID generated on start).
