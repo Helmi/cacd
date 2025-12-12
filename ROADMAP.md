@@ -39,6 +39,17 @@
 - [x] **Distribution:** Client builds to `client/dist`, served statically by the CLI.
 - [x] **Multi-Project:** Auto-enabled mode when `CCMANAGER_MULTI_PROJECT_ROOT` env var is present.
 
+### Phase 5: UI/UX Refinement & Power Features
+- [ ] **Visual Overhaul:**
+    - [ ] **Color Scheme:** Implement a cohesive, professional color palette (e.g., Dracula, Nord, or custom).
+    - [ ] **Typography:** Unify UI and Terminal fonts using **JetBrains Mono** (Web fonts for UI, `fontFamily` config for xterm.js).
+- [ ] **Advanced Session Management:**
+    - [ ] **Cross-Project View:** A "Global Dashboard" showing active sessions across *all* projects simultaneously.
+    - [ ] **Split View:** Ability to view multiple terminals side-by-side (grid layout).
+- [ ] **Enhanced Workspace Context:**
+    - [ ] **Right Sidebar (Collapsible):** Dedicated space for context-aware tools.
+    - [ ] **Git Integration:** Show `git diff`, file status, or commit history in the right sidebar for the active session's worktree.
+
 ## 🔮 Future / Ideas
 - [ ] **Mobile Optimization:** Optimize Web UI layout for phone/tablet control.
 - [ ] **Log Viewer:** Stream `ccmanager.log` to a Web UI tab for debugging.
