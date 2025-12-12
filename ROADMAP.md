@@ -24,7 +24,7 @@
 - [x] **Dashboard:**
     - Sidebar listing Active Sessions and Worktrees.
     - "Start Session" flow with **Command Preset Selection**.
-    - **Project Switcher** for Multi-Project navigation.
+    - **Project Switcher** for Multi-Project navigation (with search filter).
 - [x] **Settings Editor:** Full UI for configuring:
     - [x] General Defaults (Auto-Directory, etc.)
     - [x] Command Presets (Add/Edit/Delete profiles).
