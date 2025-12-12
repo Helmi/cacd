@@ -12,7 +12,7 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
-    const [showAutoApprovalInfo, setShowAutoApprovalInfo] = useState(false);
+    const [activeInfo, setActiveInfo] = useState<string | null>(null);
 
     useEffect(() => {
         fetchConfig();
@@ -127,15 +127,15 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
                                 <div className="flex items-center gap-2 border-b border-gray-800 pb-2">
                                     <h3 className="text-lg font-medium text-white">Auto-Approval</h3>
                                     <button 
-                                        onClick={() => setShowAutoApprovalInfo(!showAutoApprovalInfo)}
-                                        className="text-gray-500 hover:text-blue-400 transition-colors"
+                                        onClick={() => setActiveInfo(activeInfo === 'autoApproval' ? null : 'autoApproval')}
+                                        className={`transition-colors ${activeInfo === 'autoApproval' ? 'text-blue-400' : 'text-gray-500 hover:text-blue-400'}`}
                                         title="What is this?"
                                     >
                                         <Info className="w-4 h-4" />
                                     </button>
                                 </div>
 
-                                {showAutoApprovalInfo && (
+                                {activeInfo === 'autoApproval' && (
                                     <div className="bg-blue-900/20 border border-blue-800 rounded p-4 text-sm text-gray-300 space-y-2">
                                         <p>
                                             <strong className="text-blue-400">What is Auto-Approval?</strong><br/>
@@ -173,25 +173,103 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
                             {/* Worktree Defaults */}
                             <section className="space-y-4">
                                 <h3 className="text-lg font-medium text-white border-b border-gray-800 pb-2">Worktree Defaults</h3>
-                                <div className="flex items-center gap-3">
-                                    <input
-                                        type="checkbox"
-                                        id="copySessionData"
-                                        checked={config.worktree?.copySessionData !== false}
-                                        onChange={(e) => updateConfig(['worktree', 'copySessionData'], e.target.checked)}
-                                        className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
-                                    />
-                                    <label htmlFor="copySessionData" className="text-gray-300">Copy Session Data by Default</label>
+                                
+                                {/* Copy Session Data */}
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="checkbox"
+                                                id="copySessionData"
+                                                checked={config.worktree?.copySessionData !== false}
+                                                onChange={(e) => updateConfig(['worktree', 'copySessionData'], e.target.checked)}
+                                                className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
+                                            />
+                                            <label htmlFor="copySessionData" className="text-gray-300">Copy Session Data by Default</label>
+                                        </div>
+                                        <button 
+                                            onClick={() => setActiveInfo(activeInfo === 'copySessionData' ? null : 'copySessionData')}
+                                            className={`transition-colors ${activeInfo === 'copySessionData' ? 'text-blue-400' : 'text-gray-500 hover:text-blue-400'}`}
+                                            title="More info"
+                                        >
+                                            <Info className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    {activeInfo === 'copySessionData' && (
+                                        <div className="bg-blue-900/20 border border-blue-800 rounded p-3 text-sm text-gray-300 mb-3">
+                                            When creating a new worktree, automatically copy the conversation history and context from the current session to maintain continuity.
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <input
-                                        type="checkbox"
-                                        id="autoDirectory"
-                                        checked={config.worktree?.autoDirectory || false}
-                                        onChange={(e) => updateConfig(['worktree', 'autoDirectory'], e.target.checked)}
-                                        className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
-                                    />
-                                    <label htmlFor="autoDirectory" className="text-gray-300">Auto-generate Directories</label>
+
+                                {/* Sort by Last Session */}
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="checkbox"
+                                                id="sortByLastSession"
+                                                checked={config.worktree?.sortByLastSession || false}
+                                                onChange={(e) => updateConfig(['worktree', 'sortByLastSession'], e.target.checked)}
+                                                className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
+                                            />
+                                            <label htmlFor="sortByLastSession" className="text-gray-300">Sort by Last Session</label>
+                                        </div>
+                                        <button 
+                                            onClick={() => setActiveInfo(activeInfo === 'sortByLastSession' ? null : 'sortByLastSession')}
+                                            className={`transition-colors ${activeInfo === 'sortByLastSession' ? 'text-blue-400' : 'text-gray-500 hover:text-blue-400'}`}
+                                            title="More info"
+                                        >
+                                            <Info className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    {activeInfo === 'sortByLastSession' && (
+                                        <div className="bg-blue-900/20 border border-blue-800 rounded p-3 text-sm text-gray-300 mb-3">
+                                            Order worktrees in the list by the time they were last accessed/opened, instead of alphabetically.
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Auto Directory */}
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="checkbox"
+                                                id="autoDirectory"
+                                                checked={config.worktree?.autoDirectory || false}
+                                                onChange={(e) => updateConfig(['worktree', 'autoDirectory'], e.target.checked)}
+                                                className="w-4 h-4 rounded bg-gray-800 border-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
+                                            />
+                                            <label htmlFor="autoDirectory" className="text-gray-300">Auto-generate Directories</label>
+                                        </div>
+                                        <button 
+                                            onClick={() => setActiveInfo(activeInfo === 'autoDirectory' ? null : 'autoDirectory')}
+                                            className={`transition-colors ${activeInfo === 'autoDirectory' ? 'text-blue-400' : 'text-gray-500 hover:text-blue-400'}`}
+                                            title="More info"
+                                        >
+                                            <Info className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    {activeInfo === 'autoDirectory' && (
+                                        <div className="bg-blue-900/20 border border-blue-800 rounded p-3 text-sm text-gray-300 mb-3">
+                                            Automatically suggest directory names when creating new worktrees based on the branch name.
+                                        </div>
+                                    )}
+                                    
+                                    {config.worktree?.autoDirectory && (
+                                        <div className="ml-7 mt-2 space-y-1">
+                                            <label className="block text-sm text-gray-400">Directory Pattern</label>
+                                            <input
+                                                type="text"
+                                                value={config.worktree?.autoDirectoryPattern || '../{branch}'}
+                                                onChange={(e) => updateConfig(['worktree', 'autoDirectoryPattern'], e.target.value)}
+                                                className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white w-full focus:outline-none focus:border-blue-500 text-sm"
+                                                placeholder="../{branch}"
+                                            />
+                                            <p className="text-xs text-gray-500">Use <span className="font-mono text-gray-300">{'{branch}'}</span> as a placeholder.</p>
+                                        </div>
+                                    )}
                                 </div>
                             </section>
                         </div>
