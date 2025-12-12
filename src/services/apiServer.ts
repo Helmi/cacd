@@ -6,6 +6,7 @@ import { coreService } from './coreService.js';
 import { logger } from '../utils/logger.js';
 import { configurationManager } from './configurationManager.js';
 import { projectManager } from './projectManager.js';
+import { ConfigurationData } from '../types/index.js';
 import { Effect } from 'effect';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -121,15 +122,135 @@ export class APIServer {
 
         
 
-                this.app.get('/api/presets', async () => {
+                        this.app.get('/api/presets', async () => {
 
-                    return configurationManager.getAllPresets();
+        
 
-                });
+                            return configurationManager.getAllPresets();
+
+        
+
+                        });
+
+        
 
                 
 
-                this.app.get('/api/sessions', async () => {
+        
+
+                        this.app.get('/api/config', async () => {
+
+        
+
+                            return configurationManager.getConfiguration();
+
+        
+
+                        });
+
+        
+
+                
+
+        
+
+                        this.app.post<{ Body: any }>('/api/config', async (request, reply) => {
+
+        
+
+                            const newConfig = request.body;
+
+        
+
+                            
+
+        
+
+                            // Validate
+
+        
+
+                            const validation = configurationManager.validateConfig(newConfig);
+
+        
+
+                            // Effect.Either.isLeft check (manual since we can't import isLeft easily from here without types)
+
+        
+
+                            if (validation._tag === 'Left') {
+
+        
+
+                                // @ts-ignore - accessing internal error structure
+
+        
+
+                                return reply.code(400).send({ error: validation.left.message || "Invalid configuration" });
+
+        
+
+                            }
+
+        
+
+                            
+
+        
+
+                                        // Save
+
+        
+
+                            
+
+        
+
+                                        const effect = configurationManager.saveConfigEffect(newConfig as ConfigurationData);
+
+        
+
+                            
+
+        
+
+                                        const result = await Effect.runPromise(Effect.either(effect));
+
+        
+
+                            
+
+        
+
+                            if (result._tag === 'Left') {
+
+        
+
+                                return reply.code(500).send({ error: result.left.message });
+
+        
+
+                            }
+
+        
+
+                            
+
+        
+
+                            return { success: true };
+
+        
+
+                        });
+
+        
+
+                        
+
+        
+
+                        this.app.get('/api/sessions', async () => {
 
                     const sessions = coreService.sessionManager.getAllSessions();
 
