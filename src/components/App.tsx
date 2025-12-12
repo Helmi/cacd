@@ -578,6 +578,7 @@ const App: React.FC<AppProps> = ({
 				onSelectProject={handleSelectProject}
 				error={error}
 				onDismissError={() => setError(null)}
+				webConfig={webConfig}
 			/>
 		);
 	}

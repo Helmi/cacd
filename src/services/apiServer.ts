@@ -70,26 +70,39 @@ export class APIServer {
         });
 
         this.app.get('/api/projects', async () => {
-             return projectManager.getRecentProjects();
+             const pm = projectManager.instance;
+             const isEnabled = pm.isMultiProjectEnabled();
+             const dir = pm.getProjectsDir();
+             
+             logger.info(`API: Fetching projects. Multi-project: ${isEnabled}, Dir: ${dir}`);
+             
+             if (isEnabled && dir) {
+                 const result = await Effect.runPromise(Effect.either(pm.discoverProjectsEffect(dir)));
+                 if (result._tag === 'Right') {
+                     logger.info(`API: Discovered ${result.right.length} projects`);
+                     return result.right;
+                 } else {
+                     logger.error(`API: Discovery failed: ${result.left.message}`);
+                 }
+             }
+             const recent = pm.getRecentProjects();
+             logger.info(`API: Returning ${recent.length} recent projects`);
+             return recent;
         });
 
         this.app.post<{ Body: { path: string } }>('/api/project/select', async (request, reply) => {
             const { path } = request.body;
-            const projects = projectManager.getRecentProjects();
-            const project = projects.find(p => p.path === path);
+            const pm = projectManager.instance;
+            
+            // Validate and load project details
+            const project = await pm.refreshProject(path);
             
             if (project) {
-                // Construct a compatible object
-                const gitProject = {
-                    ...project,
-                    relativePath: '',
-                    isValid: true
-                };
-                await coreService.selectProject(gitProject);
+                await coreService.selectProject(project);
                 return { success: true };
             }
             
-            return reply.code(404).send({ error: 'Project not found in recent projects' });
+            return reply.code(404).send({ error: 'Project not found or invalid git repository' });
         });
 
                 this.app.get('/api/worktrees', async () => {

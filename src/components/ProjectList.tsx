@@ -17,6 +17,10 @@ interface ProjectListProps {
 	onSelectProject: (project: GitProject) => void;
 	error: string | null;
 	onDismissError: () => void;
+	webConfig?: {
+		url: string;
+		token: string;
+	};
 }
 
 interface MenuItem {
@@ -30,6 +34,7 @@ const ProjectList: React.FC<ProjectListProps> = ({
 	onSelectProject,
 	error,
 	onDismissError,
+	webConfig,
 }) => {
 	const [projects, setProjects] = useState<GitProject[]>([]);
 	const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
@@ -300,6 +305,23 @@ const ProjectList: React.FC<ProjectListProps> = ({
 					CCManager - Multi-Project Mode
 				</Text>
 			</Box>
+
+			{webConfig && (
+				<Box
+					borderStyle="round"
+					borderColor="blue"
+					paddingX={1}
+					marginBottom={1}
+					flexDirection="column"
+				>
+					<Text bold color="blue">
+						Web Interface Available
+					</Text>
+					<Text>
+						Link: <Text color="cyan" underline>{webConfig.url}/?token={webConfig.token}</Text>
+					</Text>
+				</Box>
+			)}
 
 			<Box marginBottom={1}>
 				<Text dimColor>Select a project:</Text>
