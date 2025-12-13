@@ -37,8 +37,16 @@ export const TerminalView = ({ sessionId, socket }: TerminalViewProps) => {
         socket.emit('subscribe_session', sessionId);
 
         // Handle incoming data
-        const handleData = (data: string) => {
-            term.write(data);
+        const handleData = (msg: { sessionId: string, data: string } | string) => {
+            const content = typeof msg === 'string' ? msg : msg.data;
+            const msgSessionId = typeof msg === 'string' ? null : msg.sessionId;
+
+            // Strict check: Ignore data from other sessions
+            if (msgSessionId && msgSessionId !== sessionId) {
+                return;
+            }
+            
+            term.write(content);
         };
         
         socket.on('terminal_data', handleData);
