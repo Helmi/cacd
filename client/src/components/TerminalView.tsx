@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
-import { Socket } from 'socket.io-client';
+import { WebLinksAddon } from 'xterm-addon-web-links';
 import 'xterm/css/xterm.css';
+import { Socket } from 'socket.io-client';
 
 interface TerminalViewProps {
     sessionId: string;
@@ -26,7 +27,10 @@ export const TerminalView = ({ sessionId, socket }: TerminalViewProps) => {
         });
         
         const fitAddon = new FitAddon();
+        const webLinksAddon = new WebLinksAddon();
+        
         term.loadAddon(fitAddon);
+        term.loadAddon(webLinksAddon);
         
         term.open(terminalRef.current);
         fitAddon.fit();
