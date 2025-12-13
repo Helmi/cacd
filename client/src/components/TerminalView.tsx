@@ -18,6 +18,8 @@ export const TerminalView = ({ sessionId, socket }: TerminalViewProps) => {
 
         const term = new Terminal({
             cursorBlink: true,
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+            fontSize: 14,
             theme: {
                 background: '#1e1e1e',
             }
@@ -68,5 +70,11 @@ export const TerminalView = ({ sessionId, socket }: TerminalViewProps) => {
         };
     }, [sessionId, socket]);
 
-    return <div ref={terminalRef} className="h-full w-full overflow-hidden" />;
+    return (
+        <div className="h-full w-full flex justify-center bg-black p-6">
+            <div className="w-full max-w-6xl h-full border border-gray-800 rounded-lg overflow-hidden bg-[#1e1e1e] shadow-2xl pl-2 pt-2">
+                <div ref={terminalRef} className="h-full w-full" />
+            </div>
+        </div>
+    );
 };
