@@ -4,7 +4,8 @@ import { TerminalView } from './components/TerminalView';
 import { Settings } from './components/Settings';
 import { NewWorktree } from './components/NewWorktree';
 import { WorktreeDetail } from './components/WorktreeDetail';
-import { Terminal, GitBranch, FolderGit2, ChevronDown, Settings as SettingsIcon, Plus } from 'lucide-react'; 
+import { NewSession } from './components/NewSession';
+import { Terminal, GitBranch, FolderGit2, ChevronDown, Settings as SettingsIcon, Plus, Play } from 'lucide-react'; 
 
 // Helper to get token
 const getToken = () => {
@@ -57,7 +58,7 @@ function App() {
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'session' | 'worktree' | 'preset-selection' | 'settings' | 'new-worktree' | null>(null);
+  const [viewMode, setViewMode] = useState<'session' | 'worktree' | 'preset-selection' | 'settings' | 'new-worktree' | 'new-session' | null>(null);
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const [projectSearch, setProjectSearch] = useState('');
   const [worktreeFilter, setWorktreeFilter] = useState('');
@@ -284,7 +285,16 @@ function App() {
         <div className="flex-1 overflow-y-auto p-2 space-y-6">
             {/* Active Sessions */}
             <div>
-                <h2 className="text-xs font-semibold text-gray-500 uppercase px-2 mb-2 tracking-wider">Active Sessions</h2>
+                <div className="flex items-center justify-between px-2 mb-2">
+                    <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Active Sessions</h2>
+                    <button 
+                        onClick={() => setViewMode('new-session')}
+                        className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300 px-2 py-1 hover:bg-green-900/30 rounded transition-colors"
+                        title="Start New Session"
+                    >
+                        <Play className="w-3 h-3" /> New
+                    </button>
+                </div>
                 <div className="space-y-0.5">
                     {sessions.length === 0 && <div className="px-2 text-sm text-gray-600 italic">No active sessions</div>}
                     {sessions.map((s) => (
@@ -395,6 +405,17 @@ function App() {
                   token={token || ''} 
                   onClose={() => setViewMode(null)} 
                   onSuccess={() => { fetchData(); setViewMode(null); }}
+                  projectName={currentProject?.name}
+              />
+          ) : viewMode === 'new-session' ? (
+              <NewSession 
+                  token={token || ''} 
+                  onClose={() => setViewMode(null)} 
+                  onSessionCreated={(sessionId) => { 
+                      fetchData(); 
+                      setSelectedId(sessionId); 
+                      setViewMode('session'); 
+                  }}
                   projectName={currentProject?.name}
               />
           ) : viewMode === 'session' && selectedId ? (
