@@ -36,6 +36,16 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
     const handleSave = async () => {
         setSaving(true);
         setMessage(null);
+        
+        // Clean up config before saving
+        const cleanConfig = JSON.parse(JSON.stringify(config)); // Deep copy
+        if (cleanConfig.commandPresets?.presets) {
+             cleanConfig.commandPresets.presets = cleanConfig.commandPresets.presets.map((p: any) => ({
+                 ...p,
+                 args: (p.args || []).map((s: string) => s.trim()).filter(Boolean)
+             }));
+        }
+
         try {
             const res = await fetch('/api/config', {
                 method: 'POST',
@@ -43,7 +53,7 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
                     'x-access-token': token,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(config)
+                body: JSON.stringify(cleanConfig)
             });
             
             if (!res.ok) {
@@ -349,7 +359,8 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
                                                     value={preset.args?.join(', ') || ''}
                                                     onChange={(e) => {
                                                         const p = [...config.commandPresets.presets];
-                                                        p[index].args = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                                                        // Don't filter Boolean here to allow trailing commas while typing
+                                                        p[index].args = e.target.value.split(',').map(s => s.trimStart()); 
                                                         updateConfig(['commandPresets', 'presets'], p);
                                                     }}
                                                     placeholder="--resume, --print"
