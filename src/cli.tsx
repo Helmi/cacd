@@ -87,7 +87,7 @@ try {
 	// Start on default port 3000
 	const address = await apiServer.start(port);
 	webConfig = {
-		url: address,
+		url: address.replace('0.0.0.0', 'localhost'),
 		token: apiServer.getToken(),
 	};
 } catch (err) {
