@@ -77,18 +77,33 @@ export class APIServer {
              
              logger.info(`API: Fetching projects. Multi-project: ${isEnabled}, Dir: ${dir}`);
              
+             let allProjects: any[] = []; // GitProject[]
+             
              if (isEnabled && dir) {
                  const result = await Effect.runPromise(Effect.either(pm.discoverProjectsEffect(dir)));
                  if (result._tag === 'Right') {
                      logger.info(`API: Discovered ${result.right.length} projects`);
-                     return result.right;
+                     allProjects = result.right;
                  } else {
                      logger.error(`API: Discovery failed: ${result.left.message}`);
                  }
              }
+             
              const recent = pm.getRecentProjects();
-             logger.info(`API: Returning ${recent.length} recent projects`);
-             return recent;
+             if (!isEnabled && allProjects.length === 0) {
+                 // If not in multi-project mode, 'all' is just the recent list converted
+                 allProjects = recent.map(r => ({ 
+                     name: r.name, 
+                     path: r.path, 
+                     relativePath: '', 
+                     isValid: true 
+                 }));
+             }
+
+             return {
+                 all: allProjects,
+                 recent: recent
+             };
         });
 
         this.app.post<{ Body: { path: string } }>('/api/project/select', async (request, reply) => {
