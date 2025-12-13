@@ -178,6 +178,21 @@ export class APIServer {
             return { success: true };
         });
 
+        this.app.post<{ Body: { sourceBranch: string; targetBranch: string; useRebase: boolean } }>('/api/worktree/merge', async (request, reply) => {
+            const { sourceBranch, targetBranch, useRebase } = request.body;
+            logger.info(`API: Merging ${sourceBranch} into ${targetBranch} (rebase: ${useRebase})`);
+            
+            const effect = coreService.worktreeService.mergeWorktreeEffect(sourceBranch, targetBranch, useRebase);
+            const result = await Effect.runPromise(Effect.either(effect));
+            
+            if (result._tag === 'Left') {
+                return reply.code(500).send({ error: result.left.message });
+            }
+            
+            await coreService.refreshWorktrees();
+            return { success: true };
+        });
+
         // --- Sessions ---
         this.app.get('/api/sessions', async () => {
             const sessions = coreService.sessionManager.getAllSessions();

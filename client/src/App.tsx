@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { TerminalView } from './components/TerminalView';
-import { PresetSelector } from './components/PresetSelector';
 import { Settings } from './components/Settings';
 import { NewWorktree } from './components/NewWorktree';
-import { Terminal, GitBranch, FolderGit2, ChevronDown, Settings as SettingsIcon, Trash2, Plus } from 'lucide-react'; 
+import { WorktreeDetail } from './components/WorktreeDetail';
+import { Terminal, GitBranch, FolderGit2, ChevronDown, Settings as SettingsIcon, Plus } from 'lucide-react'; 
 
 // Helper to get token
 const getToken = () => {
@@ -157,35 +157,6 @@ function App() {
       } catch (e) {
           console.error(e);
           alert("An error occurred: " + (e as Error).message);
-      }
-  };
-
-  const handleDeleteWorktree = async (path: string, e: React.MouseEvent) => {
-      e.stopPropagation(); // Prevent selection
-      if (!confirm(`Are you sure you want to delete worktree: ${path}?`)) return;
-      
-      try {
-          const res = await fetch('/api/worktree/delete', {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-                  'x-access-token': token || ''
-              },
-              body: JSON.stringify({ path, deleteBranch: true }) // Default to deleting branch too
-          });
-          
-          if (!res.ok) {
-              const data = await res.json();
-              alert("Failed to delete: " + data.error);
-          } else {
-              fetchData();
-              if (selectedId === path) {
-                  setViewMode(null);
-                  setSelectedId(null);
-              }
-          }
-      } catch (e) {
-          alert("Error: " + (e as Error).message);
       }
   };
 
@@ -388,17 +359,7 @@ function App() {
                                         {w.branch || w.path.split('/').pop()}
                                     </span>
                                 </div>
-                                {hasActiveSession ? (
-                                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
-                                ) : !w.isMainWorktree && (
-                                    <div 
-                                        onClick={(e) => handleDeleteWorktree(w.path, e)}
-                                        className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 hover:bg-gray-700 rounded transition-all"
-                                        title="Delete Worktree"
-                                    >
-                                        <Trash2 className="w-3 h-3" />
-                                    </div>
-                                )}
+                                {hasActiveSession && <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />}
                             </button>
                         );
                     })}
@@ -443,23 +404,12 @@ function App() {
                   socket={socket} 
               />
           ) : viewMode === 'worktree' && selectedWorktree ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-                  <GitBranch className="w-16 h-16 text-gray-700 mb-4" />
-                  <h2 className="text-2xl font-bold text-white mb-2">
-                      {selectedWorktree.branch || 'Main Worktree'}
-                  </h2>
-                  <p className="text-gray-500 mb-8 max-w-md break-all">
-                      {selectedWorktree.path}
-                  </p>
-                  
-                  {/* Preset Selection */}
-                  <PresetSelector 
-                    onSelect={(presetId) => handleStartSession(selectedWorktree.path, presetId)}
-                    onCancel={() => setViewMode(null)} // Close preset selector
-                    token={token || ''}
-                    selectedWorktreePath={selectedWorktree.path}
-                  />
-              </div>
+              <WorktreeDetail 
+                  worktree={selectedWorktree} 
+                  token={token || ''}
+                  onStartSession={handleStartSession}
+                  onDeleteSuccess={() => { fetchData(); setViewMode(null); }}
+              />
           ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-gray-600">
                   <Terminal className="w-16 h-16 mb-4 opacity-20" />
