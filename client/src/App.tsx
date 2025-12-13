@@ -272,7 +272,7 @@ function App() {
                                     <>
                                         {hasRecent && (
                                             <>
-                                                <div className="px-2 py-1 text-[10px] text-gray-500 uppercase font-semibold bg-gray-800/50 sticky top-0">Recent</div>
+                                                <div className="px-2 py-1 text-[10px] text-gray-500 uppercase font-semibold bg-gray-800/95 backdrop-blur-sm">Recent</div>
                                                 {filteredRecent.map(p => (
                                                     <button
                                                         key={p.path}
@@ -289,7 +289,7 @@ function App() {
                                         
                                         {hasAll && (
                                             <>
-                                                <div className="px-2 py-1 text-[10px] text-gray-500 uppercase font-semibold bg-gray-800/50 sticky top-0">All Projects</div>
+                                                <div className="px-2 py-1 text-[10px] text-gray-500 uppercase font-semibold bg-gray-800/95 backdrop-blur-sm">All Projects</div>
                                                 {filteredAll.map(p => (
                                                     <button
                                                         key={p.path}
