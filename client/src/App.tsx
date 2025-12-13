@@ -3,7 +3,8 @@ import { io, Socket } from 'socket.io-client';
 import { TerminalView } from './components/TerminalView';
 import { PresetSelector } from './components/PresetSelector';
 import { Settings } from './components/Settings';
-import { Terminal, GitBranch, FolderGit2, ChevronDown, Settings as SettingsIcon } from 'lucide-react'; 
+import { NewWorktree } from './components/NewWorktree';
+import { Terminal, GitBranch, FolderGit2, ChevronDown, Settings as SettingsIcon, Trash2, Plus } from 'lucide-react'; 
 
 // Helper to get token
 const getToken = () => {
@@ -51,7 +52,7 @@ function App() {
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'session' | 'worktree' | 'preset-selection' | 'settings' | null>(null);
+  const [viewMode, setViewMode] = useState<'session' | 'worktree' | 'preset-selection' | 'settings' | 'new-worktree' | null>(null);
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const [projectSearch, setProjectSearch] = useState('');
   
@@ -150,6 +151,35 @@ function App() {
       } catch (e) {
           console.error(e);
           alert("An error occurred: " + (e as Error).message);
+      }
+  };
+
+  const handleDeleteWorktree = async (path: string, e: React.MouseEvent) => {
+      e.stopPropagation(); // Prevent selection
+      if (!confirm(`Are you sure you want to delete worktree: ${path}?`)) return;
+      
+      try {
+          const res = await fetch('/api/worktree/delete', {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'x-access-token': token || ''
+              },
+              body: JSON.stringify({ path, deleteBranch: true }) // Default to deleting branch too
+          });
+          
+          if (!res.ok) {
+              const data = await res.json();
+              alert("Failed to delete: " + data.error);
+          } else {
+              fetchData();
+              if (selectedId === path) {
+                  setViewMode(null);
+                  setSelectedId(null);
+              }
+          }
+      } catch (e) {
+          alert("Error: " + (e as Error).message);
       }
   };
 
@@ -266,7 +296,16 @@ function App() {
 
             {/* Worktrees */}
             <div>
-                <h2 className="text-xs font-semibold text-gray-500 uppercase px-2 mb-2 tracking-wider">Worktrees</h2>
+                <div className="flex items-center justify-between px-2 mb-2">
+                    <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Worktrees</h2>
+                    <button 
+                        onClick={() => setViewMode('new-worktree')}
+                        className="text-gray-500 hover:text-white p-1 hover:bg-gray-800 rounded"
+                        title="New Worktree"
+                    >
+                        <Plus className="w-3 h-3" />
+                    </button>
+                </div>
                 <div className="space-y-0.5">
                     {worktrees.map((w) => {
                         const hasActiveSession = sessions.some(s => s.path === w.path);
@@ -282,7 +321,7 @@ function App() {
                                         setViewMode('worktree'); 
                                     }
                                 }}
-                                className={`w-full text-left px-3 py-2 rounded text-sm truncate flex items-center gap-2 transition-colors ${
+                                className={`w-full text-left px-3 py-2 rounded text-sm truncate flex items-center gap-2 transition-colors group ${
                                     viewMode === 'worktree' && selectedId === w.path
                                         ? 'bg-gray-700 text-white' 
                                         : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
@@ -294,7 +333,17 @@ function App() {
                                         {w.branch || w.path.split('/').pop()}
                                     </span>
                                 </div>
-                                {hasActiveSession && <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />}
+                                {hasActiveSession ? (
+                                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
+                                ) : !w.isMainWorktree && (
+                                    <div 
+                                        onClick={(e) => handleDeleteWorktree(w.path, e)}
+                                        className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 hover:bg-gray-700 rounded transition-all"
+                                        title="Delete Worktree"
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                    </div>
+                                )}
                             </button>
                         );
                     })}
@@ -322,6 +371,12 @@ function App() {
       <div className="flex-1 flex flex-col min-w-0 bg-black">
           {viewMode === 'settings' ? (
               <Settings token={token || ''} onClose={() => setViewMode(null)} />
+          ) : viewMode === 'new-worktree' ? (
+              <NewWorktree 
+                  token={token || ''} 
+                  onClose={() => setViewMode(null)} 
+                  onSuccess={() => { fetchData(); setViewMode(null); }}
+              />
           ) : viewMode === 'session' && selectedId ? (
               <TerminalView 
                   key={selectedId} 
