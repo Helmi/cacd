@@ -327,6 +327,7 @@ export class APIServer {
                 if (token === this.token) {
                     next();
                 } else {
+                    logger.warn(`Socket Auth Failed. Expected: ${this.token}, Got: ${token}`);
                     next(new Error("Unauthorized"));
                 }
             });
