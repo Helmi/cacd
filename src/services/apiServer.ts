@@ -279,6 +279,9 @@ export class APIServer {
 
                 socket.on('subscribe_session', (sessionId: string) => {
                     logger.info(`Client ${socket.id} subscribed to session ${sessionId}`);
+                    // Leave other session rooms to avoid cross-talk if client forgot to unsubscribe
+                    // Iterating rooms is tricky in socket.io v4 without tracking.
+                    // Better to rely on explicit unsubscribe from client or just join.
                     socket.join(`session:${sessionId}`);
                     
                     // Find session and send current history
@@ -288,6 +291,11 @@ export class APIServer {
                         const fullHistory = Buffer.concat(session.outputHistory).toString('utf8');
                         socket.emit('terminal_data', fullHistory);
                     }
+                });
+
+                socket.on('unsubscribe_session', (sessionId: string) => {
+                    logger.info(`Client ${socket.id} unsubscribed from session ${sessionId}`);
+                    socket.leave(`session:${sessionId}`);
                 });
 
                 socket.on('input', ({ sessionId, data }: { sessionId: string, data: string }) => {

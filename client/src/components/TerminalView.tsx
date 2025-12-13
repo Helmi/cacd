@@ -61,6 +61,7 @@ export const TerminalView = ({ sessionId, socket }: TerminalViewProps) => {
         setTimeout(handleResize, 100);
 
         return () => {
+            socket.emit('unsubscribe_session', sessionId);
             socket.off('terminal_data', handleData);
             window.removeEventListener('resize', handleResize);
             term.dispose();
