@@ -5,13 +5,15 @@ interface NewWorktreeProps {
     token: string;
     onClose: () => void;
     onSuccess: () => void;
+    projectName?: string;
 }
 
-export const NewWorktree = ({ token, onClose, onSuccess }: NewWorktreeProps) => {
+export const NewWorktree = ({ token, onClose, onSuccess, projectName }: NewWorktreeProps) => {
     const [branches, setBranches] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [pattern, setPattern] = useState('../{branch}');
 
     // Form State
     const [baseBranch, setBaseBranch] = useState('main');
@@ -23,6 +25,7 @@ export const NewWorktree = ({ token, onClose, onSuccess }: NewWorktreeProps) => 
 
     useEffect(() => {
         setLoading(true);
+        // Fetch branches
         fetch('/api/branches', { headers: { 'x-access-token': token } })
             .then(res => res.json())
             .then(data => {
@@ -33,15 +36,41 @@ export const NewWorktree = ({ token, onClose, onSuccess }: NewWorktreeProps) => 
             })
             .catch(e => setError(e.message))
             .finally(() => setLoading(false));
+
+        // Fetch config
+        fetch('/api/config', { headers: { 'x-access-token': token } })
+            .then(res => res.json())
+            .then(data => {
+                if (data.worktree?.autoDirectoryPattern) {
+                    setPattern(data.worktree.autoDirectoryPattern);
+                }
+                if (data.worktree?.copySessionData !== undefined) {
+                    setCopySession(data.worktree.copySessionData);
+                }
+            })
+            .catch(console.error);
     }, [token]);
 
-    // Auto-generate path logic (simple version)
+    // Auto-generate path logic
     useEffect(() => {
         if (autoPath && newBranch) {
-            const sanitized = newBranch.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
-            setPath(`../${sanitized}`);
+            let generated = pattern;
+            const sanitizedBranch = newBranch
+                .replace(/\//g, '-')
+                .replace(/[^a-zA-Z0-9-_.]+/g, '')
+                .replace(/^-+|-+$/g, '')
+                .toLowerCase();
+            
+            generated = generated.replace(/{branch}/g, sanitizedBranch);
+            generated = generated.replace(/{branch-name}/g, sanitizedBranch);
+            
+            if (projectName) {
+                generated = generated.replace(/{project}/g, projectName);
+            }
+            
+            setPath(generated);
         }
-    }, [newBranch, autoPath]);
+    }, [newBranch, autoPath, pattern, projectName]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

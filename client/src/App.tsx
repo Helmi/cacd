@@ -55,6 +55,7 @@ function App() {
   const [viewMode, setViewMode] = useState<'session' | 'worktree' | 'preset-selection' | 'settings' | 'new-worktree' | null>(null);
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const [projectSearch, setProjectSearch] = useState('');
+  const [worktreeFilter, setWorktreeFilter] = useState('');
   
   const [authError, setAuthError] = useState<boolean>(false);
 
@@ -300,14 +301,27 @@ function App() {
                     <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Worktrees</h2>
                     <button 
                         onClick={() => setViewMode('new-worktree')}
-                        className="text-gray-500 hover:text-white p-1 hover:bg-gray-800 rounded"
-                        title="New Worktree"
+                        className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 px-2 py-1 hover:bg-blue-900/30 rounded transition-colors"
+                        title="Create New Worktree"
                     >
-                        <Plus className="w-3 h-3" />
+                        <Plus className="w-3 h-3" /> New
                     </button>
                 </div>
+                
+                <div className="px-2 mb-2">
+                    <input 
+                        type="text" 
+                        placeholder="Filter worktrees..." 
+                        value={worktreeFilter}
+                        onChange={e => setWorktreeFilter(e.target.value)}
+                        className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none placeholder-gray-600"
+                    />
+                </div>
+
                 <div className="space-y-0.5">
-                    {worktrees.map((w) => {
+                    {worktrees
+                        .filter(w => !worktreeFilter || w.path.toLowerCase().includes(worktreeFilter.toLowerCase()) || w.branch?.toLowerCase().includes(worktreeFilter.toLowerCase()))
+                        .map((w) => {
                         const hasActiveSession = sessions.some(s => s.path === w.path);
                         return (
                             <button
@@ -347,6 +361,9 @@ function App() {
                             </button>
                         );
                     })}
+                    {worktrees.length > 0 && worktrees.filter(w => !worktreeFilter || w.path.toLowerCase().includes(worktreeFilter.toLowerCase()) || w.branch?.toLowerCase().includes(worktreeFilter.toLowerCase())).length === 0 && (
+                        <div className="px-2 text-xs text-gray-500 italic text-center py-2">No matches</div>
+                    )}
                 </div>
             </div>
         </div>
@@ -376,6 +393,7 @@ function App() {
                   token={token || ''} 
                   onClose={() => setViewMode(null)} 
                   onSuccess={() => { fetchData(); setViewMode(null); }}
+                  projectName={currentProject?.name}
               />
           ) : viewMode === 'session' && selectedId ? (
               <TerminalView 
