@@ -25,6 +25,7 @@
     - Sidebar listing Active Sessions and Worktrees.
     - "Start Session" flow with **Command Preset Selection**.
     - **Project Switcher** for Multi-Project navigation (with search filter).
+    - **Worktree Management:** Create, Delete, and Merge worktrees.
 - [x] **Settings Editor:** Full UI for configuring:
     - [x] General Defaults (Auto-Directory, etc.)
     - [x] Command Presets (Add/Edit/Delete profiles).
