@@ -63,3 +63,7 @@
     - **Authentication:** Implement persistent auth (User/Pass or fixed token) for headless security.
     - **Persistence:** Sessions survive UI disconnects/restarts naturally.
 - [ ] **Project-Specific Configuration:** Support `.ccmanager.json` in project root to override global settings (e.g., hooks, presets) per repository.
+
+## 🧭 Strategic / Rebranding
+- [ ] **Project Rename:** Rename to reflect broader scope (not just Claude). The tool is becoming a general AI Agent Session Manager.
+- [ ] **Hard Fork Decision:** Evaluate officially decoupling from upstream `ccmanager` to pursue the Web/Daemon architecture without constraints.
