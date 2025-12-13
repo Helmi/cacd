@@ -223,6 +223,21 @@ export class APIServer {
             return { success: true, id: session.id };
         });
 
+        this.app.post<{ Body: { id: string } }>('/api/session/stop', async (request, reply) => {
+            const { id } = request.body;
+            logger.info(`API: Stopping session ${id}`);
+            
+            const sessions = coreService.sessionManager.getAllSessions();
+            const session = sessions.find(s => s.id === id);
+            
+            if (!session) {
+                return reply.code(404).send({ error: 'Session not found' });
+            }
+            
+            coreService.sessionManager.destroySession(session.worktreePath);
+            return { success: true };
+        });
+
         // --- Configuration ---
         this.app.get('/api/presets', async () => {
             return configurationManager.getAllPresets();

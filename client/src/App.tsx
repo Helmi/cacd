@@ -369,7 +369,22 @@ function App() {
                                         {w.branch || w.path.split('/').pop()}
                                     </span>
                                 </div>
-                                {hasActiveSession && <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />}
+                                {hasActiveSession ? (
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
+                                        <div 
+                                            onClick={(e) => { 
+                                                e.stopPropagation(); 
+                                                setSelectedId(w.path); 
+                                                setViewMode('worktree'); 
+                                            }}
+                                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-all"
+                                            title="Manage Worktree"
+                                        >
+                                            <SettingsIcon className="w-3 h-3" />
+                                        </div>
+                                    </div>
+                                ) : null}
                             </button>
                         );
                     })}
@@ -428,7 +443,21 @@ function App() {
               <WorktreeDetail 
                   worktree={selectedWorktree} 
                   token={token || ''}
+                  activeSessionId={sessions.find(s => s.path === selectedWorktree.path)?.id}
                   onStartSession={handleStartSession}
+                  onResumeSession={(sid) => { setSelectedId(sid); setViewMode('session'); }}
+                  onStopSession={async (sid) => {
+                      const res = await fetch('/api/session/stop', {
+                          method: 'POST',
+                          headers: { 
+                              'Content-Type': 'application/json', 
+                              'x-access-token': token || '' 
+                          },
+                          body: JSON.stringify({ id: sid })
+                      });
+                      if (!res.ok) throw new Error("Failed to stop session");
+                      fetchData();
+                  }}
                   onDeleteSuccess={() => { fetchData(); setViewMode(null); }}
               />
           ) : (

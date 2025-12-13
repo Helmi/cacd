@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { GitBranch, Play, Trash2, GitMerge, AlertTriangle, ArrowRight } from 'lucide-react';
+import { GitBranch, Play, Trash2, GitMerge, AlertTriangle, ArrowRight, Square, ExternalLink, Terminal } from 'lucide-react';
 import { PresetSelector } from './PresetSelector';
 
 interface Worktree {
@@ -12,11 +12,22 @@ interface Worktree {
 interface WorktreeDetailProps {
     worktree: Worktree;
     token: string;
+    activeSessionId?: string;
     onStartSession: (path: string, presetId?: string) => Promise<void>;
+    onResumeSession: (sessionId: string) => void;
+    onStopSession: (sessionId: string) => Promise<void>;
     onDeleteSuccess: () => void;
 }
 
-export const WorktreeDetail = ({ worktree, token, onStartSession, onDeleteSuccess }: WorktreeDetailProps) => {
+export const WorktreeDetail = ({ 
+    worktree, 
+    token, 
+    activeSessionId, 
+    onStartSession, 
+    onResumeSession,
+    onStopSession,
+    onDeleteSuccess 
+}: WorktreeDetailProps) => {
     const [mode, setMode] = useState<'view' | 'merge' | 'delete'>('view');
     const [branches, setBranches] = useState<string[]>([]);
     const [targetBranch, setTargetBranch] = useState('main');
@@ -74,10 +85,29 @@ export const WorktreeDetail = ({ worktree, token, onStartSession, onDeleteSucces
         }
     };
 
+    const handleStop = async () => {
+        if (!activeSessionId) return;
+        if (!confirm('Are you sure you want to stop the running session? This will kill the process.')) return;
+        
+        setLoading(true);
+        try {
+            await onStopSession(activeSessionId);
+            setSuccessMsg('Session stopped successfully');
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleDelete = async () => {
         setLoading(true);
         setError(null);
         try {
+            if (activeSessionId) {
+                await onStopSession(activeSessionId);
+            }
+
             const res = await fetch('/api/worktree/delete', {
                 method: 'POST',
                 headers: { 
@@ -107,8 +137,11 @@ export const WorktreeDetail = ({ worktree, token, onStartSession, onDeleteSucces
             <div className="w-full max-w-2xl bg-gray-800/50 border border-gray-700 rounded-xl p-8 shadow-xl">
                 {/* Header */}
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-900/30 mb-4">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-900/30 mb-4 relative">
                         <GitBranch className="w-8 h-8 text-blue-400" />
+                        {activeSessionId && (
+                            <div className="absolute top-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-gray-900 animate-pulse" title="Active Session" />
+                        )}
                     </div>
                     <h2 className="text-2xl font-bold text-white mb-2">
                         {worktree.branch || 'Main Worktree'}
@@ -133,18 +166,42 @@ export const WorktreeDetail = ({ worktree, token, onStartSession, onDeleteSucces
                 {/* VIEW MODE: Actions */}
                 {mode === 'view' && (
                     <div className="space-y-8">
-                        {/* Primary Action: Start Session */}
-                        <div className="bg-gray-900/50 rounded-lg p-6 border border-gray-700">
-                            <h3 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
-                                <Play className="w-5 h-5 text-green-400" /> Start Session
-                            </h3>
-                            <PresetSelector 
-                                onSelect={(presetId) => onStartSession(worktree.path, presetId)}
-                                onCancel={() => {}} // No cancel needed here really, or maybe hide?
-                                token={token}
-                                selectedWorktreePath={worktree.path}
-                            />
-                        </div>
+                        {activeSessionId ? (
+                            // Active Session Actions
+                            <div className="bg-gray-900/50 rounded-lg p-6 border border-gray-700">
+                                <h3 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
+                                    <Terminal className="w-5 h-5 text-green-400" /> Active Session Running
+                                </h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button
+                                        onClick={() => onResumeSession(activeSessionId)}
+                                        className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg text-white font-bold"
+                                    >
+                                        <ExternalLink className="w-5 h-5" /> Resume Session
+                                    </button>
+                                    <button
+                                        onClick={handleStop}
+                                        disabled={loading}
+                                        className="flex items-center justify-center gap-2 px-4 py-3 bg-red-900/30 hover:bg-red-900/50 border border-red-800 rounded-lg text-red-400 hover:text-red-300"
+                                    >
+                                        <Square className="w-5 h-5 fill-current" /> Stop Session
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            // Start Session
+                            <div className="bg-gray-900/50 rounded-lg p-6 border border-gray-700">
+                                <h3 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
+                                    <Play className="w-5 h-5 text-green-400" /> Start Session
+                                </h3>
+                                <PresetSelector 
+                                    onSelect={(presetId) => onStartSession(worktree.path, presetId)}
+                                    onCancel={() => {}} 
+                                    token={token}
+                                    selectedWorktreePath={worktree.path}
+                                />
+                            </div>
+                        )}
 
                         {/* Secondary Actions */}
                         <div className="grid grid-cols-2 gap-4">
@@ -238,7 +295,10 @@ export const WorktreeDetail = ({ worktree, token, onStartSession, onDeleteSucces
                         
                         <p className="text-gray-300 mb-6">
                             Are you sure you want to delete <span className="font-mono text-white">{worktree.path}</span>?
-                            This action cannot be undone.
+                            {activeSessionId && (
+                                <span className="block mt-2 text-red-400 font-bold">Warning: An active session is running in this worktree. It will be stopped.</span>
+                            )}
+                            <br />This action cannot be undone.
                         </p>
 
                         <div className="flex items-center gap-3 bg-gray-900/50 p-3 rounded mb-6 border border-red-900/20">
