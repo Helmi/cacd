@@ -154,21 +154,24 @@ export const NewWorktree = ({ token, onClose, onSuccess, projectName }: NewWorkt
 
                 <div>
                     <label className="block text-sm text-gray-400 mb-1">Worktree Path</label>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2 mb-1">
+                            <input
+                                type="checkbox"
+                                id="autoPath"
+                                checked={autoPath}
+                                onChange={(e) => setAutoPath(e.target.checked)}
+                                className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-600"
+                            />
+                            <label htmlFor="autoPath" className="text-xs text-gray-400">Auto-generate from branch name</label>
+                        </div>
                         <input
                             type="text"
                             value={path}
                             onChange={(e) => { setPath(e.target.value); setAutoPath(false); }}
-                            className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
-                            required
+                            className={`w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white ${autoPath ? 'opacity-70 cursor-not-allowed' : ''}`}
+                            readOnly={autoPath}
                         />
-                        <button
-                            type="button"
-                            onClick={() => setAutoPath(!autoPath)}
-                            className={`px-3 py-2 rounded text-sm border ${autoPath ? 'bg-blue-900/30 border-blue-700 text-blue-400' : 'bg-gray-800 border-gray-700 text-gray-400'}`}
-                        >
-                            Auto
-                        </button>
                     </div>
                 </div>
 
