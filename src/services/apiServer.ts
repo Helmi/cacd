@@ -58,18 +58,17 @@ export class APIServer {
         });
 
         this.setupRoutes();
-        // Socket handlers must wait for ready() so underlying server exists
         this.setupSocketHandlers();
         this.setupCoreListeners();
     }
-    
-    // ... existing methods ...
 
     private setupRoutes() {
+        // --- State ---
         this.app.get('/api/state', async () => {
             return coreService.getState();
         });
 
+        // --- Projects ---
         this.app.get('/api/projects', async () => {
              const pm = projectManager.instance;
              const isEnabled = pm.isMultiProjectEnabled();
@@ -121,453 +120,126 @@ export class APIServer {
             return reply.code(404).send({ error: 'Project not found or invalid git repository' });
         });
 
-                this.app.get('/api/worktrees', async () => {
-
-                     const result = await coreService.refreshWorktrees();
-
-                     if (result._tag === 'Right') {
-
-                         return result.right;
-
-                     }
-
-                     throw new Error("Failed to fetch worktrees");
-
-                });
-
-        
-
-                        this.app.get('/api/presets', async () => {
-
-        
-
-                            return configurationManager.getAllPresets();
-
-        
-
-                        });
-
-        
-
-                
-
-        
-
-                        this.app.get('/api/config', async () => {
-
-        
-
-                            return configurationManager.getConfiguration();
-
-        
-
-                        });
-
-        
-
-                
-
-        
-
-                        this.app.post<{ Body: any }>('/api/config', async (request, reply) => {
-
-        
-
-                            const newConfig = request.body;
-
-        
-
-                            
-
-        
-
-                            // Validate
-
-        
-
-                            const validation = configurationManager.validateConfig(newConfig);
-
-        
-
-                            // Effect.Either.isLeft check (manual since we can't import isLeft easily from here without types)
-
-        
-
-                            if (validation._tag === 'Left') {
-
-        
-
-                                // @ts-ignore - accessing internal error structure
-
-        
-
-                                return reply.code(400).send({ error: validation.left.message || "Invalid configuration" });
-
-        
-
-                            }
-
-        
-
-                            
-
-        
-
-                                        // Save
-
-        
-
-                            
-
-        
-
-                                        const effect = configurationManager.saveConfigEffect(newConfig as ConfigurationData);
-
-        
-
-                            
-
-        
-
-                                        const result = await Effect.runPromise(Effect.either(effect));
-
-        
-
-                            
-
-        
-
-                            if (result._tag === 'Left') {
-
-        
-
-                                return reply.code(500).send({ error: result.left.message });
-
-        
-
-                            }
-
-        
-
-                            
-
-        
-
-                            return { success: true };
-
-        
-
-                        });
-
-        
-
-                        
-
-        
-
-                        this.app.get('/api/sessions', async () => {
-
-                    const sessions = coreService.sessionManager.getAllSessions();
-
-                    logger.info(`API: Listing ${sessions.length} sessions`);
-
-                    return sessions.map(s => ({
-
-                        id: s.id,
-
-                        path: s.worktreePath,
-
-                        state: s.state,
-
-                        isActive: s.isActive
-
-                    }));
-
-                });
-
-        
-
-                        this.app.post<{ Body: { path: string; presetId?: string } }>('/api/session/create', async (request, reply) => {
-
-        
-
-                            const { path, presetId } = request.body;
-
-        
-
-                            logger.info(`API: Creating session for ${path} with preset: ${presetId || 'default'}`);
-
-        
-
-                            
-
-        
-
-                            const effect = coreService.sessionManager.createSessionWithPresetEffect(path, presetId);
-
-        
-
-                            const result = await Effect.runPromise(Effect.either(effect));
-
-        
-
-                            
-
-        
-
-                            if (result._tag === 'Left') {
-
-        
-
-                                return reply.code(500).send({ error: result.left.message });
-
-        
-
-                            }
-
-        
-
-                            
-
-        
-
-                            // Session created successfully
-
-        
-
-                            const session = result.right;
-
-        
-
-                            // Ensure it's marked active
-
-        
-
-                            coreService.sessionManager.setSessionActive(path, true);
-
-        
-
-                            
-
-        
-
-                            return { success: true, id: session.id };
-
-        
-
-                        });
-
-        
-
-                
-
-        
-
-                        // Worktree Management
-
-        
-
-                        this.app.get('/api/branches', async (request, reply) => {
-
-        
-
-                            const effect = coreService.worktreeService.getAllBranchesEffect();
-
-        
-
-                            const result = await Effect.runPromise(Effect.either(effect));
-
-        
-
-                            
-
-        
-
-                            if (result._tag === 'Left') {
-
-        
-
-                                return reply.code(500).send({ error: result.left.message });
-
-        
-
-                            }
-
-        
-
-                            return result.right;
-
-        
-
-                        });
-
-        
-
-                
-
-        
-
-                        this.app.post<{ Body: { 
-
-        
-
-                            path: string; 
-
-        
-
-                            branch: string; 
-
-        
-
-                            baseBranch: string; 
-
-        
-
-                            copySessionData: boolean; 
-
-        
-
-                            copyClaudeDirectory: boolean 
-
-        
-
-                        } }>('/api/worktree/create', async (request, reply) => {
-
-        
-
-                            const { path, branch, baseBranch, copySessionData, copyClaudeDirectory } = request.body;
-
-        
-
-                            logger.info(`API: Creating worktree ${path} from ${baseBranch}`);
-
-        
-
-                            
-
-        
-
-                            const effect = coreService.worktreeService.createWorktreeEffect(
-
-        
-
-                                path, branch, baseBranch, copySessionData, copyClaudeDirectory
-
-        
-
-                            );
-
-        
-
-                            const result = await Effect.runPromise(Effect.either(effect));
-
-        
-
-                            
-
-        
-
-                            if (result._tag === 'Left') {
-
-        
-
-                                return reply.code(500).send({ error: result.left.message });
-
-        
-
-                            }
-
-        
-
-                            
-
-        
-
-                            // Refresh worktrees
-
-        
-
-                            await coreService.refreshWorktrees();
-
-        
-
-                            return { success: true };
-
-        
-
-                        });
-
-        
-
-                
-
-        
-
-                        this.app.post<{ Body: { path: string; deleteBranch: boolean } }>('/api/worktree/delete', async (request, reply) => {
-
-        
-
-                            const { path, deleteBranch } = request.body;
-
-        
-
-                            logger.info(`API: Deleting worktree ${path} (deleteBranch: ${deleteBranch})`);
-
-        
-
-                            
-
-        
-
-                            const effect = coreService.worktreeService.deleteWorktreeEffect(path, { deleteBranch });
-
-        
-
-                            const result = await Effect.runPromise(Effect.either(effect));
-
-        
-
-                            
-
-        
-
-                            if (result._tag === 'Left') {
-
-        
-
-                                return reply.code(500).send({ error: result.left.message });
-
-        
-
-                            }
-
-        
-
-                            
-
-        
-
-                            await coreService.refreshWorktrees();
-
-        
-
-                            return { success: true };
-
-        
-
-                        });
-
-        
-
-                    }
-
-        
-
-                
-
-        
-
-                    private setupSocketHandlers() {
+        // --- Worktrees ---
+        this.app.get('/api/worktrees', async () => {
+             const result = await coreService.refreshWorktrees();
+             if (result._tag === 'Right') {
+                 return result.right;
+             }
+             throw new Error("Failed to fetch worktrees");
+        });
+
+        this.app.get('/api/branches', async (request, reply) => {
+            const effect = coreService.worktreeService.getAllBranchesEffect();
+            const result = await Effect.runPromise(Effect.either(effect));
+            
+            if (result._tag === 'Left') {
+                return reply.code(500).send({ error: result.left.message });
+            }
+            return result.right;
+        });
+
+        this.app.post<{ Body: { 
+            path: string; 
+            branch: string; 
+            baseBranch: string; 
+            copySessionData: boolean; 
+            copyClaudeDirectory: boolean 
+        } }>('/api/worktree/create', async (request, reply) => {
+            const { path, branch, baseBranch, copySessionData, copyClaudeDirectory } = request.body;
+            logger.info(`API: Creating worktree ${path} from ${baseBranch}`);
+            
+            const effect = coreService.worktreeService.createWorktreeEffect(
+                path, branch, baseBranch, copySessionData, copyClaudeDirectory
+            );
+            const result = await Effect.runPromise(Effect.either(effect));
+            
+            if (result._tag === 'Left') {
+                return reply.code(500).send({ error: result.left.message });
+            }
+            
+            // Refresh worktrees
+            await coreService.refreshWorktrees();
+            return { success: true };
+        });
+
+        this.app.post<{ Body: { path: string; deleteBranch: boolean } }>('/api/worktree/delete', async (request, reply) => {
+            const { path, deleteBranch } = request.body;
+            logger.info(`API: Deleting worktree ${path} (deleteBranch: ${deleteBranch})`);
+            
+            const effect = coreService.worktreeService.deleteWorktreeEffect(path, { deleteBranch });
+            const result = await Effect.runPromise(Effect.either(effect));
+            
+            if (result._tag === 'Left') {
+                return reply.code(500).send({ error: result.left.message });
+            }
+            
+            await coreService.refreshWorktrees();
+            return { success: true };
+        });
+
+        // --- Sessions ---
+        this.app.get('/api/sessions', async () => {
+            const sessions = coreService.sessionManager.getAllSessions();
+            return sessions.map(s => ({
+                id: s.id,
+                path: s.worktreePath,
+                state: s.state,
+                isActive: s.isActive
+            }));
+        });
+
+        this.app.post<{ Body: { path: string; presetId?: string } }>('/api/session/create', async (request, reply) => {
+            const { path, presetId } = request.body;
+            logger.info(`API: Creating session for ${path} with preset: ${presetId || 'default'}`);
+            
+            const effect = coreService.sessionManager.createSessionWithPresetEffect(path, presetId);
+            const result = await Effect.runPromise(Effect.either(effect));
+            
+            if (result._tag === 'Left') {
+                return reply.code(500).send({ error: result.left.message });
+            }
+            
+            // Session created successfully
+            const session = result.right;
+            // Ensure it's marked active
+            coreService.sessionManager.setSessionActive(path, true);
+            
+            return { success: true, id: session.id };
+        });
+
+        // --- Configuration ---
+        this.app.get('/api/presets', async () => {
+            return configurationManager.getAllPresets();
+        });
+
+        this.app.get('/api/config', async () => {
+            return configurationManager.getConfiguration();
+        });
+
+        this.app.post<{ Body: any }>('/api/config', async (request, reply) => {
+            const newConfig = request.body;
+            
+            // Validate
+            const validation = configurationManager.validateConfig(newConfig);
+            if (validation._tag === 'Left') {
+                // @ts-ignore - accessing internal error structure
+                return reply.code(400).send({ error: validation.left.message || "Invalid configuration" });
+            }
+            
+            // Save
+            const effect = configurationManager.saveConfigEffect(newConfig as ConfigurationData);
+            const result = await Effect.runPromise(Effect.either(effect));
+            
+            if (result._tag === 'Left') {
+                return reply.code(500).send({ error: result.left.message });
+            }
+            
+            return { success: true };
+        });
+    }
+
+    private setupSocketHandlers() {
         this.app.ready().then(() => {
             this.io = new Server(this.app.server, {
                 cors: {
