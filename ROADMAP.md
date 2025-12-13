@@ -62,3 +62,4 @@
     - Decouple completely from TUI lifecycle.
     - **Authentication:** Implement persistent auth (User/Pass or fixed token) for headless security.
     - **Persistence:** Sessions survive UI disconnects/restarts naturally.
+- [ ] **Project-Specific Configuration:** Support `.ccmanager.json` in project root to override global settings (e.g., hooks, presets) per repository.
