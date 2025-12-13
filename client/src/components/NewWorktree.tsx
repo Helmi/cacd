@@ -138,6 +138,7 @@ export const NewWorktree = ({ token, onClose, onSuccess, projectName }: NewWorkt
                             <option key={b} value={b}>{b}</option>
                         ))}
                     </select>
+                    <p className="text-xs text-gray-500 mt-1">The existing branch to branch off from (source of code).</p>
                 </div>
 
                 <div>
@@ -150,6 +151,7 @@ export const NewWorktree = ({ token, onClose, onSuccess, projectName }: NewWorkt
                         className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white"
                         required
                     />
+                    <p className="text-xs text-gray-500 mt-1">The name of the new git branch to be created.</p>
                 </div>
 
                 <div>
@@ -175,27 +177,37 @@ export const NewWorktree = ({ token, onClose, onSuccess, projectName }: NewWorkt
                     </div>
                 </div>
 
-                <div className="space-y-3 pt-4 border-t border-gray-800">
-                    <div className="flex items-center gap-3">
-                        <input
-                            type="checkbox"
-                            id="copySession"
-                            checked={copySession}
-                            onChange={(e) => setCopySession(e.target.checked)}
-                            className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-600"
-                        />
-                        <label htmlFor="copySession" className="text-gray-300">Copy Session Data</label>
+                <div className="space-y-4 pt-4 border-t border-gray-800">
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="checkbox"
+                                id="copySession"
+                                checked={copySession}
+                                onChange={(e) => setCopySession(e.target.checked)}
+                                className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-600"
+                            />
+                            <label htmlFor="copySession" className="text-gray-300">Copy Session Data</label>
+                        </div>
+                        <p className="ml-7 text-xs text-gray-500 mt-1">
+                            Preserves the conversation history, context, and memory from your currently active session, so you don't lose context when switching branches.
+                        </p>
                     </div>
                     
-                    <div className="flex items-center gap-3">
-                        <input
-                            type="checkbox"
-                            id="copyClaude"
-                            checked={copyClaude}
-                            onChange={(e) => setCopyClaude(e.target.checked)}
-                            className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-600"
-                        />
-                        <label htmlFor="copyClaude" className="text-gray-300">Copy .claude Directory</label>
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="checkbox"
+                                id="copyClaude"
+                                checked={copyClaude}
+                                onChange={(e) => setCopyClaude(e.target.checked)}
+                                className="w-4 h-4 rounded bg-gray-700 border-gray-600 text-blue-600"
+                            />
+                            <label htmlFor="copyClaude" className="text-gray-300">Copy .claude Directory</label>
+                        </div>
+                        <p className="ml-7 text-xs text-gray-500 mt-1">
+                            Copies the <code>.claude</code> configuration directory from the base branch to the new worktree. This ensures project-specific settings and memories are carried over.
+                        </p>
                     </div>
                 </div>
 
