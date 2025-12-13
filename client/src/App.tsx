@@ -161,17 +161,6 @@ function App() {
       }
   };
 
-  // Auto-select session if we created one for the selected worktree
-  useEffect(() => {
-      if (viewMode === 'worktree' && selectedId) {
-          const matchingSession = sessions.find(s => s.path === selectedId);
-          if (matchingSession) {
-              setSelectedId(matchingSession.id);
-              setViewMode('session');
-          }
-      }
-  }, [sessions, viewMode, selectedId]);
-
   if (authError) {
       return (
           <div className="flex h-screen w-screen bg-gray-950 text-white items-center justify-center">
