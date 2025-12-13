@@ -254,9 +254,12 @@ function App() {
                         </div>
                         <div className="max-h-60 overflow-y-auto">
                             {(() => {
-                                const filteredRecent = projectsData.recent.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase()));
-                                const recentPaths = new Set(projectsData.recent.map(p => p.path));
-                                const filteredAll = projectsData.all.filter(p => !recentPaths.has(p.path) && p.name.toLowerCase().includes(projectSearch.toLowerCase()));
+                                const recent = projectsData.recent || [];
+                                const all = projectsData.all || [];
+                                
+                                const filteredRecent = recent.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase()));
+                                const recentPaths = new Set(recent.map(p => p.path));
+                                const filteredAll = all.filter(p => !recentPaths.has(p.path) && p.name.toLowerCase().includes(projectSearch.toLowerCase()));
                                 
                                 const hasRecent = filteredRecent.length > 0;
                                 const hasAll = filteredAll.length > 0;
