@@ -160,7 +160,7 @@ export class APIServer {
             
             // Refresh worktrees
             await coreService.refreshWorktrees();
-            return { success: true };
+            return { success: true, worktree: result.right };
         });
 
         this.app.post<{ Body: { path: string; deleteBranch: boolean } }>('/api/worktree/delete', async (request, reply) => {

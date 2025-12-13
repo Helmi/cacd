@@ -151,6 +151,11 @@ export const NewSession = ({ token, onClose, onSessionCreated, projectName }: Ne
                     const err = await res.json();
                     throw new Error(err.error || 'Failed to create worktree');
                 }
+                
+                const data = await res.json();
+                if (data.worktree && data.worktree.path) {
+                    targetPath = data.worktree.path;
+                }
             }
 
             // Start Session
