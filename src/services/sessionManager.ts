@@ -48,7 +48,11 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			cols: process.stdout.columns || 80,
 			rows: process.stdout.rows || 24,
 			cwd: worktreePath,
-			env: process.env,
+			env: {
+				...process.env,
+				COLORTERM: 'truecolor',
+				TERM: 'xterm-256color',
+			},
 		};
 
 		return spawn(command, args, spawnOptions);

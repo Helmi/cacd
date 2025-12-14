@@ -19,8 +19,6 @@ export const TerminalView = ({ sessionId, socket }: TerminalViewProps) => {
 
         const term = new Terminal({
             cursorBlink: true,
-            cursorStyle: 'bar',
-            cursorWidth: 2,
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
             fontSize: 14,
             theme: {
