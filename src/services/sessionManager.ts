@@ -266,9 +266,6 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		// Set up persistent background data handler for state detection
 		this.setupBackgroundHandler(session);
 
-		// Hide the cursor by default, assuming TUI will manage its own
-		ptyProcess.write('\x1b[?25l');
-
 		this.sessions.set(worktreePath, session);
 
 		// Record the timestamp when this worktree was opened
@@ -620,7 +617,6 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 				clearInterval(session.stateCheckInterval);
 			}
 			try {
-				session.process.write('\x1b[?25h'); // Show cursor before killing
 				session.process.kill('SIGKILL');
 			} catch (_error) {
 				// Process might already be dead
@@ -674,7 +670,6 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 
 				// Try to kill the process - don't fail if process is already dead
 				try {
-					session.process.write('\x1b[?25h'); // Show cursor before killing
 					session.process.kill('SIGKILL');
 				} catch (_error) {
 					// Process might already be dead, this is acceptable
