@@ -613,7 +613,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 				clearInterval(session.stateCheckInterval);
 			}
 			try {
-				session.process.kill();
+				session.process.kill('SIGKILL');
 			} catch (_error) {
 				// Process might already be dead
 			}
@@ -666,7 +666,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 
 				// Try to kill the process - don't fail if process is already dead
 				try {
-					session.process.kill();
+					session.process.kill('SIGKILL');
 				} catch (_error) {
 					// Process might already be dead, this is acceptable
 				}

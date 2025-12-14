@@ -65,6 +65,8 @@ function App() {
   
   const [authError, setAuthError] = useState<boolean>(false);
 
+  const formatName = (name: string) => name.split('/').pop() || name;
+
   const fetchData = () => {
      const headers = { 'x-access-token': token || '' };
      
@@ -300,7 +302,7 @@ function App() {
                                 s.state === 'busy' ? 'bg-yellow-500 animate-pulse' : 
                                 s.state === 'waiting_input' ? 'bg-green-500' : 'bg-gray-500'
                             }`} />
-                            <span className="truncate">{s.path.split('/').pop()}</span>
+                            <span className="truncate">{formatName(s.path)}</span>
                         </button>
                     ))}
                 </div>
@@ -311,7 +313,7 @@ function App() {
                 <div className="flex items-center justify-between px-2 mb-2">
                     <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Worktrees</h2>
                     <button 
-                        onClick={() => setViewMode('new-worktree')}
+                        onClick={() => setViewMode('new-session')}
                         className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 px-2 py-1 hover:bg-blue-900/30 rounded transition-colors"
                         title="Create New Worktree"
                     >
@@ -355,7 +357,7 @@ function App() {
                                 <GitBranch className="w-4 h-4 flex-shrink-0 opacity-70" />
                                 <div className="flex-1 truncate">
                                     <span className={w.isMainWorktree ? "font-bold text-yellow-500" : ""}>
-                                        {w.branch || w.path.split('/').pop()}
+                                        {formatName(w.branch || w.path)}
                                     </span>
                                 </div>
                                 {hasActiveSession ? (
