@@ -161,7 +161,6 @@ export const NewSession = ({ token, onClose, onSessionCreated, projectName }: Ne
             // Start Session
             const sessionId = await handleCreateSession(targetPath);
             onSessionCreated(sessionId);
-            onClose();
 
         } catch (e) {
             setError((e as Error).message);

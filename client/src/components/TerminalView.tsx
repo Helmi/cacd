@@ -34,6 +34,7 @@ export const TerminalView = ({ sessionId, socket }: TerminalViewProps) => {
         
         term.open(terminalRef.current);
         fitAddon.fit();
+        term.focus();
         
         xtermRef.current = term;
 
