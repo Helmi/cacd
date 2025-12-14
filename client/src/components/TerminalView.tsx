@@ -8,21 +8,27 @@ import { Socket } from 'socket.io-client';
 interface TerminalViewProps {
     sessionId: string;
     socket: Socket;
+    command?: string;
 }
 
-export const TerminalView = ({ sessionId, socket }: TerminalViewProps) => {
+export const TerminalView = ({ sessionId, socket, command }: TerminalViewProps) => {
     const terminalRef = useRef<HTMLDivElement>(null);
     const xtermRef = useRef<Terminal | null>(null);
 
     useEffect(() => {
         if (!terminalRef.current) return;
 
+        // Smart Cursor: Hide hardware cursor for TUI agents that draw their own
+        const isAgent = ['claude', 'gemini', 'cursor', 'godmode'].includes(command || '');
+
         const term = new Terminal({
-            cursorBlink: true,
+            cursorBlink: !isAgent, // Don't blink if hidden
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
             fontSize: 14,
             theme: {
                 background: '#1e1e1e',
+                cursor: isAgent ? '#00000000' : '#ffffff', // Transparent if agent
+                cursorAccent: isAgent ? '#00000000' : '#ffffff'
             }
         });
         

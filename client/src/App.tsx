@@ -32,6 +32,7 @@ interface Session {
     path: string;
     state: string;
     isActive: boolean;
+    command?: string;
 }
 
 interface Worktree {
@@ -429,6 +430,7 @@ function App() {
                   key={selectedId} 
                   sessionId={selectedId} 
                   socket={socket} 
+                  command={sessions.find(s => s.id === selectedId)?.command}
               />
           ) : viewMode === 'worktree' && selectedWorktree ? (
               <WorktreeDetail 
