@@ -200,7 +200,8 @@ export class APIServer {
                 id: s.id,
                 path: s.worktreePath,
                 state: s.state,
-                isActive: s.isActive
+                isActive: s.isActive,
+                command: s.commandConfig?.command || 'unknown'
             }));
         });
 
