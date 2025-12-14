@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Save, Plus, Trash2, X, Info } from 'lucide-react';
+import { Save, Plus, Trash2, X, Info, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface SettingsProps {
     token: string;
@@ -80,6 +80,15 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
             current[path[path.length - 1]] = value;
             return next;
         });
+    };
+
+    const movePreset = (index: number, direction: number) => {
+        const presets = [...(config.commandPresets?.presets || [])];
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= presets.length) return;
+        
+        [presets[index], presets[newIndex]] = [presets[newIndex], presets[index]];
+        updateConfig(['commandPresets', 'presets'], presets);
     };
 
     if (loading || !config) return <div className="p-8 text-gray-400">Loading settings...</div>;
@@ -309,79 +318,100 @@ export const Settings = ({ token, onClose }: SettingsProps) => {
 
                             <div className="space-y-4">
                                 {(config.commandPresets?.presets || []).map((preset: any, index: number) => (
-                                    <div key={preset.id} className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 space-y-4">
-                                        <div className="flex justify-between items-start gap-4">
-                                            <div className="flex-1 grid grid-cols-2 gap-4">
-                                                <div className="space-y-1">
-                                                    <label className="text-xs text-gray-500 uppercase">Name</label>
-                                                    <input
-                                                        type="text"
-                                                        value={preset.name}
-                                                        onChange={(e) => {
-                                                            const p = [...config.commandPresets.presets];
-                                                            p[index].name = e.target.value;
-                                                            updateConfig(['commandPresets', 'presets'], p);
-                                                        }}
-                                                        className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-sm"
-                                                    />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-xs text-gray-500 uppercase">Command</label>
-                                                    <input
-                                                        type="text"
-                                                        value={preset.command}
-                                                        onChange={(e) => {
-                                                            const p = [...config.commandPresets.presets];
-                                                            p[index].command = e.target.value;
-                                                            updateConfig(['commandPresets', 'presets'], p);
-                                                        }}
-                                                        className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-sm"
-                                                    />
-                                                </div>
-                                            </div>
+                                    <div key={preset.id} className="flex gap-4 bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+                                        <div className="flex flex-col gap-1 justify-center border-r border-gray-700 pr-3">
                                             <button
-                                                onClick={() => {
-                                                    const p = config.commandPresets.presets.filter((_:any, i:number) => i !== index);
-                                                    updateConfig(['commandPresets', 'presets'], p);
-                                                }}
-                                                className="text-gray-500 hover:text-red-400 p-1"
-                                                title="Delete Preset"
+                                                onClick={() => movePreset(index, -1)}
+                                                disabled={index === 0}
+                                                className="p-1 hover:bg-gray-700 rounded text-gray-400 disabled:opacity-30 hover:text-white"
+                                                title="Move Up"
                                             >
-                                                <Trash2 className="w-4 h-4" />
+                                                <ArrowUp className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => movePreset(index, 1)}
+                                                disabled={index === (config.commandPresets?.presets?.length || 0) - 1}
+                                                className="p-1 hover:bg-gray-700 rounded text-gray-400 disabled:opacity-30 hover:text-white"
+                                                title="Move Down"
+                                            >
+                                                <ArrowDown className="w-4 h-4" />
                                             </button>
                                         </div>
                                         
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <label className="text-xs text-gray-500 uppercase">Args (comma separated)</label>
-                                                <input
-                                                    type="text"
-                                                    value={preset.args?.join(', ') || ''}
-                                                    onChange={(e) => {
-                                                        const p = [...config.commandPresets.presets];
-                                                        // Don't filter Boolean here to allow trailing commas while typing
-                                                        p[index].args = e.target.value.split(',').map(s => s.trimStart()); 
+                                        <div className="flex-1 space-y-4">
+                                            <div className="flex justify-between items-start gap-4">
+                                                <div className="flex-1 grid grid-cols-2 gap-4">
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs text-gray-500 uppercase">Name</label>
+                                                        <input
+                                                            type="text"
+                                                            value={preset.name}
+                                                            onChange={(e) => {
+                                                                const p = [...config.commandPresets.presets];
+                                                                p[index].name = e.target.value;
+                                                                updateConfig(['commandPresets', 'presets'], p);
+                                                            }}
+                                                            className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-sm"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs text-gray-500 uppercase">Command</label>
+                                                        <input
+                                                            type="text"
+                                                            value={preset.command}
+                                                            onChange={(e) => {
+                                                                const p = [...config.commandPresets.presets];
+                                                                p[index].command = e.target.value;
+                                                                updateConfig(['commandPresets', 'presets'], p);
+                                                            }}
+                                                            className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-sm"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        const p = config.commandPresets.presets.filter((_:any, i:number) => i !== index);
                                                         updateConfig(['commandPresets', 'presets'], p);
                                                     }}
-                                                    placeholder="--resume, --print"
-                                                    className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-sm"
-                                                />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-xs text-gray-500 uppercase">Detection Strategy</label>
-                                                <select
-                                                    value={preset.detectionStrategy || 'claude'}
-                                                    onChange={(e) => {
-                                                        const p = [...config.commandPresets.presets];
-                                                        p[index].detectionStrategy = e.target.value;
-                                                        updateConfig(['commandPresets', 'presets'], p);
-                                                    }}
-                                                    className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-sm"
+                                                    className="text-gray-500 hover:text-red-400 p-1"
+                                                    title="Delete Preset"
                                                 >
-                                                    <option value="claude">Claude</option>
-                                                    <option value="gemini">Gemini</option>
-                                                    <option value="cursor">Cursor</option>
-                                                </select>
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs text-gray-500 uppercase">Args (comma separated)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={preset.args?.join(', ') || ''}
+                                                        onChange={(e) => {
+                                                            const p = [...config.commandPresets.presets];
+                                                            // Don't filter Boolean here to allow trailing commas while typing
+                                                            p[index].args = e.target.value.split(',').map(s => s.trimStart()); 
+                                                            updateConfig(['commandPresets', 'presets'], p);
+                                                        }}
+                                                        placeholder="--resume, --print"
+                                                        className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-sm"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs text-gray-500 uppercase">Detection Strategy</label>
+                                                    <select
+                                                        value={preset.detectionStrategy || 'claude'}
+                                                        onChange={(e) => {
+                                                            const p = [...config.commandPresets.presets];
+                                                            p[index].detectionStrategy = e.target.value;
+                                                            updateConfig(['commandPresets', 'presets'], p);
+                                                        }}
+                                                        className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-white text-sm"
+                                                    >
+                                                        <option value="claude">Claude</option>
+                                                        <option value="gemini">Gemini</option>
+                                                        <option value="cursor">Cursor</option>
+                                                    </select>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
