@@ -268,7 +268,7 @@ CCManager can manage multiple git repositories from a single interface, allowing
 
 ```bash
 # Set the root directory containing your git projects
-export CCMANAGER_MULTI_PROJECT_ROOT="/path/to/your/projects"
+export ACD_PROJECTS_DIR="/path/to/your/projects"
 
 # Run CCManager in multi-project mode
 npx ccmanager --multi-project

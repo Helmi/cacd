@@ -59,20 +59,20 @@ if (!process.stdin.isTTY || !process.stdout.isTTY) {
 	process.exit(1);
 }
 
-// Check for CCMANAGER_MULTI_PROJECT_ROOT when using --multi-project
+// Check for ACD_PROJECTS_DIR when using --multi-project
 // Also auto-enable multi-project mode if the env var is set
-if (process.env['CCMANAGER_MULTI_PROJECT_ROOT']) {
+if (process.env['ACD_PROJECTS_DIR']) {
 	cli.flags.multiProject = true;
 }
 
-if (cli.flags.multiProject && !process.env['CCMANAGER_MULTI_PROJECT_ROOT']) {
+if (cli.flags.multiProject && !process.env['ACD_PROJECTS_DIR']) {
 	console.error(
-		'Error: CCMANAGER_MULTI_PROJECT_ROOT environment variable must be set when using --multi-project',
+		'Error: ACD_PROJECTS_DIR environment variable must be set when using --multi-project',
 	);
 	console.error(
 		'Please set it to the root directory containing your projects, e.g.:',
 	);
-	console.error('  export CCMANAGER_MULTI_PROJECT_ROOT=/path/to/projects');
+	console.error('  export ACD_PROJECTS_DIR=/path/to/projects');
 	process.exit(1);
 }
 

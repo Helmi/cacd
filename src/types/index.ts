@@ -151,15 +151,15 @@ export interface ConfigurationData {
 export interface GitProject {
 	name: string; // Project name (directory name)
 	path: string; // Full path to the git repository
-	relativePath: string; // Relative path from CCMANAGER_MULTI_PROJECT_ROOT
+	relativePath: string; // Relative path from ACD_PROJECTS_DIR
 	isValid: boolean; // Whether the project is a valid git repository
 	error?: string; // Error message if project is invalid
 }
 
 export interface MultiProjectConfig {
 	enabled: boolean; // Whether multi-project mode is enabled
-	projectsDir: string; // Path to directory containing git projects (from CCMANAGER_MULTI_PROJECT_ROOT)
-	rootMarker?: string; // Optional marker from CCMANAGER_MULTI_PROJECT_ROOT
+	projectsDir: string; // Path to directory containing git projects (from ACD_PROJECTS_DIR)
+	rootMarker?: string; // Optional marker from ACD_PROJECTS_DIR
 }
 
 export type MenuMode = 'normal' | 'multi-project';

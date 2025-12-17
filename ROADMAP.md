@@ -38,7 +38,7 @@
 - [x] **Authentication:** Secure Token-based access (Random UUID generated on start).
 - [x] **Magic Link:** TUI displays a one-click login URL (`http://0.0.0.0:3000/?token=...`).
 - [x] **Distribution:** Client builds to `client/dist`, served statically by the CLI.
-- [x] **Multi-Project:** Auto-enabled mode when `CCMANAGER_MULTI_PROJECT_ROOT` env var is present.
+- [x] **Multi-Project:** Auto-enabled mode when `ACD_PROJECTS_DIR` env var is present.
 
 ### Phase 5: UI/UX Refinement & Power Features
 - [ ] **Visual Overhaul: "Terminal-Native UI"**

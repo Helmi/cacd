@@ -10,10 +10,10 @@ In multi-project mode, CCManager discovers all git repositories within a specifi
 
 ### Environment Variable
 
-Multi-project mode requires setting the `CCMANAGER_MULTI_PROJECT_ROOT` environment variable:
+Multi-project mode requires setting the `ACD_PROJECTS_DIR` environment variable:
 
 ```bash
-export CCMANAGER_MULTI_PROJECT_ROOT="/path/to/your/projects"
+export ACD_PROJECTS_DIR="/path/to/your/projects"
 ```
 
 This should point to a directory containing your git repositories. CCManager will recursively search this directory for all git projects.
@@ -164,14 +164,14 @@ The `recent-projects.json` file maintains the list of recently accessed projects
 ### Projects Not Appearing
 
 1. Verify the directory contains a `.git` folder
-2. Check that `CCMANAGER_MULTI_PROJECT_ROOT` points to the correct directory
+2. Check that `ACD_PROJECTS_DIR` points to the correct directory
 3. Try refreshing the project list with `R`
 4. Ensure you have read permissions for the directories
 
 ### Environment Variable Issues
 
-If you see "CCMANAGER_MULTI_PROJECT_ROOT environment variable is not set":
-1. Set the environment variable: `export CCMANAGER_MULTI_PROJECT_ROOT="/your/path"`
+If you see "ACD_PROJECTS_DIR environment variable is not set":
+1. Set the environment variable: `export ACD_PROJECTS_DIR="/your/path"`
 2. Add it to your shell profile for persistence
 3. Ensure the path exists and is accessible
 
