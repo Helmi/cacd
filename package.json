@@ -1,23 +1,25 @@
 {
-	"name": "ccmanager",
-	"version": "3.1.0",
-	"description": "TUI application for managing multiple Claude Code sessions across Git worktrees",
+	"name": "agent-control-desk",
+	"version": "0.1.0",
+	"description": "Web-based control desk for managing multiple AI agent sessions (Claude, Gemini, Cursor)",
 	"license": "MIT",
-	"author": "Kodai Kabasawa",
+	"author": "Helmi",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/kbwo/ccmanager.git"
+		"url": "https://github.com/helmi/agent-control-desk.git"
 	},
 	"keywords": [
+		"ai",
+		"agent",
+		"control-plane",
 		"claude",
-		"code",
-		"worktree",
-		"git",
-		"tui",
+		"gemini",
+		"cursor",
+		"webui",
 		"cli"
 	],
 	"bin": {
-		"ccmanager": "dist/cli.js"
+		"acd": "dist/cli.js"
 	},
 	"type": "module",
 	"engines": {
