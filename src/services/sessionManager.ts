@@ -21,6 +21,7 @@ import {Effect} from 'effect';
 import {ProcessError, ConfigError} from '../types/errors.js';
 import {autoApprovalVerifier} from './autoApprovalVerifier.js';
 import {logger} from '../utils/logger.js';
+import {Mutex, createInitialSessionStateData} from '../utils/mutex.js';
 const {Terminal} = pkg;
 const execAsync = promisify(exec);
 const TERMINAL_CONTENT_MAX_LINES = 300;
@@ -62,13 +63,17 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		// Create a detector based on the session's detection strategy
 		const strategy = session.detectionStrategy || 'claude';
 		const detector = createStateDetector(strategy);
-		const detectedState = detector.detectState(session.terminal, session.state);
+		const stateData = session.stateMutex.getSnapshot();
+		const detectedState = detector.detectState(
+			session.terminal,
+			stateData.state,
+		);
 
 		// If auto-approval is enabled and state is waiting_input, convert to pending_auto_approval
 		if (
 			detectedState === 'waiting_input' &&
 			configurationManager.isAutoApprovalEnabled() &&
-			!session.autoApprovalFailed
+			!stateData.autoApprovalFailed
 		) {
 			return 'pending_auto_approval';
 		}
@@ -107,8 +112,11 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		);
 
 		const abortController = new AbortController();
-		session.autoApprovalAbortController = abortController;
-		session.autoApprovalReason = undefined;
+		void session.stateMutex.update(data => ({
+			...data,
+			autoApprovalAbortController: abortController,
+			autoApprovalReason: undefined,
+		}));
 
 		// Get terminal content for verification
 		const terminalContent = this.getTerminalContent(session);
@@ -119,7 +127,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 				signal: abortController.signal,
 			}),
 		)
-			.then(autoApprovalResult => {
+			.then(async autoApprovalResult => {
 				if (abortController.signal.aborted) {
 					logger.debug(
 						`[${session.id}] Auto-approval verification aborted before completion`,
@@ -128,9 +136,10 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 				}
 
 				// If state already moved away, skip handling
-				if (session.state !== 'pending_auto_approval') {
+				const currentState = session.stateMutex.getSnapshot().state;
+				if (currentState !== 'pending_auto_approval') {
 					logger.debug(
-						`[${session.id}] Skipping auto-approval handling; current state is ${session.state}`,
+						`[${session.id}] Skipping auto-approval handling; current state is ${currentState}`,
 					);
 					return;
 				}
@@ -140,28 +149,34 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 					logger.info(
 						`[${session.id}] Auto-approval verification determined user permission needed`,
 					);
-					session.state = 'waiting_input';
-					session.autoApprovalFailed = true;
-					session.autoApprovalReason = autoApprovalResult.reason;
-					session.pendingState = undefined;
-					session.pendingStateStart = undefined;
+					await session.stateMutex.update(data => ({
+						...data,
+						state: 'waiting_input',
+						autoApprovalFailed: true,
+						autoApprovalReason: autoApprovalResult.reason,
+						pendingState: undefined,
+						pendingStateStart: undefined,
+					}));
 					this.emit('sessionStateChanged', session);
 				} else {
 					// Auto-approve by simulating Enter key press
 					logger.info(
 						`[${session.id}] Auto-approval granted, simulating user permission`,
 					);
-					session.autoApprovalReason = undefined;
 					session.process.write('\r');
 					// Force state to busy to prevent endless auto-approval
 					// when the state detection still sees pending_auto_approval
-					session.state = 'busy';
-					session.pendingState = undefined;
-					session.pendingStateStart = undefined;
+					await session.stateMutex.update(data => ({
+						...data,
+						state: 'busy',
+						autoApprovalReason: undefined,
+						pendingState: undefined,
+						pendingStateStart: undefined,
+					}));
 					this.emit('sessionStateChanged', session);
 				}
 			})
-			.catch((error: unknown) => {
+			.catch(async (error: unknown) => {
 				if (abortController.signal.aborted) {
 					logger.debug(
 						`[${session.id}] Auto-approval verification aborted (${(error as Error)?.message ?? 'aborted'})`,
@@ -175,20 +190,29 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 					error,
 				);
 
-				if (session.state === 'pending_auto_approval') {
-					session.state = 'waiting_input';
-					session.autoApprovalFailed = true;
-					session.autoApprovalReason =
-						(error as Error | undefined)?.message ??
-						'Auto-approval verification failed';
-					session.pendingState = undefined;
-					session.pendingStateStart = undefined;
+				const currentState = session.stateMutex.getSnapshot().state;
+				if (currentState === 'pending_auto_approval') {
+					await session.stateMutex.update(data => ({
+						...data,
+						state: 'waiting_input',
+						autoApprovalFailed: true,
+						autoApprovalReason:
+							(error as Error | undefined)?.message ??
+							'Auto-approval verification failed',
+						pendingState: undefined,
+						pendingStateStart: undefined,
+					}));
 					this.emit('sessionStateChanged', session);
 				}
 			})
-			.finally(() => {
-				if (session.autoApprovalAbortController === abortController) {
-					session.autoApprovalAbortController = undefined;
+			.finally(async () => {
+				const currentController =
+					session.stateMutex.getSnapshot().autoApprovalAbortController;
+				if (currentController === abortController) {
+					await session.stateMutex.update(data => ({
+						...data,
+						autoApprovalAbortController: undefined,
+					}));
 				}
 			});
 	}
@@ -197,7 +221,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		session: Session,
 		reason: string,
 	): void {
-		const controller = session.autoApprovalAbortController;
+		const stateData = session.stateMutex.getSnapshot();
+		const controller = stateData.autoApprovalAbortController;
 		if (!controller) {
 			return;
 		}
@@ -206,7 +231,10 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			controller.abort();
 		}
 
-		session.autoApprovalAbortController = undefined;
+		void session.stateMutex.update(data => ({
+			...data,
+			autoApprovalAbortController: undefined,
+		}));
 		logger.info(
 			`[${session.id}] Cancelled auto-approval verification: ${reason}`,
 		);
@@ -251,7 +279,6 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			id,
 			worktreePath,
 			process: ptyProcess,
-			state: 'busy', // Session starts as busy when created
 			output: [],
 			outputHistory: [],
 			lastActivity: new Date(),
@@ -262,11 +289,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			commandConfig,
 			detectionStrategy: options.detectionStrategy ?? 'claude',
 			devcontainerConfig: options.devcontainerConfig ?? undefined,
-			pendingState: undefined,
-			pendingStateStart: undefined,
-			autoApprovalFailed: false,
-			autoApprovalReason: undefined,
-			autoApprovalAbortController: undefined,
+			stateMutex: new Mutex(createInitialSessionStateData()),
 		};
 
 		// Set up persistent background data handler for state detection
@@ -477,47 +500,58 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 
 		// Set up interval-based state detection with persistence
 		session.stateCheckInterval = setInterval(() => {
-			const oldState = session.state;
+			const stateData = session.stateMutex.getSnapshot();
+			const oldState = stateData.state;
 			const detectedState = this.detectTerminalState(session);
 			const now = Date.now();
 
 			// If detected state is different from current state
 			if (detectedState !== oldState) {
 				// If this is a new pending state or the pending state changed
-				if (session.pendingState !== detectedState) {
-					session.pendingState = detectedState;
-					session.pendingStateStart = now;
+				if (stateData.pendingState !== detectedState) {
+					void session.stateMutex.update(data => ({
+						...data,
+						pendingState: detectedState,
+						pendingStateStart: now,
+					}));
 				} else if (
-					session.pendingState !== undefined &&
-					session.pendingStateStart !== undefined
+					stateData.pendingState !== undefined &&
+					stateData.pendingStateStart !== undefined
 				) {
 					// Check if the pending state has persisted long enough
-					const duration = now - session.pendingStateStart;
+					const duration = now - stateData.pendingStateStart;
 					if (duration >= STATE_PERSISTENCE_DURATION_MS) {
 						// Confirm the state change
-						session.state = detectedState;
-						session.pendingState = undefined;
-						session.pendingStateStart = undefined;
+						void session.stateMutex.update(data => {
+							const newData = {
+								...data,
+								state: detectedState,
+								pendingState: undefined,
+								pendingStateStart: undefined,
+							};
+
+							// If we previously blocked auto-approval and have moved out of a user prompt,
+							// allow future auto-approval attempts.
+							if (
+								data.autoApprovalFailed &&
+								detectedState !== 'waiting_input' &&
+								detectedState !== 'pending_auto_approval'
+							) {
+								newData.autoApprovalFailed = false;
+								newData.autoApprovalReason = undefined;
+							}
+
+							return newData;
+						});
 
 						if (
-							session.autoApprovalAbortController &&
+							stateData.autoApprovalAbortController &&
 							detectedState !== 'pending_auto_approval'
 						) {
 							this.cancelAutoApprovalVerification(
 								session,
 								`state changed to ${detectedState}`,
 							);
-						}
-
-						// If we previously blocked auto-approval and have moved out of a user prompt,
-						// allow future auto-approval attempts.
-						if (
-							session.autoApprovalFailed &&
-							detectedState !== 'waiting_input' &&
-							detectedState !== 'pending_auto_approval'
-						) {
-							session.autoApprovalFailed = false;
-							session.autoApprovalReason = undefined;
 						}
 
 						// Execute status hook asynchronously (non-blocking) using Effect
@@ -529,16 +563,20 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 				}
 			} else {
 				// Detected state matches current state, clear any pending state
-				session.pendingState = undefined;
-				session.pendingStateStart = undefined;
+				void session.stateMutex.update(data => ({
+					...data,
+					pendingState: undefined,
+					pendingStateStart: undefined,
+				}));
 			}
 
 			// Handle auto-approval if state is pending_auto_approval and no verification is in progress.
 			// This ensures auto-approval is retried when the state remains pending_auto_approval
 			// but the previous verification completed (success, failure, timeout, or abort).
+			const currentStateData = session.stateMutex.getSnapshot();
 			if (
-				session.state === 'pending_auto_approval' &&
-				!session.autoApprovalAbortController
+				currentStateData.state === 'pending_auto_approval' &&
+				!currentStateData.autoApprovalAbortController
 			) {
 				this.handleAutoApproval(session);
 			}
@@ -549,7 +587,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	}
 
 	private cleanupSession(session: Session): void {
-		if (session.autoApprovalAbortController) {
+		const stateData = session.stateMutex.getSnapshot();
+		if (stateData.autoApprovalAbortController) {
 			this.cancelAutoApprovalVerification(session, 'Session cleanup');
 		}
 
@@ -558,11 +597,13 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			clearInterval(session.stateCheckInterval);
 			session.stateCheckInterval = undefined;
 		}
-		// Clear any pending state
-		session.pendingState = undefined;
-		session.pendingStateStart = undefined;
-		// Update state to idle before destroying
-		session.state = 'idle';
+		// Clear any pending state and update state to idle before destroying
+		void session.stateMutex.update(data => ({
+			...data,
+			state: 'idle',
+			pendingState: undefined,
+			pendingStateStart: undefined,
+		}));
 		this.emit('sessionStateChanged', session);
 		this.destroySession(session.worktreePath);
 		this.emit('sessionExit', session);
@@ -598,21 +639,32 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			return;
 		}
 
+		const stateData = session.stateMutex.getSnapshot();
 		if (
-			session.state !== 'pending_auto_approval' &&
-			!session.autoApprovalAbortController
+			stateData.state !== 'pending_auto_approval' &&
+			!stateData.autoApprovalAbortController
 		) {
 			return;
 		}
 
 		this.cancelAutoApprovalVerification(session, reason);
-		session.autoApprovalFailed = true;
-		session.autoApprovalReason = reason;
-		session.pendingState = undefined;
-		session.pendingStateStart = undefined;
+		void session.stateMutex.update(data => {
+			const newData = {
+				...data,
+				autoApprovalFailed: true,
+				autoApprovalReason: reason,
+				pendingState: undefined,
+				pendingStateStart: undefined,
+			};
 
-		if (session.state === 'pending_auto_approval') {
-			session.state = 'waiting_input';
+			if (data.state === 'pending_auto_approval') {
+				newData.state = 'waiting_input';
+			}
+
+			return newData;
+		});
+
+		if (stateData.state === 'pending_auto_approval') {
 			this.emit('sessionStateChanged', session);
 		}
 	}
@@ -620,7 +672,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	destroySession(worktreePath: string): void {
 		const session = this.sessions.get(worktreePath);
 		if (session) {
-			if (session.autoApprovalAbortController) {
+			const stateData = session.stateMutex.getSnapshot();
+			if (stateData.autoApprovalAbortController) {
 				this.cancelAutoApprovalVerification(session, 'Session destroyed');
 			}
 
@@ -839,7 +892,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		};
 
 		sessions.forEach(session => {
-			switch (session.state) {
+			const stateData = session.stateMutex.getSnapshot();
+			switch (stateData.state) {
 				case 'idle':
 					counts.idle++;
 					break;
