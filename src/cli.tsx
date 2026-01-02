@@ -4,6 +4,7 @@ import {render} from 'ink';
 import meow from 'meow';
 import App from './components/App.js';
 import {worktreeConfigManager} from './services/worktreeConfigManager.js';
+import {configurationManager} from './services/configurationManager.js';
 import {globalSessionOrchestrator} from './services/globalSessionOrchestrator.js';
 import {apiServer} from './services/apiServer.js';
 
@@ -63,6 +64,16 @@ if (!process.stdin.isTTY || !process.stdout.isTTY) {
 // Also auto-enable multi-project mode if the env var is set
 if (process.env['ACD_PROJECTS_DIR']) {
 	cli.flags.multiProject = true;
+} else {
+	// Check config if env var is missing
+	const multiProjectConfig = configurationManager.getMultiProjectConfig();
+	if (multiProjectConfig?.projectsDir) {
+		process.env['ACD_PROJECTS_DIR'] = multiProjectConfig.projectsDir;
+		// Auto-enable if configured (default to true if projectsDir is set)
+		if (multiProjectConfig.enabled !== false) {
+			cli.flags.multiProject = true;
+		}
+	}
 }
 
 if (cli.flags.multiProject && !process.env['ACD_PROJECTS_DIR']) {
@@ -80,15 +91,15 @@ if (cli.flags.multiProject && !process.env['ACD_PROJECTS_DIR']) {
 worktreeConfigManager.initialize();
 
 // Start API Server
-const port = 3000;
+const port = 80;
 let webConfig = undefined;
 
 try {
-	// Start on default port 3000
+	// Start on default port 80
 	const address = await apiServer.start(port);
 	webConfig = {
-		url: address.replace('0.0.0.0', 'localhost'),
-		token: apiServer.getToken(),
+		url: address.replace('0.0.0.0', 'localhost').replace(':80', ''),
+		token: '',
 	};
 } catch (err) {
 	// Log error but don't fail startup

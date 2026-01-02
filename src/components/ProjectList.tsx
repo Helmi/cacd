@@ -300,9 +300,9 @@ const ProjectList: React.FC<ProjectListProps> = ({
 
 	return (
 		<Box flexDirection="column">
-			<Box marginBottom={1}>
-				<Text bold color="green">
-					CCManager - Multi-Project Mode
+			<Box borderStyle="round" borderColor="cyan" paddingX={1} marginBottom={1}>
+				<Text bold color="cyan">
+					Agent Control Desk - Multi-Project Mode
 				</Text>
 			</Box>
 

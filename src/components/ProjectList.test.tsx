@@ -127,7 +127,7 @@ describe('ProjectList', () => {
 			/>,
 		);
 
-		expect(lastFrame()).toContain('CCManager - Multi-Project Mode');
+		expect(lastFrame()).toContain('Agent Control Desk - Multi-Project Mode');
 		expect(lastFrame()).toContain('Select a project:');
 	});
 

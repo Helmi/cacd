@@ -12,11 +12,11 @@ const getToken = () => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
     if (token) {
-        localStorage.setItem('ccmanager_token', token);
+        localStorage.setItem('acd_token', token);
         window.history.replaceState({}, '', '/');
         return token;
     }
-    return localStorage.getItem('ccmanager_token');
+    return localStorage.getItem('acd_token');
 };
 
 const token = getToken();
@@ -62,8 +62,6 @@ function App() {
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const [projectSearch, setProjectSearch] = useState('');
   const [worktreeFilter, setWorktreeFilter] = useState('');
-  
-  const [authError, setAuthError] = useState<boolean>(false);
 
   const formatName = (name: string) => name.split('/').pop() || name;
 
@@ -77,14 +75,9 @@ function App() {
 
      // Fetch Sessions
      fetch('/api/sessions', { headers })
-      .then(res => {
-          if (res.status === 401) throw new Error("Unauthorized");
-          return res.json();
-      })
+      .then(res => res.json())
       .then(setSessions)
-      .catch(err => {
-          if (err.message === "Unauthorized") setAuthError(true);
-      });
+      .catch(console.error);
 
      // Fetch Worktrees
      fetch('/api/worktrees', { headers })
@@ -100,21 +93,12 @@ function App() {
   };
 
   useEffect(() => {
-    if (!token) {
-        setAuthError(true);
-        return;
-    }
-
     fetchData();
 
     socket.on('session_update', fetchData);
-    socket.on('connect_error', (err) => {
-        if (err.message === "Unauthorized") setAuthError(true);
-    });
 
     return () => {
       socket.off('session_update');
-      socket.off('connect_error');
     };
   }, []);
 
@@ -163,17 +147,6 @@ function App() {
       }
   };
 
-  if (authError) {
-      return (
-          <div className="flex h-screen w-screen bg-gray-950 text-white items-center justify-center">
-              <div className="text-center p-8 border border-red-900 rounded bg-red-950/20">
-                  <h1 className="text-2xl font-bold text-red-500 mb-2">Unauthorized</h1>
-                  <p className="text-gray-400">Please use the link provided in the CLI.</p>
-              </div>
-          </div>
-      );
-  }
-
   const selectedWorktree = worktrees.find(w => w.path === selectedId);
 
   return (
@@ -183,7 +156,7 @@ function App() {
         <div className="p-4 border-b border-gray-800">
             <h1 className="text-lg font-bold text-blue-400 flex items-center gap-2 mb-2">
                 <Terminal className="w-5 h-5" />
-                {currentProject ? currentProject.name : 'CCManager'}
+                {currentProject ? currentProject.name : 'Agent Control Desk'}
             </h1>
             
             {/* Project Switcher */}

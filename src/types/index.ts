@@ -145,6 +145,10 @@ export interface ConfigurationData {
 		customCommand?: string; // Custom verification command; must output JSON matching AutoApprovalResponse
 		timeout?: number; // Timeout in seconds for auto-approval verification (default: 30)
 	};
+	multiProject?: {
+		enabled?: boolean;
+		projectsDir?: string;
+	};
 }
 
 // Multi-project support interfaces

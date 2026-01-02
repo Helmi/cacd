@@ -740,6 +740,10 @@ export class ConfigurationManager {
 	isAutoApprovalEnabled(): boolean {
 		return this.config.autoApproval?.enabled ?? false;
 	}
+
+	getMultiProjectConfig(): ConfigurationData['multiProject'] {
+		return this.config.multiProject;
+	}
 }
 
 export const configurationManager = new ConfigurationManager();

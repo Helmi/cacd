@@ -45,18 +45,6 @@ export class APIServer {
             logger.warn(`Failed to register static files from ${clientDistPath}. Client might not be built.`);
         }
 
-        // API Authentication Hook
-        this.app.addHook('onRequest', async (request, reply) => {
-            if (request.url.startsWith('/api')) {
-                const headerToken = request.headers['x-access-token'] as string;
-                const queryToken = (request.query as any)?.token;
-                
-                if (headerToken !== this.token && queryToken !== this.token) {
-                    return reply.code(401).send({ error: 'Unauthorized' });
-                }
-            }
-        });
-
         this.setupRoutes();
         this.setupSocketHandlers();
         this.setupCoreListeners();
@@ -278,17 +266,6 @@ export class APIServer {
                 }
             });
 
-            // Socket.IO Authentication Middleware
-            this.io.use((socket, next) => {
-                const token = socket.handshake.auth['token'] || socket.handshake.query['token'];
-                if (token === this.token) {
-                    next();
-                } else {
-                    logger.warn(`Socket Auth Failed. Expected: ${this.token}, Got: ${token}`);
-                    next(new Error("Unauthorized"));
-                }
-            });
-
             this.io.on('connection', (socket) => {
                 logger.info(`Web client connected: ${socket.id}`);
 
@@ -350,15 +327,14 @@ export class APIServer {
     }
 
     public getToken(): string {
-        return this.token;
+        return '';
     }
 
-    public async start(port: number = 3000, host: string = '0.0.0.0') {
+    public async start(port: number = 80, host: string = '0.0.0.0') {
         try {
             const address = await this.app.listen({ port, host });
             logger.info(`API Server running at ${address}`);
-            logger.info(`Web Access Token: ${this.token}`);
-            logger.info(`Open in browser: http://${host}:${port}/?token=${this.token}`);
+            logger.info(`Open in browser: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
             return address;
         } catch (err) {
             logger.error('Failed to start API server', err);

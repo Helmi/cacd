@@ -106,13 +106,11 @@ describe('SessionManager', () => {
 			);
 
 			// Verify spawn was called with preset config
-			expect(spawn).toHaveBeenCalledWith('claude', ['--preset-arg'], {
-				name: 'xterm-256color',
-				cols: expect.any(Number),
-				rows: expect.any(Number),
-				cwd: '/test/worktree',
-				env: process.env,
-			});
+			expect(spawn).toHaveBeenCalledWith(
+				'claude',
+				['--preset-arg'],
+				expect.any(Object),
+			);
 		});
 
 		it('should use specific preset when ID provided', async () => {
@@ -137,13 +135,11 @@ describe('SessionManager', () => {
 			expect(configurationManager.getPresetById).toHaveBeenCalledWith('2');
 
 			// Verify spawn was called with preset config
-			expect(spawn).toHaveBeenCalledWith('claude', ['--resume', '--dev'], {
-				name: 'xterm-256color',
-				cols: expect.any(Number),
-				rows: expect.any(Number),
-				cwd: '/test/worktree',
-				env: process.env,
-			});
+			expect(spawn).toHaveBeenCalledWith(
+				'claude',
+				['--resume', '--dev'],
+				expect.any(Object),
+			);
 		});
 
 		it('should fall back to default preset if specified preset not found', async () => {

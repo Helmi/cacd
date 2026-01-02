@@ -530,8 +530,8 @@ const Menu: React.FC<MenuProps> = ({
 	return (
 		<Box flexDirection="column">
 			<Box marginBottom={1} flexDirection="column">
-				<Text bold color="green">
-					CCManager - Claude Code Worktree Manager
+				<Text bold color="cyan">
+					Agent Control Desk - AI Agent Manager
 				</Text>
 				{projectName && (
 					<Text bold color="green">
@@ -552,7 +552,7 @@ const Menu: React.FC<MenuProps> = ({
 						Web Interface Available
 					</Text>
 					<Text>
-						Link: <Text color="cyan" underline>{webConfig.url}/?token={webConfig.token}</Text>
+						Link: <Text color="cyan" underline>{webConfig.url}</Text>
 					</Text>
 				</Box>
 			)}

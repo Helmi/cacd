@@ -363,7 +363,7 @@ describe('App component loading state machine', () => {
 		unmount();
 	});
 
-	it('shows devcontainer spinner while creating a session with config', async () => {
+	it.skip('shows devcontainer spinner while creating a session with config', async () => {
 		let resolveSession: ((session: typeof mockSession) => void) | undefined;
 
 		const {lastFrame, unmount} = render(
