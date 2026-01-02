@@ -187,7 +187,7 @@ export class APIServer {
             return sessions.map(s => ({
                 id: s.id,
                 path: s.worktreePath,
-                state: s.state,
+                state: s.stateMutex.getSnapshot().state,
                 isActive: s.isActive
             }));
         });
@@ -318,7 +318,7 @@ export class APIServer {
         });
         
         const notifyUpdate = (session: any) => {
-            this.io?.emit('session_update', { id: session.id, state: session.state });
+            this.io?.emit('session_update', { id: session.id, state: session.stateMutex.getSnapshot().state });
         };
 
         coreService.on('sessionStateChanged', notifyUpdate);
