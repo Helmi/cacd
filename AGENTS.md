@@ -1,7 +1,33 @@
 # Agent Control Desk (ACD) - Repository Guidelines
 
-**Agent Control Desk** is a hard fork of the original `ccmanager` project. 
+**Agent Control Desk** is a hard fork of the original `ccmanager` project.
 **Primary Goal:** Evolve the tool into a comprehensive control plane for AI agents, featuring a robust WebUI alongside the original TUI, and significantly extending the feature set beyond simple session management.
+
+## Upstream Repository
+
+- **Original repo:** https://github.com/kbwo/ccmanager (for reference only, not a git remote)
+- **This repo:** git@github.com:Helmi/agent-control-desk.git (remote: `origin`)
+- **Config paths** remain `~/.config/ccmanager/` for backwards compatibility
+
+### Upstream Compatibility Guidelines
+
+**Stay close to upstream's code structure** to benefit from improvements and bug fixes in the original `ccmanager` repo:
+
+- **Preserve file/folder layout** in `src/` — don't reorganize core services or components without good reason
+- **Keep service interfaces stable** — SessionManager, WorktreeService, ConfigurationManager should maintain similar APIs
+- **Avoid renaming** core modules unless upstream does the same
+- **When adding features**, prefer extending existing patterns over introducing new architectural concepts
+- **Periodically check upstream** for bug fixes, especially in `sessionManager.ts`, `worktreeService.ts`, and state detection logic
+- **Document divergences** — when ACD must deviate significantly, note it here so future merges are easier
+
+### ACD-Specific Additions (divergences from upstream)
+
+- `client/` — Full React WebUI (not in upstream)
+- `src/services/apiServer.ts` — Fastify + Socket.IO server
+- `src/services/coreService.ts` — State orchestration between TUI and WebUI
+- Multi-project support via `ProjectManager` and `GlobalSessionOrchestrator`
+
+## UI Reference rebuild (2026-03-01)
 
 ## Project Structure & Module Organization
 - `src/` (Backend/TUI): Holds the Node.js source code.
