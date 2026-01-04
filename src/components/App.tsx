@@ -1,5 +1,5 @@
 import React, {useState, useEffect, useCallback} from 'react';
-import {useApp, Box, Text} from 'ink';
+import {useApp, Box, Text, useInput} from 'ink';
 import {Effect} from 'effect';
 import Menu from './Menu.js';
 import ProjectList from './ProjectList.js';
@@ -547,6 +547,16 @@ const App: React.FC<AppProps> = ({
 			setMenuKey(prev => prev + 1);
 		});
 	};
+
+	// Global quit handler - Ctrl+Q works from any view (except session which handles its own input)
+	useInput((input, key) => {
+		// Ctrl+Q to quit from anywhere
+		if (key.ctrl && input === 'q') {
+			globalSessionOrchestrator.destroyAllSessions();
+			exit();
+			process.exit(0);
+		}
+	}, {isActive: view !== 'session'}); // Disable in session view to not interfere with terminal
 
 	if (view === 'project-list') {
 		return (

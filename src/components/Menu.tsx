@@ -212,21 +212,31 @@ const Menu: React.FC<MenuProps> = ({
 			: items;
 
 		// Build menu items with proper alignment
-		const menuItems: MenuItem[] = filteredItems.map(
-			(item, index): WorktreeItem => {
-				const label = assembleWorktreeLabel(item, columnPositions);
+		const menuItems: MenuItem[] = [];
 
-				// Only show numbers for worktrees (0-9) when not in search mode
-				const numberPrefix = !isSearchMode && index < 10 ? `${index} ❯ ` : '❯ ';
+		// Add "Worktrees" section header for current project (only if we have worktrees and not in search mode)
+		if (filteredItems.length > 0 && !isSearchMode) {
+			menuItems.push({
+				type: 'common',
+				label: createSeparatorWithText('Worktrees'),
+				value: 'worktrees-separator',
+			});
+		}
 
-				return {
-					type: 'worktree',
-					label: numberPrefix + label,
-					value: item.worktree.path,
-					worktree: item.worktree,
-				};
-			},
-		);
+		// Add worktree items
+		filteredItems.forEach((item, index) => {
+			const label = assembleWorktreeLabel(item, columnPositions);
+
+			// Only show numbers for worktrees (0-9) when not in search mode
+			const numberPrefix = !isSearchMode && index < 10 ? `${index} ❯ ` : '❯ ';
+
+			menuItems.push({
+				type: 'worktree',
+				label: numberPrefix + label,
+				value: item.worktree.path,
+				worktree: item.worktree,
+			});
+		});
 
 		// Filter other projects based on search query
 		const filteredOtherProjects = searchQuery

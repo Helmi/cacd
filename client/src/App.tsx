@@ -44,17 +44,19 @@ interface Worktree {
 interface Project {
     name: string;
     path: string;
+    description?: string;
+    lastAccessed: number;
+    isValid?: boolean;
 }
 
-interface ProjectsData {
-    all: Project[];
-    recent: Project[];
+interface ProjectsResponse {
+    projects: Project[];
 }
 
 function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [worktrees, setWorktrees] = useState<Worktree[]>([]);
-  const [projectsData, setProjectsData] = useState<ProjectsData>({ all: [], recent: [] });
+  const [projects, setProjects] = useState<Project[]>([]);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -88,7 +90,7 @@ function App() {
      // Fetch Projects
      fetch('/api/projects', { headers })
       .then(res => res.json())
-      .then(setProjectsData)
+      .then((data: ProjectsResponse) => setProjects(data.projects || []))
       .catch(console.error);
   };
 
@@ -190,53 +192,29 @@ function App() {
                         </div>
                         <div className="max-h-60 overflow-y-auto">
                             {(() => {
-                                const recent = projectsData.recent || [];
-                                const all = projectsData.all || [];
-                                
-                                const filteredRecent = recent.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase()));
-                                const recentPaths = new Set(recent.map(p => p.path));
-                                const filteredAll = all.filter(p => !recentPaths.has(p.path) && p.name.toLowerCase().includes(projectSearch.toLowerCase()));
-                                
-                                const hasRecent = filteredRecent.length > 0;
-                                const hasAll = filteredAll.length > 0;
-                                
-                                if (!hasRecent && !hasAll) {
+                                const filtered = projects.filter(p =>
+                                    p.name.toLowerCase().includes(projectSearch.toLowerCase())
+                                );
+
+                                if (filtered.length === 0) {
                                     return <div className="px-3 py-2 text-xs text-gray-500 text-center">No projects found</div>;
                                 }
 
                                 return (
                                     <>
-                                        {hasRecent && (
-                                            <>
-                                                <div className="px-2 py-1 text-[10px] text-gray-500 uppercase font-semibold bg-gray-800/95 backdrop-blur-sm">Recent</div>
-                                                {filteredRecent.map(p => (
-                                                    <button
-                                                        key={p.path}
-                                                        onClick={() => handleSelectProject(p.path)}
-                                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700 truncate"
-                                                    >
-                                                        {p.name}
-                                                    </button>
-                                                ))}
-                                            </>
-                                        )}
-                                        
-                                        {hasRecent && hasAll && <div className="h-px bg-gray-700 my-1" />}
-                                        
-                                        {hasAll && (
-                                            <>
-                                                <div className="px-2 py-1 text-[10px] text-gray-500 uppercase font-semibold bg-gray-800/95 backdrop-blur-sm">All Projects</div>
-                                                {filteredAll.map(p => (
-                                                    <button
-                                                        key={p.path}
-                                                        onClick={() => handleSelectProject(p.path)}
-                                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-700 truncate"
-                                                    >
-                                                        {p.name}
-                                                    </button>
-                                                ))}
-                                            </>
-                                        )}
+                                        <div className="px-2 py-1 text-[10px] text-gray-500 uppercase font-semibold bg-gray-800/95 backdrop-blur-sm">Projects</div>
+                                        {filtered.map(p => (
+                                            <button
+                                                key={p.path}
+                                                onClick={() => handleSelectProject(p.path)}
+                                                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-700 truncate flex items-center gap-2 ${
+                                                    p.isValid === false ? 'text-gray-500' : ''
+                                                }`}
+                                            >
+                                                <span className="truncate">{p.name}</span>
+                                                {p.isValid === false && <span className="text-yellow-500 text-xs">⚠️</span>}
+                                            </button>
+                                        ))}
                                     </>
                                 );
                             })()}
