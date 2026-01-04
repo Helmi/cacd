@@ -237,6 +237,41 @@ const Menu: React.FC<MenuProps> = ({
 
 		// Add menu options only when not in search mode
 		if (!isSearchMode) {
+			// Add actions section first (before other projects)
+			const actionMenuItems: MenuItem[] = [
+				{
+					type: 'common',
+					label: createSeparatorWithText('Actions'),
+					value: 'actions-separator',
+				},
+				{
+					type: 'common',
+					label: `N ${MENU_ICONS.NEW_WORKTREE} New Worktree`,
+					value: 'new-worktree',
+				},
+				{
+					type: 'common',
+					label: `M ${MENU_ICONS.MERGE_WORKTREE} Merge Worktree`,
+					value: 'merge-worktree',
+				},
+				{
+					type: 'common',
+					label: `D ${MENU_ICONS.DELETE_WORKTREE} Delete Worktree`,
+					value: 'delete-worktree',
+				},
+				{
+					type: 'common',
+					label: `C ${MENU_ICONS.CONFIGURE_SHORTCUTS} Configuration`,
+					value: 'configuration',
+				},
+				{
+					type: 'common',
+					label: `B 🔙 Back to project list`,
+					value: 'back-to-projects',
+				},
+			];
+			menuItems.push(...actionMenuItems);
+
 			// Add other projects section if there are other tracked projects
 			if (filteredOtherProjects.length > 0) {
 				menuItems.push({
@@ -282,42 +317,6 @@ const Menu: React.FC<MenuProps> = ({
 					});
 				});
 			}
-
-			// Add menu options
-			const otherMenuItems: MenuItem[] = [
-				{
-					type: 'common',
-					label: createSeparatorWithText('Other'),
-					value: 'other-separator',
-				},
-				{
-					type: 'common',
-					label: `N ${MENU_ICONS.NEW_WORKTREE} New Worktree`,
-					value: 'new-worktree',
-				},
-				{
-					type: 'common',
-					label: `M ${MENU_ICONS.MERGE_WORKTREE} Merge Worktree`,
-					value: 'merge-worktree',
-				},
-				{
-					type: 'common',
-					label: `D ${MENU_ICONS.DELETE_WORKTREE} Delete Worktree`,
-					value: 'delete-worktree',
-				},
-				{
-					type: 'common',
-					label: `C ${MENU_ICONS.CONFIGURE_SHORTCUTS} Configuration`,
-					value: 'configuration',
-				},
-			];
-			menuItems.push(...otherMenuItems);
-			// Always show 'Back to project list' - unified project management
-			menuItems.push({
-				type: 'common',
-				label: `B 🔙 Back to project list`,
-				value: 'back-to-projects',
-			});
 		}
 		setItems(menuItems);
 	}, [
