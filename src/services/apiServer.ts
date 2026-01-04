@@ -57,56 +57,73 @@ export class APIServer {
             return coreService.getState();
         });
 
-        // --- Projects ---
+        // --- Projects (registry-based API) ---
         this.app.get('/api/projects', async () => {
              const pm = projectManager.instance;
-             const isEnabled = pm.isMultiProjectEnabled();
-             const dir = pm.getProjectsDir();
-             
-             logger.info(`API: Fetching projects. Multi-project: ${isEnabled}, Dir: ${dir}`);
-             
-             let allProjects: any[] = []; // GitProject[]
-             
-             if (isEnabled && dir) {
-                 const result = await Effect.runPromise(Effect.either(pm.discoverProjectsEffect(dir)));
-                 if (result._tag === 'Right') {
-                     logger.info(`API: Discovered ${result.right.length} projects`);
-                     allProjects = result.right;
-                 } else {
-                     logger.error(`API: Discovery failed: ${result.left.message}`);
-                 }
-             }
-             
-             const recent = pm.getRecentProjects();
-             if (!isEnabled && allProjects.length === 0) {
-                 // If not in multi-project mode, 'all' is just the recent list converted
-                 allProjects = recent.map(r => ({ 
-                     name: r.name, 
-                     path: r.path, 
-                     relativePath: '', 
-                     isValid: true 
-                 }));
-             }
+
+             // Validate projects (marks invalid paths)
+             pm.validateProjects();
+
+             // Get all projects from registry, sorted by lastAccessed
+             const projects = pm.getProjects();
+
+             logger.info(`API: Fetched ${projects.length} projects from registry`);
 
              return {
-                 all: allProjects,
-                 recent: recent
+                 projects: projects
              };
+        });
+
+        this.app.post<{ Body: { path: string; description?: string } }>('/api/project/add', async (request, reply) => {
+            const { path, description } = request.body;
+            const result = projectManager.addProject(path, description);
+
+            if (result) {
+                logger.info(`API: Added project ${result.name}`);
+                return { success: true, project: result };
+            } else {
+                logger.error(`API: Failed to add project: ${path}`);
+                reply.status(400);
+                return { success: false, error: 'Not a valid git repository' };
+            }
+        });
+
+        this.app.post<{ Body: { path: string } }>('/api/project/remove', async (request, reply) => {
+            const { path } = request.body;
+            const removed = projectManager.removeProject(path);
+
+            if (removed) {
+                logger.info(`API: Removed project: ${path}`);
+                return { success: true };
+            } else {
+                logger.error(`API: Failed to remove project (not found): ${path}`);
+                reply.status(404);
+                return { success: false, error: 'Project not found' };
+            }
         });
 
         this.app.post<{ Body: { path: string } }>('/api/project/select', async (request, reply) => {
             const { path } = request.body;
             const pm = projectManager.instance;
-            
-            // Validate and load project details
-            const project = await pm.refreshProject(path);
-            
-            if (project) {
-                await coreService.selectProject(project);
-                return { success: true };
+
+            // Get project from registry
+            const project = pm.getProject(path);
+
+            if (!project) {
+                return reply.code(404).send({ error: 'Project not found in registry' });
             }
-            
-            return reply.code(404).send({ error: 'Project not found or invalid git repository' });
+
+            // Block selection of invalid projects
+            if (project.isValid === false) {
+                return reply.code(400).send({ error: 'Project path is invalid or no longer exists' });
+            }
+
+            // Convert to GitProject and select (updates lastAccessed automatically)
+            const gitProject = pm.toGitProject(project);
+            pm.selectProject(gitProject);
+            await coreService.selectProject(gitProject);
+
+            return { success: true };
         });
 
         // --- Worktrees ---

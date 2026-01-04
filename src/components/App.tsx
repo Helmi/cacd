@@ -24,8 +24,6 @@ import {
 } from '../types/index.js';
 import {type AppError} from '../types/errors.js';
 import {configurationManager} from '../services/configurationManager.js';
-import {ENV_VARS} from '../constants/env.js';
-import {MULTI_PROJECT_ERRORS} from '../constants/error.js';
 import {projectManager} from '../services/projectManager.js';
 import {coreService} from '../services/coreService.js';
 
@@ -47,7 +45,6 @@ type View =
 
 interface AppProps {
 	devcontainerConfig?: DevcontainerConfig;
-	multiProject?: boolean;
 	webConfig?: {
 		url: string;
 		externalUrl?: string;
@@ -60,13 +57,11 @@ interface AppProps {
 
 const App: React.FC<AppProps> = ({
 	devcontainerConfig,
-	multiProject,
 	webConfig,
 }) => {
 	const {exit} = useApp();
-	const [view, setView] = useState<View>(
-		multiProject ? 'project-list' : 'menu',
-	);
+	// Always start with project-list - unified project management
+	const [view, setView] = useState<View>('project-list');
 	const [sessionManager, setSessionManager] = useState<SessionManager>(
 		coreService.sessionManager,
 	);
@@ -199,12 +194,8 @@ const App: React.FC<AppProps> = ({
 					setActiveSession(null);
 					setError(null);
 
-					const targetView =
-						multiProject && selectedProject
-							? 'menu'
-							: multiProject
-								? 'project-list'
-								: 'menu';
+					// If we have a selected project, return to worktree menu, else project list
+					const targetView = selectedProject ? 'menu' : 'project-list';
 
 					navigateWithClear(targetView, () => {
 						setMenuKey(prev => prev + 1);
@@ -223,7 +214,7 @@ const App: React.FC<AppProps> = ({
 			sessionManager.off('sessionExit', handleSessionExit);
 			// Don't destroy sessions on unmount - they persist in memory
 		};
-	}, [sessionManager, multiProject, selectedProject, navigateWithClear]);
+	}, [sessionManager, selectedProject, navigateWithClear]);
 
 	// Helper function to parse ambiguous branch error and create AmbiguousBranchError
 	const parseAmbiguousBranchError = (
@@ -316,14 +307,8 @@ const App: React.FC<AppProps> = ({
 
 		// Check if this is the exit application option
 		if (worktree.path === 'EXIT_APPLICATION') {
-			// In multi-project mode with a selected project, go back to project list
-			if (multiProject && selectedProject) {
-				handleBackToProjectList();
-			} else {
-				// Only destroy all sessions when actually exiting the app
-				globalSessionOrchestrator.destroyAllSessions();
-				exit();
-			}
+			// Always go back to project list (unified project management)
+			handleBackToProjectList();
 			return;
 		}
 
@@ -393,12 +378,8 @@ const App: React.FC<AppProps> = ({
 		setActiveSession(null);
 		// Don't clear error here - let user dismiss it manually
 
-		const targetView =
-			multiProject && selectedProject
-				? 'menu'
-				: multiProject
-					? 'project-list'
-					: 'menu';
+		// If we have a selected project, return to worktree menu, else project list
+		const targetView = selectedProject ? 'menu' : 'project-list';
 
 		navigateWithClear(targetView, () => {
 			setMenuKey(prev => prev + 1); // Force menu refresh
@@ -547,7 +528,8 @@ const App: React.FC<AppProps> = ({
 		if (project.path === 'EXIT_APPLICATION') {
 			globalSessionOrchestrator.destroyAllSessions();
 			exit();
-			return;
+			// Force process exit since Ink's exit() doesn't terminate when there are active handles
+			process.exit(0);
 		}
 
 		// Set the selected project and update services
@@ -566,20 +548,11 @@ const App: React.FC<AppProps> = ({
 		});
 	};
 
-	if (view === 'project-list' && multiProject) {
-		const projectsDir = process.env[ENV_VARS.MULTI_PROJECT_ROOT];
-		if (!projectsDir) {
-			return (
-				<Box>
-					<Text color="red">Error: {MULTI_PROJECT_ERRORS.NO_PROJECTS_DIR}</Text>
-				</Box>
-			);
-		}
-
+	if (view === 'project-list') {
 		return (
 			<ProjectList
-				projectsDir={projectsDir}
 				onSelectProject={handleSelectProject}
+				onOpenConfiguration={() => navigateWithClear('configuration')}
 				error={error}
 				onDismissError={() => setError(null)}
 				webConfig={webConfig}
@@ -598,7 +571,6 @@ const App: React.FC<AppProps> = ({
 				error={error}
 				onDismissError={() => setError(null)}
 				projectName={selectedProject?.name}
-				multiProject={multiProject}
 				webConfig={webConfig}
 			/>
 		);

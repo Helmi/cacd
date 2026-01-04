@@ -2,7 +2,7 @@ import React, {useState, useEffect} from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
 import {Effect} from 'effect';
-import {Worktree, Session, GitProject} from '../types/index.js';
+import {Worktree, Session, GitProject, Project} from '../types/index.js';
 import {WorktreeService} from '../services/worktreeService.js';
 import {SessionManager} from '../services/sessionManager.js';
 import {GitError} from '../types/errors.js';
@@ -18,7 +18,6 @@ import {
 	assembleWorktreeLabel,
 } from '../utils/worktreeUtils.js';
 import {projectManager} from '../services/projectManager.js';
-import {RecentProject} from '../types/index.js';
 import TextInputWrapper from './TextInputWrapper.js';
 import {useSearchMode} from '../hooks/useSearchMode.js';
 import {globalSessionOrchestrator} from '../services/globalSessionOrchestrator.js';
@@ -32,7 +31,6 @@ interface MenuProps {
 	error?: string | null;
 	onDismissError?: () => void;
 	projectName?: string;
-	multiProject?: boolean;
 	webConfig?: {
 		url: string;
 		externalUrl?: string;
@@ -60,7 +58,7 @@ interface ProjectItem {
 	type: 'project';
 	label: string;
 	value: string;
-	recentProject: RecentProject;
+	project: Project;
 }
 
 type MenuItem = CommonItem | WorktreeItem | ProjectItem;
@@ -94,7 +92,6 @@ const Menu: React.FC<MenuProps> = ({
 	error,
 	onDismissError,
 	projectName,
-	multiProject = false,
 	webConfig,
 }) => {
 	const [baseWorktrees, setBaseWorktrees] = useState<Worktree[]>([]);
@@ -103,7 +100,7 @@ const Menu: React.FC<MenuProps> = ({
 	const worktrees = useGitStatus(baseWorktrees, defaultBranch);
 	const [sessions, setSessions] = useState<Session[]>([]);
 	const [items, setItems] = useState<MenuItem[]>([]);
-	const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+	const [otherProjects, setOtherProjects] = useState<Project[]>([]);
 	const limit = 10;
 
 	// Get worktree configuration for sorting
@@ -172,16 +169,13 @@ const Menu: React.FC<MenuProps> = ({
 				}
 			});
 
-		// Load recent projects if in multi-project mode
-		if (multiProject) {
-			// Filter out the current project from recent projects
-			const allRecentProjects = projectManager.getRecentProjects();
-			const currentProjectPath = worktreeService.getGitRootPath();
-			const filteredProjects = allRecentProjects.filter(
-				(project: RecentProject) => project.path !== currentProjectPath,
-			);
-			setRecentProjects(filteredProjects);
-		}
+		// Load other projects (filter out current project)
+		const allProjects = projectManager.getProjects();
+		const currentProjectPath = worktreeService.getGitRootPath();
+		const filteredProjects = allProjects.filter(
+			(project: Project) => project.path !== currentProjectPath,
+		);
+		setOtherProjects(filteredProjects);
 
 		// Listen for session changes
 		const handleSessionChange = () => {
@@ -198,12 +192,7 @@ const Menu: React.FC<MenuProps> = ({
 			sessionManager.off('sessionDestroyed', handleSessionChange);
 			sessionManager.off('sessionStateChanged', handleSessionChange);
 		};
-	}, [
-		sessionManager,
-		worktreeService,
-		multiProject,
-		worktreeConfig.sortByLastSession,
-	]);
+	}, [sessionManager, worktreeService, worktreeConfig.sortByLastSession]);
 
 	useEffect(() => {
 		// Prepare worktree items and calculate layout
@@ -239,29 +228,29 @@ const Menu: React.FC<MenuProps> = ({
 			},
 		);
 
-		// Filter recent projects based on search query
-		const filteredRecentProjects = searchQuery
-			? recentProjects.filter(project =>
+		// Filter other projects based on search query
+		const filteredOtherProjects = searchQuery
+			? otherProjects.filter(project =>
 					project.name.toLowerCase().includes(searchQuery.toLowerCase()),
 				)
-			: recentProjects;
+			: otherProjects;
 
 		// Add menu options only when not in search mode
 		if (!isSearchMode) {
-			// Add recent projects section if enabled and has recent projects
-			if (multiProject && filteredRecentProjects.length > 0) {
+			// Add other projects section if there are other tracked projects
+			if (filteredOtherProjects.length > 0) {
 				menuItems.push({
 					type: 'common',
-					label: createSeparatorWithText('Recent'),
-					value: 'recent-separator',
+					label: createSeparatorWithText('Other Projects'),
+					value: 'other-projects-separator',
 				});
 
-				// Add recent projects
-				// Calculate available number shortcuts for recent projects
+				// Add other projects
+				// Calculate available number shortcuts for projects
 				const worktreeCount = filteredItems.length;
 				const availableNumbersForProjects = worktreeCount < 10;
 
-				filteredRecentProjects.forEach((project, index) => {
+				filteredOtherProjects.forEach((project, index) => {
 					// Get session counts for this project
 					const projectSessions = globalSessionOrchestrator.getProjectSessions(
 						project.path,
@@ -269,8 +258,11 @@ const Menu: React.FC<MenuProps> = ({
 					const counts = SessionManager.getSessionCounts(projectSessions);
 					const countsFormatted = SessionManager.formatSessionCounts(counts);
 
-					// Assign number shortcuts to recent projects if worktrees < 10
-					let label = project.name + countsFormatted;
+					// Show warning for invalid projects
+					const invalidIndicator = project.isValid === false ? ' ⚠️' : '';
+
+					// Assign number shortcuts to projects if worktrees < 10
+					let label = project.name + invalidIndicator + countsFormatted;
 					if (availableNumbersForProjects) {
 						const projectNumber = worktreeCount + index;
 						if (projectNumber < 10) {
@@ -285,8 +277,8 @@ const Menu: React.FC<MenuProps> = ({
 					menuItems.push({
 						type: 'project',
 						label,
-						value: `recent-project-${index}`,
-						recentProject: project,
+						value: `project-${index}`,
+						project: project,
 					});
 				});
 			}
@@ -320,30 +312,19 @@ const Menu: React.FC<MenuProps> = ({
 				},
 			];
 			menuItems.push(...otherMenuItems);
-			if (projectName) {
-				// In multi-project mode, show 'Back to project list'
-				menuItems.push({
-					type: 'common',
-					label: `B 🔙 Back to project list`,
-					value: 'back-to-projects',
-				});
-			} else {
-				// In single-project mode, show 'Exit'
-				menuItems.push({
-					type: 'common',
-					label: `Q ${MENU_ICONS.EXIT} Exit`,
-					value: 'exit',
-				});
-			}
+			// Always show 'Back to project list' - unified project management
+			menuItems.push({
+				type: 'common',
+				label: `B 🔙 Back to project list`,
+				value: 'back-to-projects',
+			});
 		}
 		setItems(menuItems);
 	}, [
 		worktrees,
 		sessions,
 		defaultBranch,
-		projectName,
-		multiProject,
-		recentProjects,
+		otherProjects,
 		searchQuery,
 		isSearchMode,
 	]);
@@ -439,27 +420,13 @@ const Menu: React.FC<MenuProps> = ({
 				});
 				break;
 			case 'b':
-				// In multi-project mode, go back to project list
-				if (projectName) {
-					onSelectWorktree({
-						path: 'EXIT_APPLICATION',
-						branch: '',
-						isMainWorktree: false,
-						hasSession: false,
-					});
-				}
-				break;
-			case 'q':
-			case 'x':
-				// Trigger exit action (only in single-project mode)
-				if (!projectName) {
-					onSelectWorktree({
-						path: 'EXIT_APPLICATION',
-						branch: '',
-						isMainWorktree: false,
-						hasSession: false,
-					});
-				}
+				// Always go back to project list - unified project management
+				onSelectWorktree({
+					path: 'EXIT_APPLICATION',
+					branch: '',
+					isMainWorktree: false,
+					hasSession: false,
+				});
 				break;
 		}
 	});
@@ -468,15 +435,15 @@ const Menu: React.FC<MenuProps> = ({
 		if (item.value.endsWith('-separator') || item.value === 'recent-header') {
 			// Do nothing for separators and headers
 		} else if (item.type === 'project') {
-			// Handle recent project selection
+			// Handle project selection
 			if (onSelectRecentProject) {
-				const project: GitProject = {
-					path: item.recentProject.path,
-					name: item.recentProject.name,
-					relativePath: item.recentProject.path,
-					isValid: true,
+				const gitProject: GitProject = {
+					path: item.project.path,
+					name: item.project.name,
+					relativePath: item.project.name,
+					isValid: item.project.isValid ?? true,
 				};
-				onSelectRecentProject(project);
+				onSelectRecentProject(gitProject);
 			}
 		} else if (item.value === 'new-worktree') {
 			// Handle in parent component

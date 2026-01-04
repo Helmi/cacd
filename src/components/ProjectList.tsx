@@ -1,20 +1,17 @@
 import React, {useState, useEffect} from 'react';
 import {Box, Text, useInput} from 'ink';
-import {Effect} from 'effect';
 import SelectInput from 'ink-select-input';
-import {GitProject} from '../types/index.js';
+import {GitProject, Project} from '../types/index.js';
 import {projectManager} from '../services/projectManager.js';
 import {MENU_ICONS} from '../constants/statusIcons.js';
 import TextInputWrapper from './TextInputWrapper.js';
 import {useSearchMode} from '../hooks/useSearchMode.js';
-import {RecentProject} from '../types/index.js';
 import {globalSessionOrchestrator} from '../services/globalSessionOrchestrator.js';
 import {SessionManager} from '../services/sessionManager.js';
-import {type AppError} from '../types/errors.js';
 
 interface ProjectListProps {
-	projectsDir: string;
 	onSelectProject: (project: GitProject) => void;
+	onOpenConfiguration?: () => void;
 	error: string | null;
 	onDismissError: () => void;
 	webConfig?: {
@@ -34,135 +31,49 @@ interface MenuItem {
 }
 
 const ProjectList: React.FC<ProjectListProps> = ({
-	projectsDir,
 	onSelectProject,
+	onOpenConfiguration,
 	error,
 	onDismissError,
 	webConfig,
 }) => {
-	const [projects, setProjects] = useState<GitProject[]>([]);
-	const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+	const [projects, setProjects] = useState<Project[]>([]);
 	const [items, setItems] = useState<MenuItem[]>([]);
 	const [loading, setLoading] = useState(true);
-	const [loadError, setLoadError] = useState<string | null>(null);
+	const [addingProject, setAddingProject] = useState(false);
+	const [addProjectPath, setAddProjectPath] = useState('');
+	const [addProjectError, setAddProjectError] = useState<string | null>(null);
+	const [confirmingDelete, setConfirmingDelete] = useState<Project | null>(null);
+	const [highlightedItem, setHighlightedItem] = useState<MenuItem | null>(null);
 	const limit = 10;
 
-	// Helper function to format error messages based on error type using _tag discrimination
-	const formatErrorMessage = (error: AppError): string => {
-		switch (error._tag) {
-			case 'ProcessError':
-				return `Process error: ${error.message}`;
-			case 'ConfigError':
-				return `Configuration error (${error.reason}): ${error.details}`;
-			case 'GitError':
-				return `Git command failed: ${error.command} (exit ${error.exitCode})\n${error.stderr}`;
-			case 'FileSystemError':
-				return `File ${error.operation} failed for ${error.path}: ${error.cause}`;
-			case 'ValidationError':
-				return `Validation failed for ${error.field}: ${error.constraint}`;
-		}
-	};
-
 	// Use the search mode hook
-	const displayError = error || loadError;
+	const displayError = error || addProjectError;
 	const {isSearchMode, searchQuery, selectedIndex, setSearchQuery} =
 		useSearchMode(items.length, {
-			isDisabled: !!displayError,
+			isDisabled: !!displayError || addingProject || !!confirmingDelete,
 			skipInTest: false,
 		});
 
-	// Helper function to load projects with Effect-based error handling
-	const loadProjectsEffect = async (checkCancellation?: () => boolean) => {
+	// Load projects from registry
+	const loadProjects = () => {
 		setLoading(true);
-		setLoadError(null);
-
-		// Use Effect-based project discovery
-		const projectsEffect =
-			projectManager.instance.discoverProjectsEffect(projectsDir);
-
-		// Execute the Effect and handle both success and failure cases
-		const result = await Effect.runPromise(Effect.either(projectsEffect));
-
-		// Check cancellation flag before updating state (if provided)
-		if (checkCancellation && checkCancellation()) return;
-
-		if (result._tag === 'Left') {
-			// Handle error using pattern matching on _tag
-			const errorMessage = formatErrorMessage(result.left);
-			setLoadError(errorMessage);
-			setLoading(false);
-			return;
-		}
-
-		// Success case - extract projects from Right
-		const discoveredProjects = result.right;
-		setProjects(discoveredProjects);
-
-		// Load recent projects with no limit (pass 0)
-		const allRecentProjects = projectManager.getRecentProjects(0);
-		setRecentProjects(allRecentProjects);
-
+		// Validate projects first (marks invalid paths)
+		projectManager.instance.validateProjects();
+		// Get projects sorted by lastAccessed
+		const allProjects = projectManager.getProjects();
+		setProjects(allProjects);
 		setLoading(false);
 	};
 
-	const loadProjects = () => loadProjectsEffect();
-
 	useEffect(() => {
-		let cancelled = false;
+		loadProjects();
+	}, []);
 
-		loadProjectsEffect(() => cancelled);
-
-		// Cleanup function to set cancellation flag
-		return () => {
-			cancelled = true;
-		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [projectsDir]);
-
+	// Build menu items
 	useEffect(() => {
 		const menuItems: MenuItem[] = [];
 		let currentIndex = 0;
-
-		// Filter recent projects based on search query
-		const filteredRecentProjects = searchQuery
-			? recentProjects.filter(project =>
-					project.name.toLowerCase().includes(searchQuery.toLowerCase()),
-				)
-			: recentProjects;
-
-		// Add recent projects section if available and not in search mode
-		if (filteredRecentProjects.length > 0) {
-			// Add "Recent" separator only when not in search mode
-			if (!isSearchMode) {
-				menuItems.push({
-					label: '── Recent ──',
-					value: 'separator-recent',
-				});
-			}
-
-			// Add recent projects
-			filteredRecentProjects.forEach(recentProject => {
-				// Find the full project data
-				const fullProject = projects.find(p => p.path === recentProject.path);
-				if (fullProject) {
-					// Get session counts for this project
-					const projectSessions = globalSessionOrchestrator.getProjectSessions(
-						recentProject.path,
-					);
-					const counts = SessionManager.getSessionCounts(projectSessions);
-					const countsFormatted = SessionManager.formatSessionCounts(counts);
-
-					const numberPrefix =
-						!isSearchMode && currentIndex < 10 ? `${currentIndex} ❯ ` : '❯ ';
-					menuItems.push({
-						label: numberPrefix + recentProject.name + countsFormatted,
-						value: recentProject.path,
-						project: fullProject,
-					});
-					currentIndex++;
-				}
-			});
-		}
 
 		// Filter projects based on search query
 		const filteredProjects = searchQuery
@@ -171,26 +82,8 @@ const ProjectList: React.FC<ProjectListProps> = ({
 				)
 			: projects;
 
-		// Filter out recent projects from all projects to avoid duplicates
-		const recentPaths = new Set(filteredRecentProjects.map(rp => rp.path));
-		const nonRecentProjects = filteredProjects.filter(
-			project => !recentPaths.has(project.path),
-		);
-
-		// Add "All Projects" separator if we have both recent and other projects
-		if (
-			filteredRecentProjects.length > 0 &&
-			nonRecentProjects.length > 0 &&
-			!isSearchMode
-		) {
-			menuItems.push({
-				label: '── All Projects ──',
-				value: 'separator-all',
-			});
-		}
-
-		// Build menu items from filtered non-recent projects
-		nonRecentProjects.forEach(project => {
+		// Build menu items from projects
+		filteredProjects.forEach(project => {
 			// Get session counts for this project
 			const projectSessions = globalSessionOrchestrator.getProjectSessions(
 				project.path,
@@ -198,14 +91,22 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			const counts = SessionManager.getSessionCounts(projectSessions);
 			const countsFormatted = SessionManager.formatSessionCounts(counts);
 
+			// Show warning for invalid projects
+			const invalidIndicator = project.isValid === false ? ' ⚠️' : '';
+
 			// Only show numbers for total items (0-9) when not in search mode
 			const numberPrefix =
 				!isSearchMode && currentIndex < 10 ? `${currentIndex} ❯ ` : '❯ ';
 
 			menuItems.push({
-				label: numberPrefix + project.name + countsFormatted,
+				label: numberPrefix + project.name + invalidIndicator + countsFormatted,
 				value: project.path,
-				project,
+				project: {
+					path: project.path,
+					name: project.name,
+					relativePath: project.name,
+					isValid: project.isValid ?? true,
+				},
 			});
 			currentIndex++;
 		});
@@ -220,6 +121,18 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			}
 
 			menuItems.push({
+				label: `A ➕ Add Project`,
+				value: 'add-project',
+			});
+			menuItems.push({
+				label: `D 🗑️  Remove Project`,
+				value: 'remove-project',
+			});
+			menuItems.push({
+				label: `C ⚙️  Settings`,
+				value: 'settings',
+			});
+			menuItems.push({
 				label: `R 🔄 Refresh`,
 				value: 'refresh',
 			});
@@ -230,18 +143,89 @@ const ProjectList: React.FC<ProjectListProps> = ({
 		}
 
 		setItems(menuItems);
-	}, [projects, recentProjects, searchQuery, isSearchMode]);
+	}, [projects, searchQuery, isSearchMode]);
+
+	// Handle adding a project
+	const handleAddProject = () => {
+		if (!addProjectPath.trim()) {
+			setAddProjectError('Path cannot be empty');
+			return;
+		}
+
+		const result = projectManager.addProject(addProjectPath.trim());
+		if (result) {
+			setAddingProject(false);
+			setAddProjectPath('');
+			setAddProjectError(null);
+			loadProjects();
+		} else {
+			setAddProjectError('Not a valid git repository');
+		}
+	};
+
+	// Handle removing a project
+	const handleRemoveProject = (project: Project) => {
+		projectManager.removeProject(project.path);
+		setConfirmingDelete(null);
+		loadProjects();
+	};
+
+	// Get currently highlighted project for delete action
+	const getHighlightedProject = (): Project | null => {
+		// In search mode, use selectedIndex
+		if (isSearchMode) {
+			const selectableItems = items.filter(item => item.project);
+			if (selectedIndex >= 0 && selectedIndex < selectableItems.length) {
+				const projectPath = selectableItems[selectedIndex]?.project?.path;
+				if (projectPath) {
+					return projects.find(p => p.path === projectPath) || null;
+				}
+			}
+			return null;
+		}
+		// Otherwise use the highlighted item from SelectInput
+		if (highlightedItem?.project) {
+			return projects.find(p => p.path === highlightedItem.project?.path) || null;
+		}
+		return null;
+	};
 
 	// Handle hotkeys
-	useInput((input, _key) => {
+	useInput((input, key) => {
 		// Skip in test environment to avoid stdin.ref error
 		if (!process.stdin.setRawMode) {
 			return;
 		}
 
+		// Handle delete confirmation mode
+		if (confirmingDelete) {
+			if (key.escape || input.toLowerCase() === 'n') {
+				setConfirmingDelete(null);
+			} else if (input.toLowerCase() === 'y') {
+				handleRemoveProject(confirmingDelete);
+			}
+			return;
+		}
+
+		// Handle add project mode
+		if (addingProject) {
+			if (key.escape) {
+				setAddingProject(false);
+				setAddProjectPath('');
+				setAddProjectError(null);
+			} else if (key.return) {
+				handleAddProject();
+			}
+			return;
+		}
+
 		// Dismiss error on any key press when error is shown
 		if (displayError && onDismissError) {
-			onDismissError();
+			if (addProjectError) {
+				setAddProjectError(null);
+			} else {
+				onDismissError();
+			}
 			return;
 		}
 
@@ -255,7 +239,7 @@ const ProjectList: React.FC<ProjectListProps> = ({
 		// Handle number keys 0-9 for project selection
 		if (/^[0-9]$/.test(keyPressed)) {
 			const index = parseInt(keyPressed);
-			// Get all selectable items (recent + non-recent projects)
+			// Get all selectable items
 			const selectableItems = items.filter(item => item.project);
 			if (
 				index < Math.min(10, selectableItems.length) &&
@@ -267,6 +251,25 @@ const ProjectList: React.FC<ProjectListProps> = ({
 		}
 
 		switch (keyPressed) {
+			case 'a':
+				// Open add project input
+				setAddingProject(true);
+				setAddProjectPath(process.cwd()); // Default to current directory
+				break;
+			case 'd': {
+				// Remove currently highlighted project (with confirmation)
+				const project = getHighlightedProject();
+				if (project) {
+					setConfirmingDelete(project);
+				}
+				break;
+			}
+			case 'c':
+				// Open configuration/settings
+				if (onOpenConfiguration) {
+					onOpenConfiguration();
+				}
+				break;
 			case 'r':
 				// Refresh project list
 				loadProjects();
@@ -287,6 +290,19 @@ const ProjectList: React.FC<ProjectListProps> = ({
 	const handleSelect = (item: MenuItem) => {
 		if (item.value.startsWith('separator')) {
 			// Do nothing for separators
+		} else if (item.value === 'add-project') {
+			setAddingProject(true);
+			setAddProjectPath(process.cwd());
+		} else if (item.value === 'remove-project') {
+			// Remove currently highlighted project
+			const project = getHighlightedProject();
+			if (project) {
+				setConfirmingDelete(project);
+			}
+		} else if (item.value === 'settings') {
+			if (onOpenConfiguration) {
+				onOpenConfiguration();
+			}
 		} else if (item.value === 'refresh') {
 			loadProjects();
 		} else if (item.value === 'exit') {
@@ -306,7 +322,7 @@ const ProjectList: React.FC<ProjectListProps> = ({
 		<Box flexDirection="column">
 			<Box borderStyle="round" borderColor="cyan" paddingX={1} marginBottom={1}>
 				<Text bold color="cyan">
-					Agent Control Desk - Multi-Project Mode
+					Agent Control Desk - Project Manager
 				</Text>
 			</Box>
 
@@ -344,7 +360,41 @@ const ProjectList: React.FC<ProjectListProps> = ({
 				<Text dimColor>Select a project:</Text>
 			</Box>
 
-			{isSearchMode && (
+			{confirmingDelete ? (
+				<Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="red" paddingX={1}>
+					<Text color="red" bold>Remove project from list?</Text>
+					<Text>{confirmingDelete.name}</Text>
+					<Text dimColor>{confirmingDelete.path}</Text>
+					<Box marginTop={1}>
+						<Text>Press </Text>
+						<Text color="green" bold>Y</Text>
+						<Text> to confirm, </Text>
+						<Text color="yellow" bold>N</Text>
+						<Text> or </Text>
+						<Text color="yellow" bold>ESC</Text>
+						<Text> to cancel</Text>
+					</Box>
+					<Text dimColor>(This only removes from the list, not from disk)</Text>
+				</Box>
+			) : addingProject ? (
+				<Box flexDirection="column" marginBottom={1}>
+					<Box marginBottom={1}>
+						<Text>Add project path: </Text>
+						<TextInputWrapper
+							value={addProjectPath}
+							onChange={setAddProjectPath}
+							focus={true}
+							placeholder="Enter path to git repository..."
+						/>
+					</Box>
+					<Text dimColor>
+						Enter to add, Escape to cancel
+					</Text>
+					<Text dimColor>
+						Tip: Run `acd add .` from any project directory
+					</Text>
+				</Box>
+			) : isSearchMode ? (
 				<Box marginBottom={1}>
 					<Text>Search: </Text>
 					<TextInputWrapper
@@ -354,21 +404,28 @@ const ProjectList: React.FC<ProjectListProps> = ({
 						placeholder="Type to filter projects..."
 					/>
 				</Box>
-			)}
+			) : null}
 
 			{loading ? (
 				<Box>
 					<Text color="yellow">Loading projects...</Text>
 				</Box>
-			) : projects.length === 0 && !displayError ? (
-				<Box>
-					<Text color="yellow">No git repositories found in {projectsDir}</Text>
+			) : projects.length === 0 && !displayError && !addingProject ? (
+				<Box flexDirection="column" marginBottom={1}>
+					<Box marginBottom={1}>
+						<Text color="yellow">No projects tracked yet.</Text>
+					</Box>
+					<Box flexDirection="column">
+						<Text>Get started by adding a project:</Text>
+						<Text dimColor>  • Press A to add a project</Text>
+						<Text dimColor>  • Or run: acd add /path/to/project</Text>
+					</Box>
 				</Box>
 			) : isSearchMode && items.length === 0 ? (
 				<Box>
 					<Text color="yellow">No projects match your search</Text>
 				</Box>
-			) : isSearchMode ? (
+			) : addingProject ? null : isSearchMode ? (
 				// In search mode, show the items as a list without SelectInput
 				<Box flexDirection="column">
 					{items.slice(0, limit).map((item, index) => (
@@ -385,7 +442,8 @@ const ProjectList: React.FC<ProjectListProps> = ({
 				<SelectInput
 					items={items}
 					onSelect={handleSelect}
-					isFocused={!displayError}
+					onHighlight={setHighlightedItem}
+					isFocused={!displayError && !confirmingDelete}
 					limit={limit}
 					initialIndex={selectedIndex}
 				/>
@@ -412,11 +470,15 @@ const ProjectList: React.FC<ProjectListProps> = ({
 					</Text>
 				)}
 				<Text dimColor>
-					{isSearchMode
-						? 'Search Mode: Type to filter, Enter to exit search, ESC to exit search'
-						: searchQuery
-							? `Filtered: "${searchQuery}" | ↑↓ Navigate Enter Select | /-Search ESC-Clear 0-9 Quick Select R-Refresh Q-Quit`
-							: 'Controls: ↑↓ Navigate Enter Select | Hotkeys: 0-9 Quick Select /-Search R-Refresh Q-Quit'}
+					{confirmingDelete
+						? 'Y to confirm, N or ESC to cancel'
+						: addingProject
+							? 'Enter path to git repository'
+							: isSearchMode
+								? 'Search Mode: Type to filter, Enter to exit search, ESC to exit search'
+								: searchQuery
+									? `Filtered: "${searchQuery}" | ↑↓ Navigate Enter Select | /-Search ESC-Clear 0-9 Quick A-Add D-Del C-Settings Q-Quit`
+									: 'Controls: ↑↓ Navigate Enter Select | 0-9 Quick /-Search A-Add D-Del C-Settings R-Refresh Q-Quit'}
 				</Text>
 			</Box>
 		</Box>

@@ -15,29 +15,26 @@ vi.mock('../utils/configDir.js', () => ({
 
 // Now import modules that depend on the mocked modules
 import {ProjectManager} from './projectManager.js';
-import {ENV_VARS} from '../constants/env.js';
-import {GitProject} from '../types/index.js';
-import {FileSystemError, ConfigError} from '../types/errors.js';
+import {GitProject, Project} from '../types/index.js';
+import {FileSystemError} from '../types/errors.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockFs = fs as any;
 
 describe('ProjectManager', () => {
 	let projectManager: ProjectManager;
-	const mockProjectsDir = '/home/user/projects';
 	const mockConfigDir = '/home/user/.config/ccmanager';
-	const mockRecentProjectsPath =
-		'/home/user/.config/ccmanager/recent-projects.json';
+	const mockProjectsPath = '/home/user/.config/ccmanager/projects.json';
+	const mockLegacyPath = '/home/user/.config/ccmanager/recent-projects.json';
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		// Reset environment variables
-		delete process.env[ENV_VARS.MULTI_PROJECT_ROOT];
 
 		// Mock fs methods for config directory
-		mockFs.existsSync.mockImplementation((path: string) => {
-			if (path === mockConfigDir) return true;
-			if (path === mockRecentProjectsPath) return false;
+		mockFs.existsSync.mockImplementation((filePath: string) => {
+			if (filePath === mockConfigDir) return true;
+			if (filePath === mockProjectsPath) return false;
+			if (filePath === mockLegacyPath) return false;
 			return false;
 		});
 		mockFs.mkdirSync.mockImplementation(() => {});
@@ -50,274 +47,333 @@ describe('ProjectManager', () => {
 	});
 
 	describe('initialization', () => {
-		it('should initialize in normal mode when no multi-project root is set', () => {
+		it('should initialize with empty projects list', () => {
 			projectManager = new ProjectManager();
-			expect(projectManager.currentMode).toBe('normal');
 			expect(projectManager.currentProject).toBeUndefined();
-			expect(projectManager.projects).toEqual([]);
+			expect(projectManager.getProjects()).toEqual([]);
 		});
 
-		it('should initialize in multi-project mode when multi-project root is set', () => {
-			process.env[ENV_VARS.MULTI_PROJECT_ROOT] = mockProjectsDir;
-			projectManager = new ProjectManager();
-			expect(projectManager.currentMode).toBe('multi-project');
-		});
-	});
-
-	describe('project discovery', () => {
-		beforeEach(() => {
-			process.env[ENV_VARS.MULTI_PROJECT_ROOT] = mockProjectsDir;
-			projectManager = new ProjectManager();
-		});
-
-		it('should discover git projects in the projects directory', async () => {
-			// Mock file system for project discovery
-			mockFs.promises = {
-				access: vi.fn().mockResolvedValue(undefined),
-				readdir: vi.fn().mockImplementation((dir: string) => {
-					if (dir === mockProjectsDir) {
-						return Promise.resolve([
-							{name: 'project1', isDirectory: () => true},
-							{name: 'project2', isDirectory: () => true},
-							{name: 'not-a-project.txt', isDirectory: () => false},
-						]);
-					}
-					return Promise.resolve([]);
-				}),
-				stat: vi.fn().mockImplementation((path: string) => {
-					if (path.endsWith('.git')) {
-						return Promise.resolve({
-							isDirectory: () => true,
-							isFile: () => false,
-						});
-					}
-					throw new Error('Not found');
-				}),
-			};
-
-			await Effect.runPromise(projectManager.refreshProjectsEffect());
-
-			expect(projectManager.projects).toHaveLength(2);
-			expect(projectManager.projects[0]).toMatchObject({
-				name: 'project1',
-				path: path.join(mockProjectsDir, 'project1'),
-				isValid: true,
-			});
-			expect(projectManager.projects[1]).toMatchObject({
-				name: 'project2',
-				path: path.join(mockProjectsDir, 'project2'),
-				isValid: true,
-			});
-		});
-
-		it('should handle projects directory not existing', async () => {
-			mockFs.promises = {
-				access: vi.fn().mockRejectedValue({code: 'ENOENT'}),
-			};
-
-			const result = await Effect.runPromise(
-				Effect.either(projectManager.refreshProjectsEffect()),
-			);
-
-			expect(Either.isLeft(result)).toBe(true);
-			if (Either.isLeft(result)) {
-				const error = result.left;
-				expect(error._tag).toBe('FileSystemError');
-				if (error._tag === 'FileSystemError') {
-					expect(error.cause).toContain(
-						`Projects directory does not exist: ${mockProjectsDir}`,
-					);
-				}
-			}
-		});
-	});
-
-	describe('recent projects', () => {
-		beforeEach(() => {
-			projectManager = new ProjectManager();
-		});
-
-		it('should get recent projects with default limit', () => {
-			const mockRecentProjects = [
-				{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now()},
-				{
-					path: '/path/to/project2',
-					name: 'project2',
-					lastAccessed: Date.now() - 1000,
-				},
-				{
-					path: '/path/to/project3',
-					name: 'project3',
-					lastAccessed: Date.now() - 2000,
-				},
-				{
-					path: '/path/to/project4',
-					name: 'project4',
-					lastAccessed: Date.now() - 3000,
-				},
-				{
-					path: '/path/to/project5',
-					name: 'project5',
-					lastAccessed: Date.now() - 4000,
-				},
-				{
-					path: '/path/to/project6',
-					name: 'project6',
-					lastAccessed: Date.now() - 5000,
-				},
+		it('should load existing projects on initialization', () => {
+			const mockProjects: Project[] = [
+				{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now(), isValid: true},
+				{path: '/path/to/project2', name: 'project2', lastAccessed: Date.now() - 1000, isValid: true},
 			];
 
-			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockRecentProjects));
-			mockFs.existsSync.mockReturnValue(true);
+			mockFs.existsSync.mockImplementation((filePath: string) => {
+				if (filePath === mockConfigDir) return true;
+				if (filePath === mockProjectsPath) return true;
+				return false;
+			});
+			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockProjects));
 
-			// Re-create to load recent projects
 			projectManager = new ProjectManager();
-			const recent = projectManager.getRecentProjects();
+			const projects = projectManager.getProjects();
 
-			expect(recent).toHaveLength(5); // Default limit
-			expect(recent[0]?.name).toBe('project1');
-			expect(recent[4]?.name).toBe('project5');
+			expect(projects).toHaveLength(2);
+			expect(projects[0]?.name).toBe('project1');
 		});
 
-		it('should get recent projects with custom limit', () => {
-			const mockRecentProjects = [
+		it('should migrate from legacy recent-projects.json', () => {
+			const legacyProjects = [
 				{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now()},
-				{
-					path: '/path/to/project2',
-					name: 'project2',
-					lastAccessed: Date.now() - 1000,
-				},
-				{
-					path: '/path/to/project3',
-					name: 'project3',
-					lastAccessed: Date.now() - 2000,
-				},
+				{path: '/path/to/project2', name: 'project2', lastAccessed: Date.now() - 1000},
 			];
 
-			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockRecentProjects));
-			mockFs.existsSync.mockReturnValue(true);
+			mockFs.existsSync.mockImplementation((filePath: string) => {
+				if (filePath === mockConfigDir) return true;
+				if (filePath === mockProjectsPath) return false;
+				if (filePath === mockLegacyPath) return true;
+				// For validateProjects() called during load
+				if (filePath === '/path/to/project1') return true;
+				if (filePath === '/path/to/project1/.git') return true;
+				if (filePath === '/path/to/project2') return true;
+				if (filePath === '/path/to/project2/.git') return true;
+				return false;
+			});
+			mockFs.readFileSync.mockReturnValue(JSON.stringify(legacyProjects));
 
 			projectManager = new ProjectManager();
-			const recent = projectManager.getRecentProjects(2);
+			const projects = projectManager.getProjects();
 
-			expect(recent).toHaveLength(2);
-		});
-
-		it('should add a recent project', () => {
-			const project: GitProject = {
-				name: 'test-project',
-				path: '/path/to/test-project',
-				relativePath: 'test-project',
-				isValid: true,
-			};
-
-			projectManager.addRecentProject(project);
-
+			expect(projects).toHaveLength(2);
+			// Should have added isValid field during migration
+			expect(projects[0]?.isValid).toBe(true);
+			// Should have written new projects.json
 			expect(mockFs.writeFileSync).toHaveBeenCalled();
-			const writtenData = JSON.parse(mockFs.writeFileSync.mock.calls[0][1]);
-			expect(writtenData).toHaveLength(1);
-			expect(writtenData[0]).toMatchObject({
-				path: project.path,
-				name: project.name,
-			});
 		});
+	});
 
-		it('should update existing recent project', () => {
-			const existingProject = {
-				path: '/path/to/project1',
-				name: 'project1',
-				lastAccessed: Date.now() - 10000,
-			};
+	describe('getProjects', () => {
+		it('should return projects sorted by lastAccessed (newest first)', () => {
+			const mockProjects: Project[] = [
+				{path: '/path/to/old', name: 'old', lastAccessed: Date.now() - 10000, isValid: true},
+				{path: '/path/to/new', name: 'new', lastAccessed: Date.now(), isValid: true},
+				{path: '/path/to/mid', name: 'mid', lastAccessed: Date.now() - 5000, isValid: true},
+			];
 
-			mockFs.readFileSync.mockReturnValue(JSON.stringify([existingProject]));
 			mockFs.existsSync.mockReturnValue(true);
+			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockProjects));
 
 			projectManager = new ProjectManager();
+			const projects = projectManager.getProjects();
 
-			const updatedProject: GitProject = {
-				name: 'project1',
-				path: '/path/to/project1',
-				relativePath: 'project1',
-				isValid: true,
-			};
+			expect(projects[0]?.name).toBe('new');
+			expect(projects[1]?.name).toBe('mid');
+			expect(projects[2]?.name).toBe('old');
+		});
+	});
 
-			projectManager.addRecentProject(updatedProject);
-
-			const writtenData = JSON.parse(mockFs.writeFileSync.mock.calls[0][1]);
-			expect(writtenData).toHaveLength(1);
-			expect(writtenData[0].lastAccessed).toBeGreaterThan(
-				existingProject.lastAccessed,
-			);
+	describe('addProject', () => {
+		beforeEach(() => {
+			projectManager = new ProjectManager();
 		});
 
-		it('should not add EXIT_APPLICATION to recent projects', () => {
-			const exitProject: GitProject = {
-				name: 'Exit',
-				path: 'EXIT_APPLICATION',
-				relativePath: '',
-				isValid: true,
-			};
+		it('should add a valid git project', () => {
+			// Mock .git directory exists
+			mockFs.existsSync.mockImplementation((filePath: string) => {
+				if (filePath.endsWith('.git')) return true;
+				if (filePath === mockConfigDir) return true;
+				return false;
+			});
 
-			projectManager.addRecentProject(exitProject);
+			const result = projectManager.addProject('/path/to/project');
 
+			expect(result).not.toBeNull();
+			expect(result?.name).toBe('project');
+			expect(result?.path).toBe('/path/to/project');
+			expect(result?.isValid).toBe(true);
+			expect(mockFs.writeFileSync).toHaveBeenCalled();
+		});
+
+		it('should add project with description', () => {
+			mockFs.existsSync.mockImplementation((filePath: string) => {
+				if (filePath.endsWith('.git')) return true;
+				if (filePath === mockConfigDir) return true;
+				return false;
+			});
+
+			const result = projectManager.addProject('/path/to/project', 'My awesome project');
+
+			expect(result?.description).toBe('My awesome project');
+		});
+
+		it('should return null for non-git directory', () => {
+			mockFs.existsSync.mockImplementation((filePath: string) => {
+				if (filePath.endsWith('.git')) return false;
+				if (filePath === mockConfigDir) return true;
+				return false;
+			});
+
+			const result = projectManager.addProject('/path/to/not-git');
+
+			expect(result).toBeNull();
 			expect(mockFs.writeFileSync).not.toHaveBeenCalled();
 		});
 
-		it('should clear recent projects', () => {
-			projectManager.clearRecentProjects();
-
-			expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-				mockRecentProjectsPath,
-				JSON.stringify([], null, 2),
-			);
-		});
-	});
-
-	describe('mode management', () => {
-		beforeEach(() => {
-			process.env[ENV_VARS.MULTI_PROJECT_ROOT] = mockProjectsDir;
-			projectManager = new ProjectManager();
-		});
-
-		it('should set mode correctly', () => {
-			projectManager.setMode('normal');
-			expect(projectManager.currentMode).toBe('normal');
-
-			projectManager.setMode('multi-project');
-			expect(projectManager.currentMode).toBe('multi-project');
-		});
-
-		it('should clear current project when switching to normal mode', () => {
-			const project: GitProject = {
-				name: 'test',
-				path: '/test',
-				relativePath: 'test',
+		it('should update lastAccessed for existing project', () => {
+			const existingProject: Project = {
+				path: '/path/to/project',
+				name: 'project',
+				lastAccessed: Date.now() - 10000,
 				isValid: true,
 			};
 
-			projectManager.selectProject(project);
-			expect(projectManager.currentProject).toBe(project);
+			mockFs.existsSync.mockImplementation((filePath: string) => {
+				if (filePath.endsWith('.git')) return true;
+				if (filePath === mockConfigDir) return true;
+				if (filePath === mockProjectsPath) return true;
+				return false;
+			});
+			mockFs.readFileSync.mockReturnValue(JSON.stringify([existingProject]));
 
-			projectManager.setMode('normal');
-			expect(projectManager.currentProject).toBeUndefined();
+			projectManager = new ProjectManager();
+			const result = projectManager.addProject('/path/to/project');
+
+			expect(result).not.toBeNull();
+			expect(result!.lastAccessed).toBeGreaterThan(existingProject.lastAccessed);
 		});
 	});
 
-	describe('project selection', () => {
-		beforeEach(() => {
+	describe('removeProject', () => {
+		it('should remove an existing project', () => {
+			const mockProjects: Project[] = [
+				{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now(), isValid: true},
+				{path: '/path/to/project2', name: 'project2', lastAccessed: Date.now(), isValid: true},
+			];
+
+			mockFs.existsSync.mockReturnValue(true);
+			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockProjects));
+
 			projectManager = new ProjectManager();
+			const result = projectManager.removeProject('/path/to/project1');
+
+			expect(result).toBe(true);
+			expect(projectManager.getProjects()).toHaveLength(1);
+			expect(projectManager.getProjects()[0]?.name).toBe('project2');
 		});
 
-		it('should select a project', () => {
-			const project: GitProject = {
-				name: 'test',
-				path: '/test',
-				relativePath: 'test',
+		it('should return false for non-existent project', () => {
+			projectManager = new ProjectManager();
+			const result = projectManager.removeProject('/path/to/nonexistent');
+
+			expect(result).toBe(false);
+		});
+	});
+
+	describe('updateProject', () => {
+		it('should update project name', () => {
+			const mockProjects: Project[] = [
+				{path: '/path/to/project', name: 'old-name', lastAccessed: Date.now(), isValid: true},
+			];
+
+			mockFs.existsSync.mockReturnValue(true);
+			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockProjects));
+
+			projectManager = new ProjectManager();
+			const result = projectManager.updateProject('/path/to/project', {name: 'new-name'});
+
+			expect(result?.name).toBe('new-name');
+		});
+
+		it('should update project description', () => {
+			const mockProjects: Project[] = [
+				{path: '/path/to/project', name: 'project', lastAccessed: Date.now(), isValid: true},
+			];
+
+			mockFs.existsSync.mockReturnValue(true);
+			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockProjects));
+
+			projectManager = new ProjectManager();
+			const result = projectManager.updateProject('/path/to/project', {description: 'Updated desc'});
+
+			expect(result?.description).toBe('Updated desc');
+		});
+
+		it('should return null for non-existent project', () => {
+			projectManager = new ProjectManager();
+			const result = projectManager.updateProject('/path/to/nonexistent', {name: 'new-name'});
+
+			expect(result).toBeNull();
+		});
+	});
+
+	describe('hasProject', () => {
+		it('should return true for existing project', () => {
+			const mockProjects: Project[] = [
+				{path: '/path/to/project', name: 'project', lastAccessed: Date.now(), isValid: true},
+			];
+
+			mockFs.existsSync.mockReturnValue(true);
+			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockProjects));
+
+			projectManager = new ProjectManager();
+			expect(projectManager.hasProject('/path/to/project')).toBe(true);
+		});
+
+		it('should return false for non-existent project', () => {
+			projectManager = new ProjectManager();
+			expect(projectManager.hasProject('/path/to/nonexistent')).toBe(false);
+		});
+	});
+
+	describe('getProject', () => {
+		it('should return project by path', () => {
+			const mockProjects: Project[] = [
+				{path: '/path/to/project', name: 'project', lastAccessed: Date.now(), isValid: true},
+			];
+
+			mockFs.existsSync.mockReturnValue(true);
+			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockProjects));
+
+			projectManager = new ProjectManager();
+			const result = projectManager.getProject('/path/to/project');
+
+			expect(result?.name).toBe('project');
+		});
+
+		it('should return undefined for non-existent project', () => {
+			projectManager = new ProjectManager();
+			const result = projectManager.getProject('/path/to/nonexistent');
+
+			expect(result).toBeUndefined();
+		});
+	});
+
+	describe('validateProjects', () => {
+		it('should mark invalid projects', () => {
+			const mockProjects: Project[] = [
+				{path: '/path/to/valid', name: 'valid', lastAccessed: Date.now(), isValid: true},
+				{path: '/path/to/invalid', name: 'invalid', lastAccessed: Date.now(), isValid: true},
+			];
+
+			mockFs.existsSync.mockImplementation((filePath: string) => {
+				if (filePath === mockConfigDir) return true;
+				if (filePath === mockProjectsPath) return true;
+				// Valid project - both path and .git exist
+				if (filePath === '/path/to/valid') return true;
+				if (filePath === '/path/to/valid/.git') return true;
+				// Invalid project - path doesn't exist
+				if (filePath === '/path/to/invalid') return false;
+				if (filePath === '/path/to/invalid/.git') return false;
+				return false;
+			});
+			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockProjects));
+
+			projectManager = new ProjectManager();
+			// validateProjects is already called during load, but let's ensure state is correct
+			const projects = projectManager.getProjects();
+			const validProject = projects.find(p => p.name === 'valid');
+			const invalidProject = projects.find(p => p.name === 'invalid');
+
+			expect(validProject?.isValid).toBe(true);
+			expect(invalidProject?.isValid).toBe(false);
+		});
+	});
+
+	describe('selectProject', () => {
+		it('should select a project and update lastAccessed', () => {
+			const mockProjects: Project[] = [
+				{path: '/path/to/project', name: 'project', lastAccessed: Date.now() - 10000, isValid: true},
+			];
+
+			mockFs.existsSync.mockReturnValue(true);
+			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockProjects));
+
+			projectManager = new ProjectManager();
+			const initialLastAccessed = projectManager.getProjects()[0]?.lastAccessed;
+
+			const gitProject: GitProject = {
+				name: 'project',
+				path: '/path/to/project',
+				relativePath: 'project',
 				isValid: true,
 			};
 
-			projectManager.selectProject(project);
-			expect(projectManager.currentProject).toBe(project);
+			projectManager.selectProject(gitProject);
+
+			expect(projectManager.currentProject).toBe(gitProject);
+			expect(projectManager.getProjects()[0]?.lastAccessed).toBeGreaterThan(initialLastAccessed!);
+		});
+	});
+
+	describe('toGitProject', () => {
+		it('should convert Project to GitProject', () => {
+			projectManager = new ProjectManager();
+
+			const project: Project = {
+				path: '/path/to/project',
+				name: 'project',
+				description: 'Test project',
+				lastAccessed: Date.now(),
+				isValid: true,
+			};
+
+			const gitProject = projectManager.toGitProject(project);
+
+			expect(gitProject.path).toBe(project.path);
+			expect(gitProject.name).toBe(project.name);
+			expect(gitProject.relativePath).toBe(project.name);
+			expect(gitProject.isValid).toBe(project.isValid);
 		});
 	});
 
@@ -370,45 +426,6 @@ describe('ProjectManager', () => {
 		});
 	});
 
-	describe('helper methods', () => {
-		beforeEach(() => {
-			projectManager = new ProjectManager();
-		});
-
-		it('should check if multi-project is enabled', () => {
-			expect(projectManager.isMultiProjectEnabled()).toBe(false);
-
-			process.env[ENV_VARS.MULTI_PROJECT_ROOT] = mockProjectsDir;
-			projectManager = new ProjectManager();
-
-			expect(projectManager.isMultiProjectEnabled()).toBe(true);
-		});
-
-		it('should get projects directory', () => {
-			expect(projectManager.getProjectsDir()).toBeUndefined();
-
-			process.env[ENV_VARS.MULTI_PROJECT_ROOT] = mockProjectsDir;
-			projectManager = new ProjectManager();
-
-			expect(projectManager.getProjectsDir()).toBe(mockProjectsDir);
-		});
-
-		it('should get current project path', () => {
-			const cwd = process.cwd();
-			expect(projectManager.getCurrentProjectPath()).toBe(cwd);
-
-			const project: GitProject = {
-				name: 'test',
-				path: '/test/project',
-				relativePath: 'test',
-				isValid: true,
-			};
-
-			projectManager.selectProject(project);
-			expect(projectManager.getCurrentProjectPath()).toBe('/test/project');
-		});
-	});
-
 	describe('project validation', () => {
 		beforeEach(() => {
 			projectManager = new ProjectManager();
@@ -431,197 +448,76 @@ describe('ProjectManager', () => {
 				stat: vi.fn().mockRejectedValue(new Error('Not found')),
 			};
 
-			const isValid =
-				await projectManager.validateGitRepository('/test/not-repo');
+			const isValid = await projectManager.validateGitRepository('/test/not-repo');
 			expect(isValid).toBe(false);
 		});
 	});
 
-	describe('Effect-based API', () => {
-		beforeEach(() => {
-			process.env[ENV_VARS.MULTI_PROJECT_ROOT] = mockProjectsDir;
+	describe('getCurrentProjectPath', () => {
+		it('should return cwd when no project selected', () => {
 			projectManager = new ProjectManager();
+			const cwd = process.cwd();
+			expect(projectManager.getCurrentProjectPath()).toBe(cwd);
 		});
 
-		describe('discoverProjectsEffect', () => {
+		it('should return project path when project selected', () => {
+			projectManager = new ProjectManager();
+			const project: GitProject = {
+				name: 'test',
+				path: '/test/project',
+				relativePath: 'test',
+				isValid: true,
+			};
+
+			projectManager.selectProject(project);
+			expect(projectManager.getCurrentProjectPath()).toBe('/test/project');
+		});
+	});
+
+	describe('Effect-based API', () => {
+		describe('loadProjectsEffect', () => {
 			it('should return Effect with projects on success', async () => {
-				// Mock file system for project discovery
-				mockFs.promises = {
-					access: vi.fn().mockResolvedValue(undefined),
-					readdir: vi.fn().mockImplementation((dir: string) => {
-						if (dir === mockProjectsDir) {
-							return Promise.resolve([
-								{name: 'project1', isDirectory: () => true},
-								{name: 'project2', isDirectory: () => true},
-							]);
-						}
-						return Promise.resolve([]);
-					}),
-					stat: vi.fn().mockImplementation((path: string) => {
-						if (path.endsWith('.git')) {
-							return Promise.resolve({
-								isDirectory: () => true,
-								isFile: () => false,
-							});
-						}
-						throw new Error('Not found');
-					}),
-				};
-
-				const effect = projectManager.discoverProjectsEffect(mockProjectsDir);
-				const projects = await Effect.runPromise(effect);
-
-				expect(projects).toHaveLength(2);
-				expect(projects[0]).toMatchObject({
-					name: 'project1',
-					isValid: true,
-				});
-			});
-
-			it('should return Effect with FileSystemError when directory does not exist', async () => {
-				mockFs.promises = {
-					access: vi.fn().mockRejectedValue({code: 'ENOENT'}),
-				};
-
-				const effect = projectManager.discoverProjectsEffect(mockProjectsDir);
-				const result = await Effect.runPromise(Effect.either(effect));
-
-				expect(Either.isLeft(result)).toBe(true);
-				if (Either.isLeft(result)) {
-					const error = result.left;
-					expect(error._tag).toBe('FileSystemError');
-					expect(error).toBeInstanceOf(FileSystemError);
-					expect(error.operation).toBe('read');
-					expect(error.path).toBe(mockProjectsDir);
-				}
-			});
-
-			it('should use Effect.all for parallel project scanning', async () => {
-				mockFs.promises = {
-					access: vi.fn().mockResolvedValue(undefined),
-					readdir: vi.fn().mockImplementation(() => {
-						return Promise.resolve([
-							{name: 'project1', isDirectory: () => true},
-							{name: 'project2', isDirectory: () => true},
-							{name: 'project3', isDirectory: () => true},
-						]);
-					}),
-					stat: vi.fn().mockImplementation((path: string) => {
-						if (path.endsWith('.git')) {
-							return Promise.resolve({
-								isDirectory: () => true,
-								isFile: () => false,
-							});
-						}
-						throw new Error('Not found');
-					}),
-				};
-
-				const effect = projectManager.discoverProjectsEffect(mockProjectsDir);
-				const projects = await Effect.runPromise(effect);
-
-				expect(projects).toHaveLength(3);
-			});
-		});
-
-		describe('loadRecentProjectsEffect', () => {
-			it('should return Effect with recent projects on success', async () => {
-				const mockRecentProjects = [
-					{
-						path: '/path/to/project1',
-						name: 'project1',
-						lastAccessed: Date.now(),
-					},
-					{
-						path: '/path/to/project2',
-						name: 'project2',
-						lastAccessed: Date.now() - 1000,
-					},
+				const mockProjects: Project[] = [
+					{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now(), isValid: true},
+					{path: '/path/to/project2', name: 'project2', lastAccessed: Date.now() - 1000, isValid: true},
 				];
 
-				mockFs.readFileSync.mockReturnValue(JSON.stringify(mockRecentProjects));
 				mockFs.existsSync.mockReturnValue(true);
+				mockFs.readFileSync.mockReturnValue(JSON.stringify(mockProjects));
 
-				// Re-create to load recent projects
 				projectManager = new ProjectManager();
-				const effect = projectManager.loadRecentProjectsEffect();
+				const effect = projectManager.loadProjectsEffect();
 				const projects = await Effect.runPromise(effect);
 
 				expect(projects).toHaveLength(2);
 				expect(projects[0]?.name).toBe('project1');
 			});
 
-			it('should return Effect with FileSystemError when file read fails', async () => {
-				mockFs.existsSync.mockReturnValue(true);
-				mockFs.readFileSync.mockImplementation(() => {
-					throw new Error('Permission denied');
-				});
-
-				projectManager = new ProjectManager();
-				const effect = projectManager.loadRecentProjectsEffect();
-				const result = await Effect.runPromise(Effect.either(effect));
-
-				expect(Either.isLeft(result)).toBe(true);
-				if (Either.isLeft(result)) {
-					const error = result.left;
-					expect(error._tag).toBe('FileSystemError');
-					expect(error).toBeInstanceOf(FileSystemError);
-					if (error._tag === 'FileSystemError') {
-						expect(error.operation).toBe('read');
-					}
-				}
-			});
-
-			it('should return Effect with ConfigError when JSON parse fails', async () => {
-				mockFs.existsSync.mockReturnValue(true);
-				mockFs.readFileSync.mockReturnValue('invalid json{');
-
-				projectManager = new ProjectManager();
-				const effect = projectManager.loadRecentProjectsEffect();
-				const result = await Effect.runPromise(Effect.either(effect));
-
-				expect(Either.isLeft(result)).toBe(true);
-				if (Either.isLeft(result)) {
-					const error = result.left;
-					expect(error._tag).toBe('ConfigError');
-					expect(error).toBeInstanceOf(ConfigError);
-					if (error._tag === 'ConfigError') {
-						expect(error.reason).toBe('parse');
-					}
-				}
-			});
-
-			it('should use Effect.catchAll for fallback to empty cache on error', async () => {
+			it('should return empty array when file does not exist', async () => {
 				mockFs.existsSync.mockReturnValue(false);
 
 				projectManager = new ProjectManager();
-				const effect = projectManager.loadRecentProjectsEffect();
-				const projects = await Effect.runPromise(
-					Effect.catchAll(effect, () => Effect.succeed([])),
-				);
+				const effect = projectManager.loadProjectsEffect();
+				const projects = await Effect.runPromise(effect);
 
 				expect(projects).toEqual([]);
 			});
 		});
 
-		describe('saveRecentProjectsEffect', () => {
+		describe('saveProjectsEffect', () => {
 			it('should return Effect with void on success', async () => {
 				mockFs.writeFileSync.mockImplementation(() => {});
 
 				projectManager = new ProjectManager();
-				const projects = [
-					{
-						path: '/path/to/project1',
-						name: 'project1',
-						lastAccessed: Date.now(),
-					},
+				const projects: Project[] = [
+					{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now(), isValid: true},
 				];
 
-				const effect = projectManager.saveRecentProjectsEffect(projects);
+				const effect = projectManager.saveProjectsEffect(projects);
 				await Effect.runPromise(effect);
 
 				expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-					mockRecentProjectsPath,
+					mockProjectsPath,
 					expect.any(String),
 				);
 			});
@@ -632,15 +528,11 @@ describe('ProjectManager', () => {
 				});
 
 				projectManager = new ProjectManager();
-				const projects = [
-					{
-						path: '/path/to/project1',
-						name: 'project1',
-						lastAccessed: Date.now(),
-					},
+				const projects: Project[] = [
+					{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now(), isValid: true},
 				];
 
-				const effect = projectManager.saveRecentProjectsEffect(projects);
+				const effect = projectManager.saveProjectsEffect(projects);
 				const result = await Effect.runPromise(Effect.either(effect));
 
 				expect(Either.isLeft(result)).toBe(true);
@@ -653,61 +545,20 @@ describe('ProjectManager', () => {
 			});
 		});
 
-		describe('refreshProjectsEffect', () => {
-			it('should return Effect with void on success', async () => {
-				mockFs.promises = {
-					access: vi.fn().mockResolvedValue(undefined),
-					readdir: vi.fn().mockImplementation(() => {
-						return Promise.resolve([
-							{name: 'project1', isDirectory: () => true},
-						]);
-					}),
-					stat: vi.fn().mockImplementation((path: string) => {
-						if (path.endsWith('.git')) {
-							return Promise.resolve({
-								isDirectory: () => true,
-								isFile: () => false,
-							});
-						}
-						throw new Error('Not found');
-					}),
-				};
+		describe('addProjectEffect', () => {
+			it('should return Effect with project on success', async () => {
+				mockFs.existsSync.mockImplementation((filePath: string) => {
+					if (filePath.endsWith('.git')) return true;
+					if (filePath === mockConfigDir) return true;
+					return false;
+				});
 
-				const effect = projectManager.refreshProjectsEffect();
-				await Effect.runPromise(effect);
-
-				expect(projectManager.projects).toHaveLength(1);
-			});
-
-			it('should return Effect with FileSystemError when projects directory not configured', async () => {
-				// Create without multi-project root
-				delete process.env[ENV_VARS.MULTI_PROJECT_ROOT];
 				projectManager = new ProjectManager();
+				const effect = projectManager.addProjectEffect('/path/to/project');
+				const result = await Effect.runPromise(effect);
 
-				const effect = projectManager.refreshProjectsEffect();
-				const result = await Effect.runPromise(Effect.either(effect));
-
-				expect(Either.isLeft(result)).toBe(true);
-				if (Either.isLeft(result)) {
-					const error = result.left;
-					expect(error._tag).toBe('FileSystemError');
-					expect(error).toBeInstanceOf(FileSystemError);
-				}
-			});
-
-			it('should return Effect with FileSystemError or GitError on discovery failure', async () => {
-				mockFs.promises = {
-					access: vi.fn().mockRejectedValue({code: 'ENOENT'}),
-				};
-
-				const effect = projectManager.refreshProjectsEffect();
-				const result = await Effect.runPromise(Effect.either(effect));
-
-				expect(Either.isLeft(result)).toBe(true);
-				if (Either.isLeft(result)) {
-					const error = result.left;
-					expect(['FileSystemError', 'GitError']).toContain(error._tag);
-				}
+				expect(result.name).toBe('project');
+				expect(result.path).toBe('/path/to/project');
 			});
 		});
 	});

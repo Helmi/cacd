@@ -34,35 +34,34 @@ const {ENV_VARS, generateRandomPort} = await import('./constants/env.js');
 const cli = meow(
 	`
 	Usage
-	  $ acd
+	  $ acd                    Launch the TUI
+	  $ acd add [path]         Add a project (default: current directory)
+	  $ acd remove <path>      Remove a project from the list
+	  $ acd list               List all tracked projects
 
 	Options
 	  --help                Show help
 	  --version             Show version
 	  --port <number>       Port for web interface (overrides config/env)
-	  --multi-project       Enable multi-project mode
 	  --devc-up-command     Command to start devcontainer
 	  --devc-exec-command   Command to execute in devcontainer
 
 	Environment Variables
 	  ACD_PORT              Port for web interface
 	  ACD_CONFIG_DIR        Configuration directory (default: ~/.config/ccmanager/)
-	  ACD_PROJECTS_DIR      Projects directory for multi-project mode
 
 	Examples
-	  $ acd
-	  $ acd --port 8080
-	  $ ACD_CONFIG_DIR=/tmp/acd-dev acd --port 3001
+	  $ acd                         # Launch TUI
+	  $ acd add                     # Add current directory as project
+	  $ acd add /path/to/project    # Add specific project
+	  $ acd list                    # Show tracked projects
+	  $ acd --port 8080             # Launch TUI on specific port
 `,
 	{
 		importMeta: import.meta,
 		flags: {
 			port: {
 				type: 'number',
-			},
-			multiProject: {
-				type: 'boolean',
-				default: false,
 			},
 			devcUpCommand: {
 				type: 'string',
@@ -82,36 +81,86 @@ if (!!cli.flags.devcUpCommand !== !!cli.flags.devcExecCommand) {
 	process.exit(1);
 }
 
-// Check if we're in a TTY environment
-if (!process.stdin.isTTY || !process.stdout.isTTY) {
-	console.error('Error: acd must be run in an interactive terminal (TTY)');
+// Import projectManager for CLI subcommands
+const {projectManager} = await import('./services/projectManager.js');
+
+// Handle CLI subcommands (add, remove, list)
+const subcommand = cli.input[0];
+
+if (subcommand === 'add') {
+	// Add project - use provided path or current directory
+	const projectPath = cli.input[1] || process.cwd();
+	const result = projectManager.addProject(projectPath);
+	if (result) {
+		console.log(`✓ Added project: ${result.name}`);
+		console.log(`  Path: ${result.path}`);
+	} else {
+		console.error(`✗ Failed to add project: ${projectPath}`);
+		console.error('  Not a valid git repository (no .git directory found)');
+		process.exit(1);
+	}
+	process.exit(0);
+}
+
+if (subcommand === 'remove') {
+	// Remove project - require path argument
+	const projectPath = cli.input[1];
+	if (!projectPath) {
+		console.error('Error: Path required for remove command');
+		console.error('Usage: acd remove <path>');
+		process.exit(1);
+	}
+	const removed = projectManager.removeProject(projectPath);
+	if (removed) {
+		console.log(`✓ Removed project: ${projectPath}`);
+	} else {
+		console.error(`✗ Project not found: ${projectPath}`);
+		process.exit(1);
+	}
+	process.exit(0);
+}
+
+if (subcommand === 'list') {
+	// Validate projects first to show current isValid status
+	projectManager.instance.validateProjects();
+	// List all projects
+	const projects = projectManager.getProjects();
+	if (projects.length === 0) {
+		console.log('No projects tracked yet.');
+		console.log('');
+		console.log('Add a project with:');
+		console.log('  acd add .              # Add current directory');
+		console.log('  acd add /path/to/repo  # Add specific path');
+	} else {
+		console.log(`Tracked projects (${projects.length}):`);
+		console.log('');
+		for (const project of projects) {
+			const validIndicator = project.isValid === false ? ' ⚠️  (invalid)' : '';
+			console.log(`  ${project.name}${validIndicator}`);
+			console.log(`    ${project.path}`);
+			if (project.description) {
+				console.log(`    ${project.description}`);
+			}
+		}
+	}
+	process.exit(0);
+}
+
+// If there's an unrecognized subcommand, show error
+if (subcommand && !['add', 'remove', 'list'].includes(subcommand)) {
+	console.error(`Unknown command: ${subcommand}`);
+	console.error('');
+	console.error('Available commands:');
+	console.error('  acd add [path]    Add a project');
+	console.error('  acd remove <path> Remove a project');
+	console.error('  acd list          List projects');
+	console.error('  acd               Launch TUI');
 	process.exit(1);
 }
 
-// Check for ACD_PROJECTS_DIR when using --multi-project
-// Also auto-enable multi-project mode if the env var is set
-if (process.env['ACD_PROJECTS_DIR']) {
-	cli.flags.multiProject = true;
-} else {
-	// Check config if env var is missing
-	const multiProjectConfig = configurationManager.getMultiProjectConfig();
-	if (multiProjectConfig?.projectsDir) {
-		process.env['ACD_PROJECTS_DIR'] = multiProjectConfig.projectsDir;
-		// Auto-enable if configured (default to true if projectsDir is set)
-		if (multiProjectConfig.enabled !== false) {
-			cli.flags.multiProject = true;
-		}
-	}
-}
-
-if (cli.flags.multiProject && !process.env['ACD_PROJECTS_DIR']) {
-	console.error(
-		'Error: ACD_PROJECTS_DIR environment variable must be set when using --multi-project',
-	);
-	console.error(
-		'Please set it to the root directory containing your projects, e.g.:',
-	);
-	console.error('  export ACD_PROJECTS_DIR=/path/to/projects');
+// If no subcommand, continue to TUI - check TTY
+if (!process.stdin.isTTY || !process.stdout.isTTY) {
+	console.error('Error: acd must be run in an interactive terminal (TTY)');
 	process.exit(1);
 }
 
@@ -225,7 +274,6 @@ const devcontainerConfig =
 // Pass config to App
 const appProps = {
 	...(devcontainerConfig ? {devcontainerConfig} : {}),
-	multiProject: cli.flags.multiProject,
 	webConfig,
 };
 

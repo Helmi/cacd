@@ -734,10 +734,6 @@ export class ConfigurationManager {
 		return this.config.autoApproval?.enabled ?? false;
 	}
 
-	getMultiProjectConfig(): ConfigurationData['multiProject'] {
-		return this.config.multiProject;
-	}
-
 	/**
 	 * Get the configured port for the web interface.
 	 * Returns undefined if not set (caller should generate random port).

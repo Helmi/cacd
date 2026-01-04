@@ -91,7 +91,8 @@ export class CoreService extends EventEmitter {
         this.sessionManager.removeAllListeners(); // Be careful not to remove internal listeners if any
         this.setupServiceListeners();
         
-        projectManager.addRecentProject(project);
+        // Update lastAccessed in project registry
+        projectManager.instance.selectProject(project);
         
         this.emit('projectSelected', project);
         this.emit('servicesUpdated', { 

@@ -146,33 +146,16 @@ export interface ConfigurationData {
 		customCommand?: string; // Custom verification command; must output JSON matching AutoApprovalResponse
 		timeout?: number; // Timeout in seconds for auto-approval verification (default: 30)
 	};
-	multiProject?: {
-		enabled?: boolean;
-		projectsDir?: string;
-	};
 	port?: number; // Port for web interface (generated randomly on first run if not set)
 }
 
-// Multi-project support interfaces
+// Project interfaces
 export interface GitProject {
 	name: string; // Project name (directory name)
 	path: string; // Full path to the git repository
-	relativePath: string; // Relative path from ACD_PROJECTS_DIR
+	relativePath: string; // Relative path (kept for compatibility, usually same as name)
 	isValid: boolean; // Whether the project is a valid git repository
 	error?: string; // Error message if project is invalid
-}
-
-export interface MultiProjectConfig {
-	enabled: boolean; // Whether multi-project mode is enabled
-	projectsDir: string; // Path to directory containing git projects (from ACD_PROJECTS_DIR)
-	rootMarker?: string; // Optional marker from ACD_PROJECTS_DIR
-}
-
-export type MenuMode = 'normal' | 'multi-project';
-
-export interface IMultiProjectService {
-	discoverProjects(projectsDir: string): Promise<GitProject[]>;
-	validateGitRepository(path: string): Promise<boolean>;
 }
 
 export interface RecentProject {
@@ -181,19 +164,30 @@ export interface RecentProject {
 	lastAccessed: number;
 }
 
-export interface IProjectManager {
-	currentMode: MenuMode;
-	currentProject?: GitProject;
-	projects: GitProject[];
+/**
+ * Project entry in the managed project list.
+ * Projects are explicitly added by users (no auto-discovery).
+ */
+export interface Project {
+	path: string; // Absolute path (unique key)
+	name: string; // Display name (default: directory name)
+	description?: string; // Optional user description
+	lastAccessed: number; // Unix timestamp
+	isValid?: boolean; // Set to false if path doesn't exist on disk
+}
 
-	setMode(mode: MenuMode): void;
+export interface IProjectManager {
+	currentProject?: GitProject;
+
 	selectProject(project: GitProject): void;
 	getWorktreeService(projectPath?: string): IWorktreeService;
 
-	// Recent projects methods
-	getRecentProjects(limit?: number): RecentProject[];
-	addRecentProject(project: GitProject): void;
-	clearRecentProjects(): void;
+	// Project registry methods
+	getProjects(): Project[];
+	addProject(projectPath: string, description?: string): Project | null;
+	removeProject(projectPath: string): boolean;
+	updateProject(projectPath: string, updates: Partial<Pick<Project, 'name' | 'description'>>): Project | null;
+	validateProjects(): void;
 
 	// Project validation
 	validateGitRepository(path: string): Promise<boolean>;
