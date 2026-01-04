@@ -150,6 +150,7 @@ export interface ConfigurationData {
 		enabled?: boolean;
 		projectsDir?: string;
 	};
+	port?: number; // Port for web interface (generated randomly on first run if not set)
 }
 
 // Multi-project support interfaces

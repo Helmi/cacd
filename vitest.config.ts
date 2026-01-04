@@ -6,6 +6,7 @@ export default defineConfig({
 		watch: false,
 		pool: 'threads',
 		environment: 'node',
+		setupFiles: ['./src/test/setup.ts'],
 		coverage: {
 			reporter: ['text', 'json', 'html'],
 			exclude: [

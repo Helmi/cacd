@@ -1,4 +1,3 @@
-import {homedir} from 'os';
 import {join} from 'path';
 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'fs';
 import {Effect, Either} from 'effect';
@@ -18,6 +17,7 @@ import {
 	ConfigError,
 	ValidationError,
 } from '../types/errors.js';
+import {getConfigDir} from '../utils/configDir.js';
 
 export class ConfigurationManager {
 	private configPath: string;
@@ -27,15 +27,8 @@ export class ConfigurationManager {
 	private worktreeLastOpened: Map<string, number> = new Map();
 
 	constructor() {
-		// Determine config directory based on platform
-		const homeDir = homedir();
-		this.configDir =
-			process.platform === 'win32'
-				? join(
-						process.env['APPDATA'] || join(homeDir, 'AppData', 'Roaming'),
-						'ccmanager',
-					)
-				: join(homeDir, '.config', 'ccmanager');
+		// Get config directory from centralized utility
+		this.configDir = getConfigDir();
 
 		// Ensure config directory exists
 		if (!existsSync(this.configDir)) {
@@ -743,6 +736,23 @@ export class ConfigurationManager {
 
 	getMultiProjectConfig(): ConfigurationData['multiProject'] {
 		return this.config.multiProject;
+	}
+
+	/**
+	 * Get the configured port for the web interface.
+	 * Returns undefined if not set (caller should generate random port).
+	 */
+	getPort(): number | undefined {
+		return this.config.port;
+	}
+
+	/**
+	 * Set the port for the web interface.
+	 * Used to persist a randomly generated port on first run.
+	 */
+	setPort(port: number): void {
+		this.config.port = port;
+		this.saveConfig();
 	}
 }
 

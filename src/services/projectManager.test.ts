@@ -9,6 +9,9 @@ vi.mock('os', () => ({
 	homedir: vi.fn(() => '/home/user'),
 	platform: vi.fn(() => 'linux'),
 }));
+vi.mock('../utils/configDir.js', () => ({
+	getConfigDir: vi.fn(() => '/home/user/.config/ccmanager'),
+}));
 
 // Now import modules that depend on the mocked modules
 import {ProjectManager} from './projectManager.js';
