@@ -35,7 +35,11 @@ interface MenuProps {
 	multiProject?: boolean;
 	webConfig?: {
 		url: string;
-		token: string;
+		externalUrl?: string;
+		hostname?: string;
+		port: number;
+		configDir: string;
+		isCustomConfigDir: boolean;
 	};
 }
 
@@ -552,8 +556,21 @@ const Menu: React.FC<MenuProps> = ({
 						Web Interface Available
 					</Text>
 					<Text>
-						Link: <Text color="cyan" underline>{webConfig.url}</Text>
+						Local: <Text color="cyan" underline>{webConfig.url}</Text>
 					</Text>
+					{webConfig.hostname && (
+						<Text>
+							Network: <Text color="cyan" underline>{webConfig.hostname}</Text>
+						</Text>
+					)}
+					{!webConfig.hostname && webConfig.externalUrl && (
+						<Text>
+							Network: <Text color="cyan" underline>{webConfig.externalUrl}</Text>
+						</Text>
+					)}
+					{webConfig.isCustomConfigDir && (
+						<Text dimColor>Config: {webConfig.configDir}</Text>
+					)}
 				</Box>
 			)}
 

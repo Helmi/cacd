@@ -50,7 +50,11 @@ interface AppProps {
 	multiProject?: boolean;
 	webConfig?: {
 		url: string;
-		token: string;
+		externalUrl?: string;
+		hostname?: string;
+		port: number;
+		configDir: string;
+		isCustomConfigDir: boolean;
 	};
 }
 
