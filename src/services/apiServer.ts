@@ -19,14 +19,15 @@ export class APIServer {
     private app: FastifyInstance;
     private io: Server | undefined;
     private token: string;
+    private setupPromise: Promise<void>;
 
     constructor() {
         this.app = Fastify({ logger: false });
         this.token = randomUUID();
-        this.setup();
+        this.setupPromise = this.setup();
     }
 
-    private async setup() {
+    private async setup(): Promise<void> {
         // Register CORS
         await this.app.register(cors, {
             origin: true, // Allow all origins for now (dev mode)
@@ -331,6 +332,9 @@ export class APIServer {
     }
 
     public async start(port: number = 80, host: string = '0.0.0.0') {
+        // Wait for setup to complete before starting
+        await this.setupPromise;
+
         try {
             const address = await this.app.listen({ port, host });
             logger.info(`API Server running at ${address}`);
