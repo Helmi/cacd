@@ -4,6 +4,20 @@ export type SessionStatus = 'active' | 'idle' | 'error' | 'pending' | 'busy' | '
 // Agent types supported by the system
 export type AgentType = 'claude-code' | 'gemini-cli' | 'codex' | 'droid' | 'cursor' | 'custom'
 
+// Map backend state to display status
+export function mapSessionState(state: string): SessionStatus {
+  switch (state) {
+    case 'busy':
+      return 'active'
+    case 'waiting_input':
+      return 'pending'
+    case 'idle':
+      return 'idle'
+    default:
+      return 'idle'
+  }
+}
+
 // Theme types for terminal and UI color schemes
 export type ThemeType =
   | 'default'
