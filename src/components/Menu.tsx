@@ -9,7 +9,6 @@ import {GitError} from '../types/errors.js';
 import {
 	STATUS_ICONS,
 	STATUS_LABELS,
-	MENU_ICONS,
 } from '../constants/statusIcons.js';
 import {useGitStatus} from '../hooks/useGitStatus.js';
 import {
@@ -22,6 +21,7 @@ import TextInputWrapper from './TextInputWrapper.js';
 import {useSearchMode} from '../hooks/useSearchMode.js';
 import {globalSessionOrchestrator} from '../services/globalSessionOrchestrator.js';
 import {configurationManager} from '../services/configurationManager.js';
+import Header from './Header.js';
 
 interface MenuProps {
 	sessionManager: SessionManager;
@@ -256,27 +256,27 @@ const Menu: React.FC<MenuProps> = ({
 				},
 				{
 					type: 'common',
-					label: `N ${MENU_ICONS.NEW_WORKTREE} New Worktree`,
+					label: `N - New Worktree`,
 					value: 'new-worktree',
 				},
 				{
 					type: 'common',
-					label: `M ${MENU_ICONS.MERGE_WORKTREE} Merge Worktree`,
+					label: `M - Merge Worktree`,
 					value: 'merge-worktree',
 				},
 				{
 					type: 'common',
-					label: `D ${MENU_ICONS.DELETE_WORKTREE} Delete Worktree`,
+					label: `D - Delete Worktree`,
 					value: 'delete-worktree',
 				},
 				{
 					type: 'common',
-					label: `C ${MENU_ICONS.CONFIGURE_SHORTCUTS} Configuration`,
+					label: `C - Global Config`,
 					value: 'configuration',
 				},
 				{
 					type: 'common',
-					label: `B 🔙 Back to project list`,
+					label: `B - Back to project list`,
 					value: 'back-to-projects',
 				},
 			];
@@ -509,54 +509,7 @@ const Menu: React.FC<MenuProps> = ({
 
 	return (
 		<Box flexDirection="column">
-			<Box marginBottom={1} flexDirection="column">
-				<Text color="cyan">                                       ░▒▓░</Text>
-				<Text color="cyan"> ░▒▓███████▓▒░  ░▒▓███████▓▒░        ░▒▓▓▒    ░▒▓███████▓▒░ ░▒▓████████▓▒░</Text>
-				<Text color="cyan">░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓█▓▒░    ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-				<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓██▓▒░     ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-				<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░  ░▒▓██▓▒░      ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-				<Text color="cyan">░▒▓█▓▒░        ░▒▓█████████▓▒░ ░▒▓███████▓▒░  ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-				<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓██▓▒░   ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-				<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░    ░▒▓██▓▒░    ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-				<Text color="cyan">░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-				<Text color="cyan"> ░▒▓███████▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓▓▒░       ░▒▓███████▓▒░ ░▒▓████████▓▒░</Text>
-				<Text color="cyan">                                 ░▓▒░</Text>
-				{projectName && (
-					<Text bold color="green">
-						{projectName}
-					</Text>
-				)}
-			</Box>
-
-			{webConfig && (
-				<Box
-					borderStyle="round"
-					borderColor="blue"
-					paddingX={1}
-					marginBottom={1}
-					flexDirection="column"
-				>
-					<Text bold color="blue">
-						Web Interface Available
-					</Text>
-					<Text>
-						Local: <Text color="cyan" underline>{webConfig.url}</Text>
-					</Text>
-					{webConfig.hostname && (
-						<Text>
-							Network: <Text color="cyan" underline>{webConfig.hostname}</Text>
-						</Text>
-					)}
-					{!webConfig.hostname && webConfig.externalUrl && (
-						<Text>
-							Network: <Text color="cyan" underline>{webConfig.externalUrl}</Text>
-						</Text>
-					)}
-					{webConfig.isCustomConfigDir && (
-						<Text dimColor>Config: {webConfig.configDir}</Text>
-					)}
-				</Box>
-			)}
+			<Header subtitle={projectName} webConfig={webConfig} />
 
 			<Box marginBottom={1}>
 				<Text dimColor>

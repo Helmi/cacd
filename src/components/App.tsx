@@ -392,7 +392,8 @@ const App: React.FC<AppProps> = ({
 			if (process.stdin.isTTY) {
 				// Flush any pending input to prevent escape sequences from leaking
 				process.stdin.read();
-				process.stdin.setRawMode(false);
+				// Note: Don't call setRawMode(false) here - Ink needs raw mode enabled
+				// Session.tsx already restores stdin state in its cleanup
 				process.stdin.resume();
 				process.stdin.setEncoding('utf8');
 			}
