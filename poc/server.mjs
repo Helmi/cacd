@@ -9,11 +9,11 @@ import {spawn} from 'node-pty';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = Number(process.env.CCMANAGER_POC_PORT || 4577);
-const HOST = process.env.CCMANAGER_POC_HOST || '0.0.0.0';
-const CMD = process.env.CCMANAGER_POC_CMD || process.env.SHELL || 'bash';
-const ARGS = process.env.CCMANAGER_POC_ARGS
-	? process.env.CCMANAGER_POC_ARGS.split(' ')
+const PORT = Number(process.env.CACD_POC_PORT || 4577);
+const HOST = process.env.CACD_POC_HOST || '0.0.0.0';
+const CMD = process.env.CACD_POC_CMD || process.env.SHELL || 'bash';
+const ARGS = process.env.CACD_POC_ARGS
+	? process.env.CACD_POC_ARGS.split(' ')
 	: [];
 
 const clients = new Set();

@@ -1,12 +1,12 @@
 # Devcontainer Integration
 
-CCManager supports running AI assistant sessions inside devcontainers while keeping the manager itself on the host machine. This provides isolated development environments with enhanced security while maintaining host-level features like notifications.
+CACD supports running AI assistant sessions inside devcontainers while keeping the manager itself on the host machine. This provides isolated development environments with enhanced security while maintaining host-level features like notifications.
 
 ## Overview
 
 The devcontainer integration allows you to:
 - Run Claude Code or other AI assistants in isolated container environments
-- Keep CCManager on the host for status notifications and management
+- Keep CACD on the host for status notifications and management
 - Use project-specific dependencies and tools without conflicts
 - Apply network restrictions for enhanced security
 
@@ -14,36 +14,36 @@ The devcontainer integration allows you to:
 
 - [VS Code Devcontainer CLI](https://code.visualstudio.com/docs/devcontainers/cli) installed on host
 - Docker or compatible container runtime
-- CCManager installed on the host machine
+- CACD installed on the host machine
 
 ## Usage
 
 ```bash
-ccmanager --devc-up-command "<your devcontainer up command>" \
-              --devc-exec-command "<your devcontainer exec command>"
+cacd --devc-up-command "<your devcontainer up command>" \
+     --devc-exec-command "<your devcontainer exec command>"
 ```
 
 Both arguments accept any valid devcontainer commands with any options or arguments you need. The commands are executed as-is, giving you full flexibility to customize based on your project's requirements.
 
 ### Why Full Commands Instead of Just Arguments?
 
-CCManager accepts complete commands (not just arguments) for maximum flexibility:
+CACD accepts complete commands (not just arguments) for maximum flexibility:
 
 - **Alternative tools**: Use `mise exec` or other wrapper tools
-- **Command variations**: Choose between `devcontainer up` or `devcontainer set-up` based on your needs  
+- **Command variations**: Choose between `devcontainer up` or `devcontainer set-up` based on your needs
 - **Custom workflows**: Integrate with your existing scripts and aliases
 
 If the command length bothers you, simply create a shell alias:
 
 ## How It Works
 
-1. **Container Startup**: When you select a worktree, CCManager executes the `--devc-up-command` to ensure the container is running
+1. **Container Startup**: When you select a worktree, CACD executes the `--devc-up-command` to ensure the container is running
 2. **Session Creation**: The AI assistant command is executed inside the container using `--devc-exec-command`
-3. **Command Construction**: CCManager automatically appends the preset command after `--` separator:
+3. **Command Construction**: CACD automatically appends the preset command after `--` separator:
    ```
    devcontainer exec --workspace-folder . -- claude -m claude-3-opus
    ```
-4. **Host Management**: CCManager remains on the host, managing the PTY session and triggering status hooks
+4. **Host Management**: CACD remains on the host, managing the PTY session and triggering status hooks
 
 ## Benefits
 
@@ -54,7 +54,7 @@ If the command length bothers you, simply create a shell alias:
 
 ### Functionality
 - **Host Notifications**: Status hooks run on host, enabling desktop notifications
-- **Performance**: No need to install CCManager in every container
+- **Performance**: No need to install CACD in every container
 - **Flexibility**: Mix and match different tool versions per project
 - **Risk-free Operations**: Safely run commands like `claude --dangerously-skip-permissions` within isolated container environments
 
@@ -65,12 +65,12 @@ For optimal devcontainer setup with Claude Code, refer to Anthropic's official d
 
 ## Preset Support
 
-All CCManager preset features work seamlessly with devcontainers:
+All CACD preset features work seamlessly with devcontainers:
 
 ```bash
 # The preset command and args are automatically passed to the container
 # If you have a preset "claude-opus" with args ["--dangerously-skip-permissions", "-m", "claude-3-opus"]
-# CCManager will execute:
+# CACD will execute:
 devcontainer exec --workspace-folder . -- claude --dangerously-skip-permissions -m claude-3-opus
 ```
 

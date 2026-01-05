@@ -10,7 +10,7 @@ vi.mock('os', () => ({
 	platform: vi.fn(() => 'linux'),
 }));
 vi.mock('../utils/configDir.js', () => ({
-	getConfigDir: vi.fn(() => '/home/user/.config/ccmanager'),
+	getConfigDir: vi.fn(() => '/home/user/.config/cacd'),
 }));
 
 // Now import modules that depend on the mocked modules
@@ -23,9 +23,9 @@ const mockFs = fs as any;
 
 describe('ProjectManager', () => {
 	let projectManager: ProjectManager;
-	const mockConfigDir = '/home/user/.config/ccmanager';
-	const mockProjectsPath = '/home/user/.config/ccmanager/projects.json';
-	const mockLegacyPath = '/home/user/.config/ccmanager/recent-projects.json';
+	const mockConfigDir = '/home/user/.config/cacd';
+	const mockProjectsPath = '/home/user/.config/cacd/projects.json';
+	const mockLegacyPath = '/home/user/.config/cacd/recent-projects.json';
 
 	beforeEach(() => {
 		vi.clearAllMocks();

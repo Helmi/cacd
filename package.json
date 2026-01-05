@@ -1,7 +1,7 @@
 {
-	"name": "agent-control-desk",
+	"name": "coding-agent-control-desk",
 	"version": "0.1.0",
-	"description": "Web-based control desk for managing multiple AI agent sessions (Claude, Gemini, Cursor)",
+	"description": "CA⚡CD - Web-based control desk for managing multiple AI coding agent sessions (Claude, Gemini, Codex, Cursor)",
 	"license": "MIT",
 	"author": "Helmi",
 	"repository": {
@@ -11,15 +11,18 @@
 	"keywords": [
 		"ai",
 		"agent",
+		"coding-agent",
 		"control-plane",
 		"claude",
 		"gemini",
+		"codex",
 		"cursor",
 		"webui",
-		"cli"
+		"cli",
+		"cacd"
 	],
 	"bin": {
-		"acd": "dist/cli.js"
+		"cacd": "dist/cli.js"
 	},
 	"type": "module",
 	"engines": {

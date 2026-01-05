@@ -391,7 +391,7 @@ const ProjectList: React.FC<ProjectListProps> = ({
 						Enter to add, Escape to cancel
 					</Text>
 					<Text dimColor>
-						Tip: Run `acd add .` from any project directory
+						Tip: Run `cacd add .` from any project directory
 					</Text>
 				</Box>
 			) : isSearchMode ? (
@@ -418,7 +418,7 @@ const ProjectList: React.FC<ProjectListProps> = ({
 					<Box flexDirection="column">
 						<Text>Get started by adding a project:</Text>
 						<Text dimColor>  • Press A to add a project</Text>
-						<Text dimColor>  • Or run: acd add /path/to/project</Text>
+						<Text dimColor>  • Or run: cacd add /path/to/project</Text>
 					</Box>
 				</Box>
 			) : isSearchMode && items.length === 0 ? (

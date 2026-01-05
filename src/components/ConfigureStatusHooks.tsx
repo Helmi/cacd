@@ -164,13 +164,13 @@ const ConfigureStatusHooks: React.FC<ConfigureStatusHooksProps> = ({
 
 				<Box marginTop={1}>
 					<Text dimColor>
-						Environment variables available: CCMANAGER_OLD_STATE,
-						CCMANAGER_NEW_STATE,
+						Environment variables available: CACD_OLD_STATE,
+						CACD_NEW_STATE,
 					</Text>
 				</Box>
 				<Box>
 					<Text dimColor>
-						CCMANAGER_WORKTREE, CCMANAGER_WORKTREE_BRANCH, CCMANAGER_SESSION_ID
+						CACD_WORKTREE_PATH, CACD_WORKTREE_BRANCH, CACD_SESSION_ID
 					</Text>
 				</Box>
 

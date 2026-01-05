@@ -162,7 +162,7 @@ describe('ProjectList', () => {
 
 		const frame = lastFrame();
 		expect(frame).toContain('No projects tracked yet');
-		expect(frame).toContain('acd add');
+		expect(frame).toContain('cacd add');
 	});
 
 	it('should display invalid project indicator', async () => {

@@ -3,7 +3,7 @@ import path from 'path';
 
 /**
  * Project-local configuration schema
- * Loaded from .acd.json or .acd/config.json in project root
+ * Loaded from .cacd.json or .cacd/config.json in project root
  */
 export interface ProjectConfig {
 	scripts?: {
@@ -13,15 +13,15 @@ export interface ProjectConfig {
 }
 
 /**
- * Load project configuration from .acd.json or .acd/config.json
+ * Load project configuration from .cacd.json or .cacd/config.json
  * @param projectRoot - Path to the project root (git root)
  * @returns ProjectConfig or null if no config found
  */
 export function loadProjectConfig(projectRoot: string): ProjectConfig | null {
 	// Discovery order
 	const configPaths = [
-		path.join(projectRoot, '.acd.json'),
-		path.join(projectRoot, '.acd', 'config.json'),
+		path.join(projectRoot, '.cacd.json'),
+		path.join(projectRoot, '.cacd', 'config.json'),
 	];
 
 	for (const configPath of configPaths) {
@@ -50,9 +50,9 @@ export function buildHookEnvironment(opts: {
 	branch: string;
 }): Record<string, string> {
 	return {
-		ACD_ROOT_PATH: opts.rootPath,
-		ACD_WORKTREE_PATH: opts.worktreePath,
-		ACD_WORKTREE_NAME: opts.worktreeName,
-		ACD_BRANCH: opts.branch,
+		CACD_ROOT_PATH: opts.rootPath,
+		CACD_WORKTREE_PATH: opts.worktreePath,
+		CACD_WORKTREE_NAME: opts.worktreeName,
+		CACD_BRANCH: opts.branch,
 	};
 }

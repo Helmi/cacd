@@ -18,7 +18,7 @@ let _isCustom = false;
 export function initializeConfigDir(): string {
 	if (_configDir) return _configDir;
 
-	const envDir = process.env['ACD_CONFIG_DIR'];
+	const envDir = process.env['CACD_CONFIG_DIR'];
 
 	if (envDir) {
 		_configDir = envDir;
@@ -29,9 +29,9 @@ export function initializeConfigDir(): string {
 			process.platform === 'win32'
 				? join(
 						process.env['APPDATA'] || join(homeDir, 'AppData', 'Roaming'),
-						'ccmanager',
+						'cacd',
 					)
-				: join(homeDir, '.config', 'ccmanager');
+				: join(homeDir, '.config', 'cacd');
 		_isCustom = false;
 	}
 
@@ -52,7 +52,7 @@ export function getConfigDir(): string {
 }
 
 /**
- * Check if a custom config dir was provided via ACD_CONFIG_DIR env var.
+ * Check if a custom config dir was provided via CACD_CONFIG_DIR env var.
  */
 export function isCustomConfigDir(): boolean {
 	return _isCustom;

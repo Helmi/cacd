@@ -965,7 +965,7 @@ export class WorktreeService {
 			// Collect warnings for non-fatal issues
 			const warnings: string[] = [];
 
-			// Execute project-local setup hook if configured (.acd.json)
+			// Execute project-local setup hook if configured (.cacd.json)
 			const projectConfig = loadProjectConfig(self.gitRootPath);
 			if (projectConfig?.scripts?.setup) {
 				const env = buildHookEnvironment({
@@ -1074,7 +1074,7 @@ export class WorktreeService {
 				);
 			}
 
-			// Execute project-local teardown hook BEFORE deletion (.acd.json)
+			// Execute project-local teardown hook BEFORE deletion (.cacd.json)
 			// This runs while files still exist so scripts can access them
 			const projectConfig = loadProjectConfig(self.gitRootPath);
 			if (projectConfig?.scripts?.teardown) {

@@ -1,8 +1,20 @@
-# CCManager - AI Code Agent Session Manager
+# CA⚡CD - Coding Agent Control Desk
 
-[![Mentioned in Awesome Gemini CLI](https://awesome.re/mentioned-badge.svg)](https://github.com/Piebald-AI/awesome-gemini-cli)
 
-CCManager is a CLI application for managing multiple AI coding assistant sessions (Claude Code, Gemini CLI, Codex CLI) across Git worktrees and projects.
+                                       ░▒▓░
+ ░▒▓███████▓▒░  ░▒▓███████▓▒░        ░▒▓▓▒    ░▒▓███████▓▒░ ░▒▓████████▓▒░
+░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓█▓▒░    ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░
+░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓██▓▒░     ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░
+░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░  ░▒▓██▓▒░      ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░
+░▒▓█▓▒░        ░▒▓█████████▓▒░ ░▒▓███████▓▒░  ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░
+░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓██▓▒░   ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░
+░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░    ░▒▓██▓▒░    ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░
+░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░
+ ░▒▓███████▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓▓▒░       ░▒▓███████▓▒░ ░▒▓████████▓▒░
+                                 ░▓▒░
+
+
+CACD is a CLI application for managing multiple AI coding assistant sessions (Claude Code, Gemini CLI, Codex CLI) across Git worktrees and projects.
 
 https://github.com/user-attachments/assets/15914a88-e288-4ac9-94d5-8127f2e19dbf
 
@@ -10,7 +22,7 @@ https://github.com/user-attachments/assets/15914a88-e288-4ac9-94d5-8127f2e19dbf
 
 - Run multiple AI assistant sessions in parallel across different Git worktrees
 - **Multi-project support**: Manage multiple git repositories from a single interface
-- Support for multiple AI coding assistants (Claude Code, Gemini CLI)
+- Support for multiple AI coding assistants (Claude Code, Gemini CLI, Codex CLI)
 - Switch between sessions seamlessly
 - Visual status indicators for session states (busy, waiting, idle)
 - Create, merge, and delete worktrees from within the app
@@ -21,33 +33,12 @@ https://github.com/user-attachments/assets/15914a88-e288-4ac9-94d5-8127f2e19dbf
 - Status change hooks for automation and notifications
 - Devcontainer integration
 - **Auto Approval (experimental)**: Automatically approve safe prompts using AI verification
-
-## Why CCManager over Claude Squad?
-
-Both tools solve the same problem - managing multiple Claude Code sessions - but take different approaches.
-
-**If you love tmux-based workflows, stick with Claude Squad!** It's a great tool that leverages tmux's power for session management.
-
-CCManager is for developers who want:
-
-### 🚀 No tmux dependency
-CCManager is completely self-contained. No need to install or configure tmux - it works out of the box. Perfect if you don't use tmux or want to keep your tmux setup separate from Claude Code management.
-
-### 👁️ Real-time session monitoring
-CCManager shows the actual state of each Claude Code session directly in the menu:
-- **Waiting**: Claude is asking for user input
-- **Busy**: Claude is processing
-- **Idle**: Ready for new tasks
-
-Claude Squad doesn't show session states in its menu, making it hard to know which sessions need attention. While Claude Squad offers an AutoYes feature, this bypasses Claude Code's built-in security confirmations - not recommended for safe operation.
-
-### 🎯 Simple and intuitive interface
-Following Claude Code's philosophy, CCManager keeps things minimal and intuitive. The interface is so simple you'll understand it in seconds - no manual needed.
+- **WebUI**: Full-featured web interface alongside the terminal UI
 
 ## Install
 
 ```bash
-npm install -g ccmanager
+npm install -g coding-agent-control-desk
 ```
 
 Or for local development:
@@ -61,13 +52,13 @@ npm start
 ## Usage
 
 ```bash
-ccmanager
+cacd
 ```
 
 Or run without installing:
 
 ```bash
-npx ccmanager
+npx coding-agent-control-desk
 ```
 
 ## Keyboard Shortcuts
@@ -82,7 +73,7 @@ npx ccmanager
 You can customize keyboard shortcuts in two ways:
 
 1. **Through the UI**: Select "Configuration" → "Configure Shortcuts" from the main menu
-2. **Configuration file**: Edit `~/.config/ccmanager/config.json`
+2. **Configuration file**: Edit `~/.config/cacd/config.json`
 
 Example configuration:
 ```json
@@ -112,7 +103,7 @@ Note: Shortcuts from `shortcuts.json` will be automatically migrated to `config.
 
 ## Supported AI Assistants
 
-CCManager now supports multiple AI coding assistants with tailored state detection:
+CACD supports multiple AI coding assistants with tailored state detection:
 
 ### Claude Code (Default)
 - Command: `claude`
@@ -122,6 +113,15 @@ CCManager now supports multiple AI coding assistants with tailored state detecti
 - Command: `gemini`
 - State detection: Custom patterns for Gemini's confirmation prompts
 - Installation: [google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli)
+
+### Codex CLI
+- Command: `codex`
+- State detection: Custom patterns for Codex's prompts
+- Installation: [openai/codex](https://github.com/openai/codex)
+
+### GitHub Copilot CLI
+- Command: `gh copilot`
+- State detection: Custom patterns for Copilot's prompts
 
 Each assistant has its own state detection strategy to properly track:
 - **Idle**: Ready for new input
@@ -136,7 +136,7 @@ See [Gemini Support Documentation](docs/gemini-support.md) for detailed configur
 ![Screenshot From 2025-06-18 16-43-27](https://github.com/user-attachments/assets/47d62483-ce81-4340-8687-8afcae93d5db)
 
 
-CCManager supports configuring the command and arguments used to run Claude Code sessions, with automatic fallback options for reliability.
+CACD supports configuring the command and arguments used to run AI assistant sessions, with automatic fallback options for reliability.
 
 ### Features
 
@@ -157,7 +157,7 @@ For detailed configuration options and examples, see [docs/command-config.md](do
 
 ## Session Data Copying
 
-CCManager can copy Claude Code session data (conversation history, context, and project state) when creating new worktrees, allowing you to maintain context across different branches.
+CACD can copy Claude Code session data (conversation history, context, and project state) when creating new worktrees, allowing you to maintain context across different branches.
 
 ### Features
 
@@ -168,7 +168,7 @@ CCManager can copy Claude Code session data (conversation history, context, and 
 
 ### How It Works
 
-When creating a new worktree, CCManager:
+When creating a new worktree, CACD:
 1. Asks whether to copy session data from the current worktree
 2. Copies all session files from `~/.claude/projects/[source-path]` to `~/.claude/projects/[target-path]`
 3. Preserves conversation history, project context, and Claude Code state
@@ -192,7 +192,7 @@ The default choice (copy or start fresh) will be pre-selected when creating new 
 
 ## Status Change Hooks
 
-CCManager can execute custom commands when Claude Code session status changes. This enables powerful automation workflows like desktop notifications, logging, or integration with other tools.
+CACD can execute custom commands when AI assistant session status changes. This enables powerful automation workflows like desktop notifications, logging, or integration with other tools.
 
 ### Overview
 
@@ -224,7 +224,7 @@ For configuration and examples, see [docs/worktree-hooks.md](docs/worktree-hooks
 
 ## Automatic Worktree Directory Generation
 
-CCManager can automatically generate worktree directory paths based on branch names, streamlining the worktree creation process.
+CACD can automatically generate worktree directory paths based on branch names, streamlining the worktree creation process.
 
 - **Auto-generate paths**: No need to manually specify directories
 - **Customizable patterns**: Use placeholders like `{branch}` in your pattern
@@ -234,7 +234,7 @@ For detailed configuration and examples, see [docs/worktree-auto-directory.md](d
 
 ## Auto Approval (Experimental)
 
-CCManager can automatically approve Claude Code prompts that don't require user permission, reducing manual intervention while maintaining safety for sensitive operations.
+CACD can automatically approve Claude Code prompts that don't require user permission, reducing manual intervention while maintaining safety for sensitive operations.
 
 ### Features
 
@@ -253,11 +253,11 @@ For detailed configuration and usage, see [docs/auto-approval.md](docs/auto-appr
 
 ## Devcontainer Integration
 
-CCManager supports running AI assistant sessions inside devcontainers while keeping the manager itself on the host machine. This enables sandboxed development environments with restricted network access while maintaining host-level notifications and automation.
+CACD supports running AI assistant sessions inside devcontainers while keeping the manager itself on the host machine. This enables sandboxed development environments with restricted network access while maintaining host-level notifications and automation.
 
 ### Features
 
-- **Host-based management**: CCManager runs on your host machine, managing sessions inside containers
+- **Host-based management**: CACD runs on your host machine, managing sessions inside containers
 - **Seamless integration**: All existing features (presets, status hooks, etc.) work with devcontainers
 - **Security-focused**: Compatible with Anthropic's recommended devcontainer configurations
 - **Persistent state**: Configuration and history persist across container recreations
@@ -265,9 +265,9 @@ CCManager supports running AI assistant sessions inside devcontainers while keep
 ### Usage
 
 ```bash
-# Start CCManager with devcontainer support
-npx ccmanager --devc-up-command "<your devcontainer up command>" \
-              --devc-exec-command "<your devcontainer exec command>"
+# Start CACD with devcontainer support
+cacd --devc-up-command "<your devcontainer up command>" \
+     --devc-exec-command "<your devcontainer exec command>"
 ```
 
 The devcontainer integration requires both commands:
@@ -282,16 +282,16 @@ For detailed setup and configuration, see [docs/devcontainer.md](docs/devcontain
 
 ## Multi-Project Mode
 
-CCManager can manage multiple git repositories from a single interface, allowing you to organize and navigate between different projects and their worktrees efficiently.
+CACD can manage multiple git repositories from a single interface, allowing you to organize and navigate between different projects and their worktrees efficiently.
 
 ### Quick Start
 
 ```bash
 # Set the root directory containing your git projects
-export ACD_PROJECTS_DIR="/path/to/your/projects"
+export CACD_PROJECTS_DIR="/path/to/your/projects"
 
-# Run CCManager in multi-project mode
-npx ccmanager --multi-project
+# Run CACD in multi-project mode
+cacd --multi-project
 ```
 
 ### Features
@@ -314,7 +314,7 @@ For detailed configuration and usage, see [docs/multi-project.md](docs/multi-pro
 
 ## Git Worktree Configuration
 
-CCManager can display enhanced git status information for each worktree when Git's worktree configuration extension is enabled.
+CACD can display enhanced git status information for each worktree when Git's worktree configuration extension is enabled.
 
 ```bash
 # Enable enhanced status tracking

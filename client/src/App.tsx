@@ -12,11 +12,11 @@ const getToken = () => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
     if (token) {
-        localStorage.setItem('acd_token', token);
+        localStorage.setItem('cacd_token', token);
         window.history.replaceState({}, '', '/');
         return token;
     }
-    return localStorage.getItem('acd_token');
+    return localStorage.getItem('cacd_token');
 };
 
 const token = getToken();
@@ -158,7 +158,7 @@ function App() {
         <div className="p-4 border-b border-gray-800">
             <h1 className="text-lg font-bold text-blue-400 flex items-center gap-2 mb-2">
                 <Terminal className="w-5 h-5" />
-                {currentProject ? currentProject.name : 'Agent Control Desk'}
+                {currentProject ? currentProject.name : 'CA⚡CD'}
             </h1>
             
             {/* Project Switcher */}

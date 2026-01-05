@@ -1,7 +1,7 @@
-# CCManager Web POC
+# CACD Web POC
 
 This is a minimal proof‑of‑concept for remotely viewing and typing into a
-single PTY over WebSocket. It does **not** integrate with CCManager’s core yet.
+single PTY over WebSocket. It does **not** integrate with CACD's core yet.
 
 ## Run
 
@@ -17,14 +17,14 @@ single PTY over WebSocket. It does **not** integrate with CCManager’s core yet
 
 ## Env vars
 
-- `CCMANAGER_POC_HOST` (default `0.0.0.0`)
-- `CCMANAGER_POC_PORT` (default `4577`)
-- `CCMANAGER_POC_CMD` (default `$SHELL` or `bash`)
-- `CCMANAGER_POC_ARGS` (default empty, space‑separated)
+- `CACD_POC_HOST` (default `0.0.0.0`)
+- `CACD_POC_PORT` (default `4577`)
+- `CACD_POC_CMD` (default `$SHELL` or `bash`)
+- `CACD_POC_ARGS` (default empty, space‑separated)
 
 Example:
 ```bash
-CCMANAGER_POC_CMD=claude CCMANAGER_POC_ARGS="--resume" node poc/server.mjs
+CACD_POC_CMD=claude CACD_POC_ARGS="--resume" node poc/server.mjs
 ```
 
 ## Security note

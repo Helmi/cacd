@@ -34,9 +34,9 @@ describe('hookExecutor Integration Tests', () => {
 			// Arrange
 			const tmpDir = await mkdtemp(join(tmpdir(), 'hook-test-'));
 			const environment = {
-				CCMANAGER_WORKTREE_PATH: tmpDir,
-				CCMANAGER_WORKTREE_BRANCH: 'test-branch',
-				CCMANAGER_GIT_ROOT: tmpDir,
+				CACD_WORKTREE_PATH: tmpDir,
+				CACD_WORKTREE_BRANCH: 'test-branch',
+				CACD_GIT_ROOT: tmpDir,
 			};
 
 			try {
@@ -56,9 +56,9 @@ describe('hookExecutor Integration Tests', () => {
 			// Arrange
 			const tmpDir = await mkdtemp(join(tmpdir(), 'hook-test-'));
 			const environment = {
-				CCMANAGER_WORKTREE_PATH: tmpDir,
-				CCMANAGER_WORKTREE_BRANCH: 'test-branch',
-				CCMANAGER_GIT_ROOT: tmpDir,
+				CACD_WORKTREE_PATH: tmpDir,
+				CACD_WORKTREE_BRANCH: 'test-branch',
+				CACD_GIT_ROOT: tmpDir,
 			};
 
 			try {
@@ -76,9 +76,9 @@ describe('hookExecutor Integration Tests', () => {
 			// Arrange
 			const tmpDir = await mkdtemp(join(tmpdir(), 'hook-test-'));
 			const environment = {
-				CCMANAGER_WORKTREE_PATH: tmpDir,
-				CCMANAGER_WORKTREE_BRANCH: 'test-branch',
-				CCMANAGER_GIT_ROOT: tmpDir,
+				CACD_WORKTREE_PATH: tmpDir,
+				CACD_WORKTREE_BRANCH: 'test-branch',
+				CACD_GIT_ROOT: tmpDir,
 			};
 
 			try {
@@ -104,9 +104,9 @@ describe('hookExecutor Integration Tests', () => {
 			// Arrange
 			const tmpDir = await mkdtemp(join(tmpdir(), 'hook-test-'));
 			const environment = {
-				CCMANAGER_WORKTREE_PATH: tmpDir,
-				CCMANAGER_WORKTREE_BRANCH: 'test-branch',
-				CCMANAGER_GIT_ROOT: tmpDir,
+				CACD_WORKTREE_PATH: tmpDir,
+				CACD_WORKTREE_BRANCH: 'test-branch',
+				CACD_GIT_ROOT: tmpDir,
 			};
 
 			try {
@@ -144,9 +144,9 @@ describe('hookExecutor Integration Tests', () => {
 			// Arrange
 			const tmpDir = await mkdtemp(join(tmpdir(), 'hook-test-'));
 			const environment = {
-				CCMANAGER_WORKTREE_PATH: tmpDir,
-				CCMANAGER_WORKTREE_BRANCH: 'test-branch',
-				CCMANAGER_GIT_ROOT: tmpDir,
+				CACD_WORKTREE_PATH: tmpDir,
+				CACD_WORKTREE_BRANCH: 'test-branch',
+				CACD_GIT_ROOT: tmpDir,
 			};
 
 			try {
@@ -172,9 +172,9 @@ describe('hookExecutor Integration Tests', () => {
 			const tmpDir = await mkdtemp(join(tmpdir(), 'hook-cwd-test-'));
 			const outputFile = join(tmpDir, 'cwd.txt');
 			const environment = {
-				CCMANAGER_WORKTREE_PATH: tmpDir,
-				CCMANAGER_WORKTREE_BRANCH: 'test-branch',
-				CCMANAGER_GIT_ROOT: '/some/other/path',
+				CACD_WORKTREE_PATH: tmpDir,
+				CACD_WORKTREE_BRANCH: 'test-branch',
+				CACD_GIT_ROOT: '/some/other/path',
 			};
 
 			try {
@@ -278,7 +278,7 @@ describe('hookExecutor Integration Tests', () => {
 				// Act - change to git root and write its path
 				await Effect.runPromise(
 					executeWorktreePostCreationHook(
-						`cd "$CCMANAGER_GIT_ROOT" && pwd > "${outputFile}"`,
+						`cd "$CACD_GIT_ROOT" && pwd > "${outputFile}"`,
 						worktree,
 						tmpGitRootDir,
 						'main',
@@ -563,7 +563,7 @@ describe('hookExecutor Integration Tests', () => {
 			vi.mocked(configurationManager.getStatusHooks).mockReturnValue({
 				busy: {
 					enabled: true,
-					command: `echo "Hook ran with branch: $CCMANAGER_WORKTREE_BRANCH" > "${outputFile}"`,
+					command: `echo "Hook ran with branch: $CACD_WORKTREE_BRANCH" > "${outputFile}"`,
 				},
 				idle: {enabled: false, command: ''},
 				waiting_input: {enabled: false, command: ''},
