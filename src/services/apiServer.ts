@@ -12,6 +12,7 @@ import {Effect} from 'effect';
 import path from 'path';
 import {fileURLToPath} from 'url';
 import {randomUUID} from 'crypto';
+import {generateRandomPort} from '../constants/env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -430,21 +431,55 @@ export class APIServer {
 		return '';
 	}
 
-	public async start(port: number = 3000, host: string = '127.0.0.1') {
+	/**
+	 * Start the API server.
+	 * @param port - Port to listen on
+	 * @param host - Host to bind to
+	 * @param devMode - If true, retry with random ports on EADDRINUSE
+	 * @returns Object containing the address and actual port used
+	 */
+	public async start(
+		port: number = 3000,
+		host: string = '127.0.0.1',
+		devMode: boolean = false,
+	): Promise<{address: string; port: number}> {
 		// Wait for setup to complete before starting
 		await this.setupPromise;
 
-		try {
-			const address = await this.app.listen({port, host});
-			logger.info(`API Server running at ${address}`);
-			logger.info(
-				`Open in browser: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`,
-			);
-			return address;
-		} catch (err) {
-			logger.error('Failed to start API server', err);
-			process.exit(1);
+		const maxRetries = devMode ? 10 : 1;
+		let currentPort = port;
+
+		for (let attempt = 0; attempt < maxRetries; attempt++) {
+			try {
+				const address = await this.app.listen({port: currentPort, host});
+				logger.info(`API Server running at ${address}`);
+				logger.info(
+					`Open in browser: http://${host === '0.0.0.0' ? 'localhost' : host}:${currentPort}`,
+				);
+				return {address, port: currentPort};
+			} catch (err: unknown) {
+				const isAddressInUse =
+					err instanceof Error &&
+					'code' in err &&
+					(err as NodeJS.ErrnoException).code === 'EADDRINUSE';
+
+				if (isAddressInUse && devMode && attempt < maxRetries - 1) {
+					// In dev mode, try a new random port
+					const newPort = generateRandomPort();
+					logger.info(
+						`Port ${currentPort} in use, retrying with port ${newPort} (attempt ${attempt + 2}/${maxRetries})`,
+					);
+					currentPort = newPort;
+					continue;
+				}
+
+				logger.error('Failed to start API server', err);
+				throw err;
+			}
 		}
+
+		// Should not reach here, but satisfy TypeScript
+		throw new Error('Failed to start API server after all retries');
 	}
 }
 

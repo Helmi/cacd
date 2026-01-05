@@ -5,6 +5,7 @@ import {
 	initializeConfigDir,
 	getConfigDir,
 	isCustomConfigDir,
+	isDevModeConfig,
 } from './utils/configDir.js';
 import dgram from 'dgram';
 import dns from 'dns';
@@ -47,8 +48,9 @@ const cli = meow(
 	  --devc-exec-command   Command to execute in devcontainer
 
 	Environment Variables
+	  CACD_CONFIG_DIR        Custom config directory (highest priority, overrides CACD_DEV)
 	  CACD_PORT              Port for web interface
-	  CACD_CONFIG_DIR        Configuration directory (default: ~/.config/cacd/)
+	  CACD_DEV               Set to 1 for dev mode (uses local .cacd-dev/ config)
 
 	Examples
 	  $ cacd                         # Launch TUI
@@ -207,6 +209,7 @@ worktreeConfigManager.initialize();
 // Get config dir info for display
 const configDir = getConfigDir();
 const customConfigDir = isCustomConfigDir();
+const devModeActive = isDevModeConfig();
 
 // Get the preferred outbound IP address by creating a UDP socket
 // This returns the IP that would be used to reach the internet
@@ -248,16 +251,24 @@ function getLocalHostname(
 let webConfig = undefined;
 
 try {
-	const address = await apiServer.start(port);
+	const result = await apiServer.start(port, '0.0.0.0', devModeActive);
+	const actualPort = result.port;
+
+	// In dev mode, persist the port that was actually used (for next restart)
+	if (devModeActive && actualPort !== port) {
+		configurationManager.setPort(actualPort);
+	}
+
 	const externalIP = await getExternalIP();
 	const hostname = await getLocalHostname(externalIP);
 	webConfig = {
-		url: address.replace('0.0.0.0', 'localhost'),
-		externalUrl: externalIP ? `http://${externalIP}:${port}` : undefined,
-		hostname: hostname ? `http://${hostname}:${port}` : undefined,
-		port,
+		url: result.address.replace('0.0.0.0', 'localhost'),
+		externalUrl: externalIP ? `http://${externalIP}:${actualPort}` : undefined,
+		hostname: hostname ? `http://${hostname}:${actualPort}` : undefined,
+		port: actualPort,
 		configDir,
 		isCustomConfigDir: customConfigDir,
+		isDevMode: devModeActive,
 	};
 } catch (_err) {
 	// Log error but don't fail startup

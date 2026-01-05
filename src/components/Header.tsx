@@ -8,6 +8,7 @@ interface WebConfig {
 	port: number;
 	configDir: string;
 	isCustomConfigDir: boolean;
+	isDevMode?: boolean;
 }
 
 interface HeaderProps {
@@ -53,14 +54,24 @@ const Header: React.FC<HeaderProps> = ({subtitle, webConfig}) => {
 			</Text>
 			<Text color="cyan"> ░▓▒░</Text>
 			<Text> </Text>
-			{networkUrl ? (
-				<Text color="yellow">
-					Coding Agent Control Desk — Web:{' '}
-					<Text color="greenBright">{networkUrl}</Text>
-				</Text>
-			) : (
-				<Text color="yellow">Coding Agent Control Desk</Text>
-			)}
+			<Box>
+				{webConfig?.isDevMode && (
+					<>
+						<Text color="black" backgroundColor="yellow" bold>
+							DEV
+						</Text>
+						<Text> </Text>
+					</>
+				)}
+				{networkUrl ? (
+					<Text color="yellow">
+						Coding Agent Control Desk — Web:{' '}
+						<Text color="greenBright">{networkUrl}</Text>
+					</Text>
+				) : (
+					<Text color="yellow">Coding Agent Control Desk</Text>
+				)}
+			</Box>
 			{subtitle && (
 				<Text bold color="magenta">
 					{subtitle}
