@@ -179,7 +179,8 @@ const Configuration: React.FC<ConfigurationProps> = ({onComplete, onQuit}) => {
 
 			<Box marginTop={1} borderStyle="round" borderColor="gray" paddingX={1}>
 				<Text dimColor>
-					These settings apply globally. For project-specific hooks, create a .cacd.json file in the project root.
+					These settings apply globally. For project-specific hooks, create a
+					.cacd.json file in the project root.
 				</Text>
 			</Box>
 		</Box>

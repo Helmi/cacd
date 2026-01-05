@@ -22,26 +22,49 @@ const Header: React.FC<HeaderProps> = ({subtitle, webConfig}) => {
 
 	return (
 		<Box marginBottom={1} flexDirection="column">
-			<Text color="cyan">                                       ░▒▓░</Text>
-			<Text color="cyan"> ░▒▓███████▓▒░  ░▒▓███████▓▒░        ░▒▓▓▒    ░▒▓███████▓▒░ ░▒▓████████▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓█▓▒░    ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓██▓▒░     ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░  ░▒▓██▓▒░      ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░        ░▒▓█████████▓▒░ ░▒▓███████▓▒░  ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓██▓▒░   ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░    ░▒▓██▓▒░    ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan"> ░▒▓███████▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓▓▒░       ░▒▓███████▓▒░ ░▒▓████████▓▒░</Text>
-			<Text color="cyan">                                 ░▓▒░</Text>
+			<Text color="cyan"> ░▒▓░</Text>
+			<Text color="cyan">
+				{' '}
+				░▒▓███████▓▒░ ░▒▓███████▓▒░ ░▒▓▓▒ ░▒▓███████▓▒░ ░▒▓████████▓▒░
+			</Text>
+			<Text color="cyan">
+				░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░
+			</Text>
+			<Text color="cyan">
+				░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓██▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░
+			</Text>
+			<Text color="cyan">
+				░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓██▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░
+			</Text>
+			<Text color="cyan">
+				░▒▓█▓▒░ ░▒▓█████████▓▒░ ░▒▓███████▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░
+			</Text>
+			<Text color="cyan">
+				░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓██▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░
+			</Text>
+			<Text color="cyan">
+				░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓██▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░
+			</Text>
+			<Text color="cyan">
+				░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░
+			</Text>
+			<Text color="cyan">
+				{' '}
+				░▒▓███████▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓▓▒░ ░▒▓███████▓▒░ ░▒▓████████▓▒░
+			</Text>
+			<Text color="cyan"> ░▓▒░</Text>
 			<Text> </Text>
 			<Box>
 				{webConfig?.isDevMode && (
-					<Text color="black" backgroundColor="yellow" bold> DEV </Text>
+					<>
+						<Text color="black" backgroundColor="yellow" bold>DEV</Text>
+						<Text> </Text>
+					</>
 				)}
-				{webConfig?.isDevMode && <Text> </Text>}
 				{networkUrl ? (
 					<Text color="yellow">
-						Coding Agent Control Desk — Web: <Text color="greenBright">{networkUrl}</Text>
+						Coding Agent Control Desk — Web:{' '}
+						<Text color="greenBright">{networkUrl}</Text>
 					</Text>
 				) : (
 					<Text color="yellow">Coding Agent Control Desk</Text>
@@ -52,7 +75,9 @@ const Header: React.FC<HeaderProps> = ({subtitle, webConfig}) => {
 					{subtitle}
 				</Text>
 			)}
-			<Text color="gray">────────────────────────────────────────────────────────────────────────────</Text>
+			<Text color="gray">
+				────────────────────────────────────────────────────────────────────────────
+			</Text>
 		</Box>
 	);
 };

@@ -74,13 +74,7 @@ class Logger {
 		// Fallback to ~/.local/state/cacd on Linux, ~/Library/Logs on macOS
 		const homeDir = os.homedir();
 		if (process.platform === 'darwin') {
-			return path.join(
-				homeDir,
-				'Library',
-				'Logs',
-				'cacd',
-				'cacd.log',
-			);
+			return path.join(homeDir, 'Library', 'Logs', 'cacd', 'cacd.log');
 		}
 
 		// Linux and others

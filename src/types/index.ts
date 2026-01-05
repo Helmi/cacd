@@ -196,7 +196,10 @@ export interface IProjectManager {
 	getProjects(): Project[];
 	addProject(projectPath: string, description?: string): Project | null;
 	removeProject(projectPath: string): boolean;
-	updateProject(projectPath: string, updates: Partial<Pick<Project, 'name' | 'description'>>): Project | null;
+	updateProject(
+		projectPath: string,
+		updates: Partial<Pick<Project, 'name' | 'description'>>,
+	): Project | null;
 	validateProjects(): void;
 
 	// Project validation

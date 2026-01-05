@@ -4,29 +4,43 @@
  * IMPORTANT: initializeConfigDir() must be called before any service imports
  * that depend on the config directory (ConfigurationManager, ProjectManager).
  *
- * Dev mode (CACD_DEV=1): Uses local .cacd-dev/ directory in current working directory.
- * Production mode: Uses global ~/.config/cacd/ directory.
+ * Priority order:
+ * 1. CACD_CONFIG_DIR env var (explicit custom path)
+ * 2. CACD_DEV=1 (dev mode uses local .cacd-dev/ directory)
+ * 3. Default global path (~/.config/cacd/ or %APPDATA%/cacd on Windows)
  */
 
 import {homedir} from 'os';
 import {join} from 'path';
-import {isDevMode} from '../constants/env.js';
+import {ENV_VARS, isDevMode} from '../constants/env.js';
 
 let _configDir: string | null = null;
 let _isCustom = false;
 let _isDevModeConfig = false;
 
 /**
- * Initialize config directory based on mode.
- * - Dev mode (CACD_DEV=1): Uses .cacd-dev/ in current working directory
- * - Production: Uses global ~/.config/cacd/
+ * Initialize config directory based on environment and mode.
+ *
+ * Priority:
+ * 1. CACD_CONFIG_DIR env var (explicit override)
+ * 2. CACD_DEV=1 (dev mode: .cacd-dev/ in current working directory)
+ * 3. Default global path
  *
  * MUST be called at the start of cli.tsx before any service imports.
  */
 export function initializeConfigDir(): string {
 	if (_configDir) return _configDir;
 
-	// Dev mode: use local .cacd-dev/ directory
+	// Priority 1: Explicit config dir from env var
+	const customConfigDir = process.env[ENV_VARS.CONFIG_DIR];
+	if (customConfigDir) {
+		_configDir = customConfigDir;
+		_isCustom = true;
+		_isDevModeConfig = false;
+		return _configDir;
+	}
+
+	// Priority 2: Dev mode uses local .cacd-dev/ directory
 	if (isDevMode()) {
 		_configDir = join(process.cwd(), '.cacd-dev');
 		_isCustom = true;
@@ -34,7 +48,7 @@ export function initializeConfigDir(): string {
 		return _configDir;
 	}
 
-	// Production mode: use global config directory
+	// Priority 3: Default global config directory
 	const homeDir = homedir();
 	_configDir =
 		process.platform === 'win32'
@@ -63,7 +77,8 @@ export function getConfigDir(): string {
 }
 
 /**
- * Check if a custom config dir was provided (dev mode uses local .cacd-dev/).
+ * Check if a custom config dir was provided.
+ * True when CACD_CONFIG_DIR is set or in dev mode (.cacd-dev/).
  */
 export function isCustomConfigDir(): boolean {
 	return _isCustom;

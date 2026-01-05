@@ -31,7 +31,9 @@ export function loadProjectConfig(projectRoot: string): ProjectConfig | null {
 				const config = JSON.parse(content) as ProjectConfig;
 				return config;
 			} catch (error) {
-				console.warn(`Failed to parse project config at ${configPath}: ${error}`);
+				console.warn(
+					`Failed to parse project config at ${configPath}: ${error}`,
+				);
 				return null;
 			}
 		}

@@ -6,10 +6,7 @@ import {Worktree, Session, GitProject, Project} from '../types/index.js';
 import {WorktreeService} from '../services/worktreeService.js';
 import {SessionManager} from '../services/sessionManager.js';
 import {GitError} from '../types/errors.js';
-import {
-	STATUS_ICONS,
-	STATUS_LABELS,
-} from '../constants/statusIcons.js';
+import {STATUS_ICONS, STATUS_LABELS} from '../constants/statusIcons.js';
 import {useGitStatus} from '../hooks/useGitStatus.js';
 import {
 	prepareWorktreeItems,

@@ -24,7 +24,6 @@ import {
 } from '../types/index.js';
 import {type AppError} from '../types/errors.js';
 import {configurationManager} from '../services/configurationManager.js';
-import {projectManager} from '../services/projectManager.js';
 import {coreService} from '../services/coreService.js';
 
 type View =
@@ -55,10 +54,7 @@ interface AppProps {
 	};
 }
 
-const App: React.FC<AppProps> = ({
-	devcontainerConfig,
-	webConfig,
-}) => {
+const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 	const {exit} = useApp();
 	// Always start with project-list - unified project management
 	const [view, setView] = useState<View>('project-list');
@@ -261,7 +257,9 @@ const App: React.FC<AppProps> = ({
 		if (result.success) {
 			// Show warnings if any (e.g., hook failures)
 			if (result.warnings && result.warnings.length > 0) {
-				setError(`Worktree created with warnings:\n${result.warnings.join('\n')}`);
+				setError(
+					`Worktree created with warnings:\n${result.warnings.join('\n')}`,
+				);
 			}
 			handleReturnToMenu();
 			return;
@@ -479,7 +477,9 @@ const App: React.FC<AppProps> = ({
 		} else {
 			// Success - show warnings if any, then return to menu
 			if (result.right.warnings && result.right.warnings.length > 0) {
-				setError(`Worktree created with warnings:\n${result.right.warnings.join('\n')}`);
+				setError(
+					`Worktree created with warnings:\n${result.right.warnings.join('\n')}`,
+				);
 			}
 			handleReturnToMenu();
 		}
@@ -557,14 +557,17 @@ const App: React.FC<AppProps> = ({
 	};
 
 	// Global quit handler - Ctrl+Q works from any view (except session which handles its own input)
-	useInput((input, key) => {
-		// Ctrl+Q to quit from anywhere
-		if (key.ctrl && input === 'q') {
-			globalSessionOrchestrator.destroyAllSessions();
-			exit();
-			process.exit(0);
-		}
-	}, {isActive: view !== 'session'}); // Disable in session view to not interfere with terminal
+	useInput(
+		(input, key) => {
+			// Ctrl+Q to quit from anywhere
+			if (key.ctrl && input === 'q') {
+				globalSessionOrchestrator.destroyAllSessions();
+				exit();
+				process.exit(0);
+			}
+		},
+		{isActive: view !== 'session'},
+	); // Disable in session view to not interfere with terminal
 
 	if (view === 'project-list') {
 		return (

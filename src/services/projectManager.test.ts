@@ -1,6 +1,5 @@
 import {describe, it, expect, beforeEach, vi, afterEach} from 'vitest';
 import * as fs from 'fs';
-import * as path from 'path';
 import {Effect, Either} from 'effect';
 
 // Mock modules before any other imports that might use them
@@ -55,8 +54,18 @@ describe('ProjectManager', () => {
 
 		it('should load existing projects on initialization', () => {
 			const mockProjects: Project[] = [
-				{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now(), isValid: true},
-				{path: '/path/to/project2', name: 'project2', lastAccessed: Date.now() - 1000, isValid: true},
+				{
+					path: '/path/to/project1',
+					name: 'project1',
+					lastAccessed: Date.now(),
+					isValid: true,
+				},
+				{
+					path: '/path/to/project2',
+					name: 'project2',
+					lastAccessed: Date.now() - 1000,
+					isValid: true,
+				},
 			];
 
 			mockFs.existsSync.mockImplementation((filePath: string) => {
@@ -76,7 +85,11 @@ describe('ProjectManager', () => {
 		it('should migrate from legacy recent-projects.json', () => {
 			const legacyProjects = [
 				{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now()},
-				{path: '/path/to/project2', name: 'project2', lastAccessed: Date.now() - 1000},
+				{
+					path: '/path/to/project2',
+					name: 'project2',
+					lastAccessed: Date.now() - 1000,
+				},
 			];
 
 			mockFs.existsSync.mockImplementation((filePath: string) => {
@@ -106,9 +119,24 @@ describe('ProjectManager', () => {
 	describe('getProjects', () => {
 		it('should return projects sorted by lastAccessed (newest first)', () => {
 			const mockProjects: Project[] = [
-				{path: '/path/to/old', name: 'old', lastAccessed: Date.now() - 10000, isValid: true},
-				{path: '/path/to/new', name: 'new', lastAccessed: Date.now(), isValid: true},
-				{path: '/path/to/mid', name: 'mid', lastAccessed: Date.now() - 5000, isValid: true},
+				{
+					path: '/path/to/old',
+					name: 'old',
+					lastAccessed: Date.now() - 10000,
+					isValid: true,
+				},
+				{
+					path: '/path/to/new',
+					name: 'new',
+					lastAccessed: Date.now(),
+					isValid: true,
+				},
+				{
+					path: '/path/to/mid',
+					name: 'mid',
+					lastAccessed: Date.now() - 5000,
+					isValid: true,
+				},
 			];
 
 			mockFs.existsSync.mockReturnValue(true);
@@ -152,7 +180,10 @@ describe('ProjectManager', () => {
 				return false;
 			});
 
-			const result = projectManager.addProject('/path/to/project', 'My awesome project');
+			const result = projectManager.addProject(
+				'/path/to/project',
+				'My awesome project',
+			);
 
 			expect(result?.description).toBe('My awesome project');
 		});
@@ -190,15 +221,27 @@ describe('ProjectManager', () => {
 			const result = projectManager.addProject('/path/to/project');
 
 			expect(result).not.toBeNull();
-			expect(result!.lastAccessed).toBeGreaterThan(existingProject.lastAccessed);
+			expect(result!.lastAccessed).toBeGreaterThan(
+				existingProject.lastAccessed,
+			);
 		});
 	});
 
 	describe('removeProject', () => {
 		it('should remove an existing project', () => {
 			const mockProjects: Project[] = [
-				{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now(), isValid: true},
-				{path: '/path/to/project2', name: 'project2', lastAccessed: Date.now(), isValid: true},
+				{
+					path: '/path/to/project1',
+					name: 'project1',
+					lastAccessed: Date.now(),
+					isValid: true,
+				},
+				{
+					path: '/path/to/project2',
+					name: 'project2',
+					lastAccessed: Date.now(),
+					isValid: true,
+				},
 			];
 
 			mockFs.existsSync.mockReturnValue(true);
@@ -223,35 +266,51 @@ describe('ProjectManager', () => {
 	describe('updateProject', () => {
 		it('should update project name', () => {
 			const mockProjects: Project[] = [
-				{path: '/path/to/project', name: 'old-name', lastAccessed: Date.now(), isValid: true},
+				{
+					path: '/path/to/project',
+					name: 'old-name',
+					lastAccessed: Date.now(),
+					isValid: true,
+				},
 			];
 
 			mockFs.existsSync.mockReturnValue(true);
 			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockProjects));
 
 			projectManager = new ProjectManager();
-			const result = projectManager.updateProject('/path/to/project', {name: 'new-name'});
+			const result = projectManager.updateProject('/path/to/project', {
+				name: 'new-name',
+			});
 
 			expect(result?.name).toBe('new-name');
 		});
 
 		it('should update project description', () => {
 			const mockProjects: Project[] = [
-				{path: '/path/to/project', name: 'project', lastAccessed: Date.now(), isValid: true},
+				{
+					path: '/path/to/project',
+					name: 'project',
+					lastAccessed: Date.now(),
+					isValid: true,
+				},
 			];
 
 			mockFs.existsSync.mockReturnValue(true);
 			mockFs.readFileSync.mockReturnValue(JSON.stringify(mockProjects));
 
 			projectManager = new ProjectManager();
-			const result = projectManager.updateProject('/path/to/project', {description: 'Updated desc'});
+			const result = projectManager.updateProject('/path/to/project', {
+				description: 'Updated desc',
+			});
 
 			expect(result?.description).toBe('Updated desc');
 		});
 
 		it('should return null for non-existent project', () => {
 			projectManager = new ProjectManager();
-			const result = projectManager.updateProject('/path/to/nonexistent', {name: 'new-name'});
+			const result = projectManager.updateProject('/path/to/nonexistent', {
+				name: 'new-name',
+			});
 
 			expect(result).toBeNull();
 		});
@@ -260,7 +319,12 @@ describe('ProjectManager', () => {
 	describe('hasProject', () => {
 		it('should return true for existing project', () => {
 			const mockProjects: Project[] = [
-				{path: '/path/to/project', name: 'project', lastAccessed: Date.now(), isValid: true},
+				{
+					path: '/path/to/project',
+					name: 'project',
+					lastAccessed: Date.now(),
+					isValid: true,
+				},
 			];
 
 			mockFs.existsSync.mockReturnValue(true);
@@ -279,7 +343,12 @@ describe('ProjectManager', () => {
 	describe('getProject', () => {
 		it('should return project by path', () => {
 			const mockProjects: Project[] = [
-				{path: '/path/to/project', name: 'project', lastAccessed: Date.now(), isValid: true},
+				{
+					path: '/path/to/project',
+					name: 'project',
+					lastAccessed: Date.now(),
+					isValid: true,
+				},
 			];
 
 			mockFs.existsSync.mockReturnValue(true);
@@ -302,8 +371,18 @@ describe('ProjectManager', () => {
 	describe('validateProjects', () => {
 		it('should mark invalid projects', () => {
 			const mockProjects: Project[] = [
-				{path: '/path/to/valid', name: 'valid', lastAccessed: Date.now(), isValid: true},
-				{path: '/path/to/invalid', name: 'invalid', lastAccessed: Date.now(), isValid: true},
+				{
+					path: '/path/to/valid',
+					name: 'valid',
+					lastAccessed: Date.now(),
+					isValid: true,
+				},
+				{
+					path: '/path/to/invalid',
+					name: 'invalid',
+					lastAccessed: Date.now(),
+					isValid: true,
+				},
 			];
 
 			mockFs.existsSync.mockImplementation((filePath: string) => {
@@ -333,7 +412,12 @@ describe('ProjectManager', () => {
 	describe('selectProject', () => {
 		it('should select a project and update lastAccessed', () => {
 			const mockProjects: Project[] = [
-				{path: '/path/to/project', name: 'project', lastAccessed: Date.now() - 10000, isValid: true},
+				{
+					path: '/path/to/project',
+					name: 'project',
+					lastAccessed: Date.now() - 10000,
+					isValid: true,
+				},
 			];
 
 			mockFs.existsSync.mockReturnValue(true);
@@ -352,7 +436,9 @@ describe('ProjectManager', () => {
 			projectManager.selectProject(gitProject);
 
 			expect(projectManager.currentProject).toBe(gitProject);
-			expect(projectManager.getProjects()[0]?.lastAccessed).toBeGreaterThan(initialLastAccessed!);
+			expect(projectManager.getProjects()[0]?.lastAccessed).toBeGreaterThan(
+				initialLastAccessed!,
+			);
 		});
 	});
 
@@ -448,7 +534,8 @@ describe('ProjectManager', () => {
 				stat: vi.fn().mockRejectedValue(new Error('Not found')),
 			};
 
-			const isValid = await projectManager.validateGitRepository('/test/not-repo');
+			const isValid =
+				await projectManager.validateGitRepository('/test/not-repo');
 			expect(isValid).toBe(false);
 		});
 	});
@@ -478,8 +565,18 @@ describe('ProjectManager', () => {
 		describe('loadProjectsEffect', () => {
 			it('should return Effect with projects on success', async () => {
 				const mockProjects: Project[] = [
-					{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now(), isValid: true},
-					{path: '/path/to/project2', name: 'project2', lastAccessed: Date.now() - 1000, isValid: true},
+					{
+						path: '/path/to/project1',
+						name: 'project1',
+						lastAccessed: Date.now(),
+						isValid: true,
+					},
+					{
+						path: '/path/to/project2',
+						name: 'project2',
+						lastAccessed: Date.now() - 1000,
+						isValid: true,
+					},
 				];
 
 				mockFs.existsSync.mockReturnValue(true);
@@ -510,7 +607,12 @@ describe('ProjectManager', () => {
 
 				projectManager = new ProjectManager();
 				const projects: Project[] = [
-					{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now(), isValid: true},
+					{
+						path: '/path/to/project1',
+						name: 'project1',
+						lastAccessed: Date.now(),
+						isValid: true,
+					},
 				];
 
 				const effect = projectManager.saveProjectsEffect(projects);
@@ -529,7 +631,12 @@ describe('ProjectManager', () => {
 
 				projectManager = new ProjectManager();
 				const projects: Project[] = [
-					{path: '/path/to/project1', name: 'project1', lastAccessed: Date.now(), isValid: true},
+					{
+						path: '/path/to/project1',
+						name: 'project1',
+						lastAccessed: Date.now(),
+						isValid: true,
+					},
 				];
 
 				const effect = projectManager.saveProjectsEffect(projects);

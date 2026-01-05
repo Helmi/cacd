@@ -1,10 +1,386 @@
+/* Import Google Fonts - must be at top */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Fira+Code:wght@300;400;500;600;700&family=Source+Code+Pro:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root {
-  height: 100%;
-  margin: 0;
-  background-color: #000;
-  color: #fff;
+@layer base {
+  :root {
+    /* Default: Dark terminal theme */
+    --background: 222 47% 8%;
+    --foreground: 0 0% 90%;
+    --card: 222 47% 10%;
+    --card-foreground: 0 0% 90%;
+    --popover: 222 47% 10%;
+    --popover-foreground: 0 0% 90%;
+    --primary: 160 70% 45%;
+    --primary-foreground: 222 47% 8%;
+    --secondary: 222 30% 14%;
+    --secondary-foreground: 0 0% 85%;
+    --muted: 222 30% 18%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 280 60% 55%;
+    --accent-foreground: 0 0% 95%;
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 95%;
+    --border: 222 20% 22%;
+    --input: 222 30% 14%;
+    --ring: 160 70% 45%;
+    --radius: 0.25rem;
+
+    /* Sidebar specific */
+    --sidebar: 222 47% 6%;
+    --sidebar-foreground: 0 0% 85%;
+    --sidebar-primary: 160 70% 45%;
+    --sidebar-primary-foreground: 222 47% 8%;
+    --sidebar-accent: 222 30% 12%;
+    --sidebar-accent-foreground: 0 0% 90%;
+    --sidebar-border: 222 20% 20%;
+    --sidebar-ring: 160 70% 45%;
+
+    /* Terminal colors */
+    --terminal-bg: 222 47% 5%;
+    --terminal-fg: 0 0% 88%;
+    --terminal-cursor: 160 70% 45%;
+
+    /* Status colors */
+    --status-active: 145 70% 45%;
+    --status-idle: 45 70% 50%;
+    --status-error: 0 70% 50%;
+    --status-pending: 280 60% 55%;
+
+    /* Font */
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  /* Monokai theme */
+  .theme-monokai {
+    --background: 70 10% 10%;
+    --foreground: 60 10% 95%;
+    --card: 70 10% 12%;
+    --card-foreground: 60 10% 95%;
+    --popover: 70 10% 12%;
+    --popover-foreground: 60 10% 95%;
+    --primary: 50 70% 55%;
+    --primary-foreground: 70 10% 10%;
+    --secondary: 70 10% 16%;
+    --secondary-foreground: 0 0% 90%;
+    --muted: 70 10% 20%;
+    --muted-foreground: 60 10% 55%;
+    --accent: 330 70% 60%;
+    --accent-foreground: 0 0% 95%;
+    --border: 70 10% 26%;
+    --input: 70 10% 14%;
+    --ring: 50 70% 55%;
+    --sidebar: 70 10% 8%;
+    --sidebar-foreground: 0 0% 90%;
+    --sidebar-border: 70 10% 22%;
+    --terminal-bg: 70 10% 8%;
+    --terminal-fg: 60 10% 95%;
+    --terminal-cursor: 60 10% 95%;
+    --status-active: 120 60% 50%;
+    --status-idle: 50 100% 60%;
+    --status-error: 0 75% 60%;
+    --status-pending: 330 100% 70%;
+  }
+
+  /* Solarized Dark theme */
+  .theme-solarized {
+    --background: 192 100% 11%;
+    --foreground: 186 8% 55%;
+    --card: 192 90% 13%;
+    --card-foreground: 186 8% 55%;
+    --popover: 192 90% 13%;
+    --popover-foreground: 186 8% 55%;
+    --primary: 175 60% 40%;
+    --primary-foreground: 192 100% 11%;
+    --secondary: 192 80% 15%;
+    --secondary-foreground: 186 8% 50%;
+    --muted: 192 70% 18%;
+    --muted-foreground: 186 8% 45%;
+    --accent: 45 100% 45%;
+    --accent-foreground: 192 100% 11%;
+    --border: 192 60% 22%;
+    --input: 192 80% 14%;
+    --ring: 175 60% 40%;
+    --sidebar: 192 100% 9%;
+    --sidebar-foreground: 186 8% 50%;
+    --sidebar-border: 192 60% 18%;
+    --terminal-bg: 192 100% 9%;
+    --terminal-fg: 186 8% 55%;
+    --terminal-cursor: 175 60% 40%;
+    --status-active: 140 50% 45%;
+    --status-idle: 45 100% 45%;
+    --status-error: 0 70% 50%;
+    --status-pending: 280 50% 55%;
+  }
+
+  /* Dracula theme */
+  .theme-dracula {
+    --background: 231 15% 18%;
+    --foreground: 60 30% 96%;
+    --card: 231 15% 20%;
+    --card-foreground: 60 30% 96%;
+    --popover: 231 15% 20%;
+    --popover-foreground: 60 30% 96%;
+    --primary: 326 100% 74%;
+    --primary-foreground: 231 15% 18%;
+    --secondary: 231 15% 24%;
+    --secondary-foreground: 60 30% 92%;
+    --muted: 231 15% 28%;
+    --muted-foreground: 231 10% 55%;
+    --accent: 135 70% 65%;
+    --accent-foreground: 231 15% 18%;
+    --border: 231 15% 32%;
+    --input: 231 15% 22%;
+    --ring: 326 100% 74%;
+    --sidebar: 231 15% 16%;
+    --sidebar-foreground: 60 30% 92%;
+    --sidebar-border: 231 15% 28%;
+    --terminal-bg: 231 15% 16%;
+    --terminal-fg: 60 30% 96%;
+    --terminal-cursor: 60 30% 96%;
+    --status-active: 135 70% 60%;
+    --status-idle: 60 70% 70%;
+    --status-error: 0 100% 70%;
+    --status-pending: 280 70% 70%;
+  }
+
+  /* Nord theme */
+  .theme-nord {
+    --background: 220 16% 22%;
+    --foreground: 219 28% 88%;
+    --card: 220 16% 25%;
+    --card-foreground: 219 28% 88%;
+    --popover: 220 16% 25%;
+    --popover-foreground: 219 28% 88%;
+    --primary: 193 43% 67%;
+    --primary-foreground: 220 16% 22%;
+    --secondary: 220 16% 29%;
+    --secondary-foreground: 219 28% 85%;
+    --muted: 220 16% 33%;
+    --muted-foreground: 219 20% 55%;
+    --accent: 179 25% 65%;
+    --accent-foreground: 220 16% 22%;
+    --border: 220 16% 36%;
+    --input: 220 16% 25%;
+    --ring: 193 43% 67%;
+    --sidebar: 220 16% 20%;
+    --sidebar-foreground: 219 28% 85%;
+    --sidebar-border: 220 16% 32%;
+    --terminal-bg: 220 16% 20%;
+    --terminal-fg: 219 28% 88%;
+    --terminal-cursor: 219 28% 88%;
+    --status-active: 140 45% 55%;
+    --status-idle: 40 70% 60%;
+    --status-error: 0 60% 60%;
+    --status-pending: 280 45% 65%;
+  }
+
+  /* Light theme */
+  .theme-light {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 15%;
+    --primary: 250 60% 45%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 94%;
+    --secondary-foreground: 0 0% 25%;
+    --muted: 0 0% 90%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 280 60% 55%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 95%;
+    --border: 0 0% 82%;
+    --input: 0 0% 90%;
+    --ring: 250 60% 45%;
+    --sidebar: 0 0% 96%;
+    --sidebar-foreground: 0 0% 20%;
+    --sidebar-border: 0 0% 86%;
+    --terminal-bg: 0 0% 99%;
+    --terminal-fg: 0 0% 15%;
+    --terminal-cursor: 250 60% 45%;
+    --status-active: 145 60% 35%;
+    --status-idle: 45 80% 40%;
+    --status-error: 0 70% 45%;
+    --status-pending: 280 60% 45%;
+  }
+
+  /* GitHub Light theme */
+  .theme-github {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 14%;
+    --card: 0 0% 99%;
+    --card-foreground: 0 0% 14%;
+    --popover: 0 0% 99%;
+    --popover-foreground: 0 0% 14%;
+    --primary: 215 70% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 95%;
+    --secondary-foreground: 0 0% 22%;
+    --muted: 0 0% 93%;
+    --muted-foreground: 0 0% 42%;
+    --accent: 285 60% 52%;
+    --accent-foreground: 0 0% 100%;
+    --border: 0 0% 86%;
+    --input: 0 0% 95%;
+    --ring: 215 70% 50%;
+    --sidebar: 0 0% 98%;
+    --sidebar-foreground: 0 0% 14%;
+    --sidebar-border: 0 0% 88%;
+    --terminal-bg: 0 0% 100%;
+    --terminal-fg: 0 0% 14%;
+    --terminal-cursor: 215 70% 50%;
+    --status-active: 145 50% 38%;
+    --status-idle: 45 75% 42%;
+    --status-error: 0 65% 48%;
+    --status-pending: 285 55% 48%;
+  }
+
+  /* Solarized Light theme */
+  .theme-solarized-light {
+    --background: 44 87% 94%;
+    --foreground: 192 81% 24%;
+    --card: 44 100% 96%;
+    --card-foreground: 192 81% 24%;
+    --popover: 44 100% 96%;
+    --popover-foreground: 192 81% 24%;
+    --primary: 175 60% 40%;
+    --primary-foreground: 44 87% 94%;
+    --secondary: 44 60% 90%;
+    --secondary-foreground: 192 70% 28%;
+    --muted: 44 50% 88%;
+    --muted-foreground: 192 50% 38%;
+    --accent: 45 100% 45%;
+    --accent-foreground: 44 87% 94%;
+    --border: 44 40% 82%;
+    --input: 44 60% 90%;
+    --ring: 175 60% 40%;
+    --sidebar: 44 80% 92%;
+    --sidebar-foreground: 192 81% 24%;
+    --sidebar-border: 44 50% 86%;
+    --terminal-bg: 44 100% 96%;
+    --terminal-fg: 192 81% 24%;
+    --terminal-cursor: 175 60% 40%;
+    --status-active: 140 45% 42%;
+    --status-idle: 45 90% 42%;
+    --status-error: 0 65% 45%;
+    --status-pending: 280 45% 48%;
+  }
+
+  /* One Light theme */
+  .theme-one-light {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 20%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 20%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 20%;
+    --primary: 220 70% 50%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 95%;
+    --secondary-foreground: 0 0% 26%;
+    --muted: 0 0% 92%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 320 70% 52%;
+    --accent-foreground: 0 0% 98%;
+    --border: 0 0% 84%;
+    --input: 0 0% 95%;
+    --ring: 220 70% 50%;
+    --sidebar: 0 0% 96%;
+    --sidebar-foreground: 0 0% 20%;
+    --sidebar-border: 0 0% 88%;
+    --terminal-bg: 0 0% 99%;
+    --terminal-fg: 0 0% 20%;
+    --terminal-cursor: 220 70% 50%;
+    --status-active: 140 55% 40%;
+    --status-idle: 40 80% 45%;
+    --status-error: 0 70% 50%;
+    --status-pending: 320 60% 50%;
+  }
+
+  /* Atom Light theme */
+  .theme-atom-light {
+    --background: 0 0% 98%;
+    --foreground: 0 0% 18%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 18%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 18%;
+    --primary: 210 60% 48%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 94%;
+    --secondary-foreground: 0 0% 24%;
+    --muted: 0 0% 91%;
+    --muted-foreground: 0 0% 43%;
+    --accent: 310 60% 50%;
+    --accent-foreground: 0 0% 98%;
+    --border: 0 0% 83%;
+    --input: 0 0% 94%;
+    --ring: 210 60% 48%;
+    --sidebar: 0 0% 95%;
+    --sidebar-foreground: 0 0% 18%;
+    --sidebar-border: 0 0% 87%;
+    --terminal-bg: 0 0% 99%;
+    --terminal-fg: 0 0% 18%;
+    --terminal-cursor: 210 60% 48%;
+    --status-active: 140 58% 38%;
+    --status-idle: 42 78% 42%;
+    --status-error: 0 68% 48%;
+    --status-pending: 310 58% 48%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    @apply bg-background text-foreground font-mono antialiased;
+  }
+}
+
+/* Custom scrollbar for terminal feel */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* Font class utilities */
+.font-jetbrains {
+  font-family: 'JetBrains Mono', monospace !important;
+}
+
+.font-fira {
+  font-family: 'Fira Code', monospace !important;
+}
+
+.font-source {
+  font-family: 'Source Code Pro', monospace !important;
+}
+
+.font-ibm {
+  font-family: 'IBM Plex Mono', monospace !important;
 }
