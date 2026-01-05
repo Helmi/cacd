@@ -3,7 +3,16 @@ export const ENV_VARS = {
 	MULTI_PROJECT_ROOT: 'CACD_PROJECTS_DIR',
 	CONFIG_DIR: 'CACD_CONFIG_DIR',
 	PORT: 'CACD_PORT',
+	DEV_MODE: 'CACD_DEV', // Set automatically by `npm run dev`
 } as const;
+
+/**
+ * Check if running in dev mode.
+ * Dev mode uses local .cacd-dev/ config directory instead of global config.
+ */
+export function isDevMode(): boolean {
+	return process.env[ENV_VARS.DEV_MODE] === '1';
+}
 
 // Port configuration
 export const PORT_RANGE = {

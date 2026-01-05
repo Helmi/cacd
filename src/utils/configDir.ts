@@ -3,37 +3,48 @@
  *
  * IMPORTANT: initializeConfigDir() must be called before any service imports
  * that depend on the config directory (ConfigurationManager, ProjectManager).
+ *
+ * Dev mode (CACD_DEV=1): Uses local .cacd-dev/ directory in current working directory.
+ * Production mode: Uses global ~/.config/cacd/ directory.
  */
 
 import {homedir} from 'os';
 import {join} from 'path';
+import {isDevMode} from '../constants/env.js';
 
 let _configDir: string | null = null;
 let _isCustom = false;
+let _isDevModeConfig = false;
 
 /**
- * Initialize config directory from environment or default.
+ * Initialize config directory based on mode.
+ * - Dev mode (CACD_DEV=1): Uses .cacd-dev/ in current working directory
+ * - Production: Uses global ~/.config/cacd/
+ *
  * MUST be called at the start of cli.tsx before any service imports.
  */
 export function initializeConfigDir(): string {
 	if (_configDir) return _configDir;
 
-	const envDir = process.env['CACD_CONFIG_DIR'];
-
-	if (envDir) {
-		_configDir = envDir;
+	// Dev mode: use local .cacd-dev/ directory
+	if (isDevMode()) {
+		_configDir = join(process.cwd(), '.cacd-dev');
 		_isCustom = true;
-	} else {
-		const homeDir = homedir();
-		_configDir =
-			process.platform === 'win32'
-				? join(
-						process.env['APPDATA'] || join(homeDir, 'AppData', 'Roaming'),
-						'cacd',
-					)
-				: join(homeDir, '.config', 'cacd');
-		_isCustom = false;
+		_isDevModeConfig = true;
+		return _configDir;
 	}
+
+	// Production mode: use global config directory
+	const homeDir = homedir();
+	_configDir =
+		process.platform === 'win32'
+			? join(
+					process.env['APPDATA'] || join(homeDir, 'AppData', 'Roaming'),
+					'cacd',
+				)
+			: join(homeDir, '.config', 'cacd');
+	_isCustom = false;
+	_isDevModeConfig = false;
 
 	return _configDir;
 }
@@ -52,8 +63,15 @@ export function getConfigDir(): string {
 }
 
 /**
- * Check if a custom config dir was provided via CACD_CONFIG_DIR env var.
+ * Check if a custom config dir was provided (dev mode uses local .cacd-dev/).
  */
 export function isCustomConfigDir(): boolean {
 	return _isCustom;
+}
+
+/**
+ * Check if running with dev mode config (.cacd-dev/ directory).
+ */
+export function isDevModeConfig(): boolean {
+	return _isDevModeConfig;
 }

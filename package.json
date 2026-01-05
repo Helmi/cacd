@@ -30,7 +30,8 @@
 	},
 	"scripts": {
 		"build": "tsc && cd client && npm install && npm run build",
-		"dev": "tsc --watch",
+		"dev": "CACD_DEV=1 tsx watch src/cli.tsx",
+		"dev:build": "tsc --watch",
 		"start": "node dist/cli.js",
 		"test": "vitest --run",
 		"lint": "eslint src",
@@ -74,6 +75,7 @@
 		"ink-testing-library": "^3.0.0",
 		"prettier": "^3.0.0",
 		"ts-node": "^10.9.1",
+		"tsx": "^4.19.4",
 		"typescript": "^5.0.3",
 		"vitest": "^3.2.2"
 	},
