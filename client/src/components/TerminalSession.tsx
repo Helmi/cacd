@@ -21,10 +21,12 @@ import { mapSessionState } from '@/lib/types'
 interface TerminalSessionProps {
   session: Session
   slotIndex?: number
+  isFocused?: boolean
+  onFocus?: () => void
   onRemove: () => void
 }
 
-export function TerminalSession({ session, slotIndex, onRemove }: TerminalSessionProps) {
+export function TerminalSession({ session, slotIndex, isFocused = false, onFocus, onRemove }: TerminalSessionProps) {
   const { socket, toggleContextSidebar, contextSidebarSessionId, stopSession } = useAppStore()
   const [isMaximized, setIsMaximized] = useState(false)
   const terminalRef = useRef<HTMLDivElement>(null)
@@ -143,18 +145,27 @@ export function TerminalSession({ session, slotIndex, onRemove }: TerminalSessio
     await stopSession(session.id)
   }
 
+  // Handle clicking the terminal area to focus
+  const handleTerminalClick = () => {
+    onFocus?.()
+    xtermRef.current?.focus()
+  }
+
   return (
     <div
       className={cn(
         'flex flex-col bg-terminal-bg outline-none',
-        isMaximized && 'fixed inset-0 z-50'
+        isMaximized && 'fixed inset-0 z-50',
+        isFocused && 'ring-2 ring-primary ring-inset'
       )}
+      onClick={handleTerminalClick}
     >
       {/* Terminal header */}
       <div
         className={cn(
           'flex h-7 items-center justify-between border-b border-border bg-card px-2',
-          slotIndex !== undefined && 'cursor-pointer'
+          slotIndex !== undefined && 'cursor-pointer',
+          isFocused && 'bg-primary/10'
         )}
       >
         <div className="flex items-center gap-2 text-xs">

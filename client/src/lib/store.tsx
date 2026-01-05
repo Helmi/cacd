@@ -31,6 +31,7 @@ interface AppState {
 
   // UI State
   selectedSessions: string[]
+  focusedSessionId: string | null
   sidebarOpen: boolean
   sidebarCollapsed: boolean
   contextSidebarSessionId: string | null
@@ -57,6 +58,7 @@ interface AppActions {
   deselectSession: (sessionId: string) => void
   toggleSession: (sessionId: string) => void
   clearSessions: () => void
+  focusSession: (sessionId: string) => void
 
   // Sidebar
   toggleSidebar: () => void
@@ -91,6 +93,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // UI state
   const [selectedSessions, setSelectedSessions] = useState<string[]>([])
+  const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [contextSidebarSessionId, setContextSidebarSessionId] = useState<string | null>(null)
@@ -196,11 +199,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const selectSession = (sessionId: string) => {
     setSelectedSessions([sessionId])
+    setFocusedSessionId(sessionId)
     setContextSidebarSessionId(sessionId)
   }
 
   const deselectSession = (sessionId: string) => {
-    setSelectedSessions(prev => prev.filter(id => id !== sessionId))
+    setSelectedSessions(prev => {
+      const newSessions = prev.filter(id => id !== sessionId)
+      // If we removed the focused session, focus the first remaining one
+      if (focusedSessionId === sessionId && newSessions.length > 0) {
+        setFocusedSessionId(newSessions[0])
+      } else if (newSessions.length === 0) {
+        setFocusedSessionId(null)
+      }
+      return newSessions
+    })
     if (contextSidebarSessionId === sessionId) {
       setContextSidebarSessionId(null)
     }
@@ -210,12 +223,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedSessions(prev => {
       if (prev.includes(sessionId)) {
         const newSessions = prev.filter(id => id !== sessionId)
+        if (focusedSessionId === sessionId && newSessions.length > 0) {
+          setFocusedSessionId(newSessions[0])
+        }
         if (newSessions.length === 1) {
           setContextSidebarSessionId(newSessions[0])
         }
         return newSessions
       }
       const newSessions = [...prev, sessionId]
+      // Focus the newly added session
+      setFocusedSessionId(sessionId)
       if (newSessions.length > 2) {
         setContextSidebarSessionId(null)
       }
@@ -225,7 +243,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const clearSessions = () => {
     setSelectedSessions([])
+    setFocusedSessionId(null)
     setContextSidebarSessionId(null)
+  }
+
+  const focusSession = (sessionId: string) => {
+    setFocusedSessionId(sessionId)
   }
 
   const toggleSidebar = () => setSidebarOpen(prev => !prev)
@@ -288,6 +311,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sessions,
     currentProject,
     selectedSessions,
+    focusedSessionId,
     sidebarOpen,
     sidebarCollapsed,
     contextSidebarSessionId,
@@ -304,6 +328,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     deselectSession,
     toggleSession,
     clearSessions,
+    focusSession,
     toggleSidebar,
     collapseSidebar,
     expandSidebar,
