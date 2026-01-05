@@ -464,8 +464,12 @@ export class APIServer {
 					(err as NodeJS.ErrnoException).code === 'EADDRINUSE';
 
 				if (isAddressInUse && devMode && attempt < maxRetries - 1) {
-					// In dev mode, silently try a new random port
-					currentPort = generateRandomPort();
+					// In dev mode, try a new random port
+					const newPort = generateRandomPort();
+					logger.info(
+						`Port ${currentPort} in use, retrying with port ${newPort} (attempt ${attempt + 2}/${maxRetries})`,
+					);
+					currentPort = newPort;
 					continue;
 				}
 

@@ -57,7 +57,9 @@ const Header: React.FC<HeaderProps> = ({subtitle, webConfig}) => {
 			<Box>
 				{webConfig?.isDevMode && (
 					<>
-						<Text color="black" backgroundColor="yellow" bold>DEV</Text>
+						<Text color="black" backgroundColor="yellow" bold>
+							DEV
+						</Text>
 						<Text> </Text>
 					</>
 				)}

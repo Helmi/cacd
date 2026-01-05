@@ -48,7 +48,7 @@ const cli = meow(
 	  --devc-exec-command   Command to execute in devcontainer
 
 	Environment Variables
-	  CACD_CONFIG_DIR        Custom config directory path (overrides all defaults)
+	  CACD_CONFIG_DIR        Custom config directory (highest priority, overrides CACD_DEV)
 	  CACD_PORT              Port for web interface
 	  CACD_DEV               Set to 1 for dev mode (uses local .cacd-dev/ config)
 
