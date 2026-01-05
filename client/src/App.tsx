@@ -1,5 +1,6 @@
 import { AppProvider, useAppStore } from '@/lib/store'
 import { Layout } from '@/components/layout'
+import { SessionGrid } from '@/components/SessionGrid'
 import { Terminal } from 'lucide-react'
 
 function MainContent() {
@@ -21,14 +22,7 @@ function MainContent() {
     )
   }
 
-  // Placeholder for session grid - will be implemented in Issue #11
-  return (
-    <div className="flex h-full items-center justify-center text-muted-foreground">
-      <p className="text-sm">
-        {selectedSessions.length} session{selectedSessions.length !== 1 ? 's' : ''} selected - Grid view coming soon
-      </p>
-    </div>
-  )
+  return <SessionGrid />
 }
 
 function App() {

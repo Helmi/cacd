@@ -54,6 +54,7 @@ interface AppActions {
 
   // Session selection
   selectSession: (sessionId: string) => void
+  deselectSession: (sessionId: string) => void
   toggleSession: (sessionId: string) => void
   clearSessions: () => void
 
@@ -198,6 +199,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setContextSidebarSessionId(sessionId)
   }
 
+  const deselectSession = (sessionId: string) => {
+    setSelectedSessions(prev => prev.filter(id => id !== sessionId))
+    if (contextSidebarSessionId === sessionId) {
+      setContextSidebarSessionId(null)
+    }
+  }
+
   const toggleSession = (sessionId: string) => {
     setSelectedSessions(prev => {
       if (prev.includes(sessionId)) {
@@ -293,6 +301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     fetchData,
     selectProject,
     selectSession,
+    deselectSession,
     toggleSession,
     clearSessions,
     toggleSidebar,
