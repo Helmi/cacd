@@ -24,10 +24,8 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
 
-    - name: Clean install dependencies
-      run: |
-        rm -rf node_modules package-lock.json
-        npm install
+    - name: Install dependencies
+      run: npm ci
 
     - name: Run typecheck
       run: npm run typecheck
