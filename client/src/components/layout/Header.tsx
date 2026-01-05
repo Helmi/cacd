@@ -6,7 +6,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Zap, Plus, Settings, PanelLeft } from 'lucide-react'
+import { SettingsDropdown } from '@/components/SettingsDropdown'
+import { Zap, Plus, PanelLeft } from 'lucide-react'
 
 export function Header() {
   const { projects, worktrees, sessions, toggleSidebar } = useAppStore()
@@ -55,10 +56,8 @@ export function Header() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Theme/font controls placeholder */}
-        <Button variant="ghost" size="icon" className="h-6 w-6">
-          <Settings className="h-3.5 w-3.5" />
-        </Button>
+        {/* Theme/font controls */}
+        <SettingsDropdown />
       </div>
     </header>
   )
