@@ -13,8 +13,13 @@ import {
 	getClaudeProjectsDir,
 	pathToClaudeProjectName,
 } from '../utils/claudeDir.js';
-import {executeWorktreePostCreationHook} from '../utils/hookExecutor.js';
+import {
+	executeWorktreePostCreationHook,
+	executeProjectSetupHook,
+	executeProjectTeardownHook,
+} from '../utils/hookExecutor.js';
 import {configurationManager} from './configurationManager.js';
+import {loadProjectConfig, buildHookEnvironment} from '../utils/projectConfig.js';
 
 const CLAUDE_DIR = '.claude';
 
@@ -957,7 +962,31 @@ export class WorktreeService {
 				);
 			}
 
-			// Execute post-creation hook if configured
+			// Collect warnings for non-fatal issues
+			const warnings: string[] = [];
+
+			// Execute project-local setup hook if configured (.acd.json)
+			const projectConfig = loadProjectConfig(self.gitRootPath);
+			if (projectConfig?.scripts?.setup) {
+				const env = buildHookEnvironment({
+					rootPath: self.gitRootPath,
+					worktreePath: resolvedPath,
+					worktreeName: path.basename(resolvedPath),
+					branch: branch,
+				});
+
+				const warning = yield* executeProjectSetupHook(
+					projectConfig.scripts.setup,
+					resolvedPath,
+					env,
+				);
+				if (warning) {
+					warnings.push(warning);
+					console.warn(warning);
+				}
+			}
+
+			// Execute post-creation hook if configured (global config)
 			const worktreeHooks = configurationManager.getWorktreeHooks();
 			if (
 				worktreeHooks.post_creation?.enabled &&
@@ -983,6 +1012,7 @@ export class WorktreeService {
 				branch,
 				isMainWorktree: false,
 				hasSession: false,
+				warnings: warnings.length > 0 ? warnings : undefined,
 			};
 		});
 	}
@@ -1042,6 +1072,28 @@ export class WorktreeService {
 						stderr: 'Cannot delete the main worktree',
 					}),
 				);
+			}
+
+			// Execute project-local teardown hook BEFORE deletion (.acd.json)
+			// This runs while files still exist so scripts can access them
+			const projectConfig = loadProjectConfig(self.gitRootPath);
+			if (projectConfig?.scripts?.teardown) {
+				const env = buildHookEnvironment({
+					rootPath: self.gitRootPath,
+					worktreePath: worktreePath,
+					worktreeName: path.basename(worktreePath),
+					branch: worktree.branch || '',
+				});
+
+				const warning = yield* executeProjectTeardownHook(
+					projectConfig.scripts.teardown,
+					worktreePath,
+					env,
+				);
+				if (warning) {
+					console.warn(warning);
+					// Continue with deletion despite hook failure
+				}
 			}
 
 			// Remove the worktree

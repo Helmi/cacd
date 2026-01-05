@@ -26,6 +26,7 @@ export interface Worktree {
 	hasSession: boolean;
 	gitStatus?: GitStatus;
 	gitStatusError?: string;
+	warnings?: string[]; // Hook failures and other non-fatal issues
 }
 
 export interface Session {
@@ -99,6 +100,15 @@ export interface WorktreeHook {
 
 export interface WorktreeHookConfig {
 	post_creation?: WorktreeHook;
+}
+
+/**
+ * Result of worktree operations (create, delete, merge)
+ * Includes optional warnings for non-fatal issues like hook failures
+ */
+export interface WorktreeOperationResult {
+	success: boolean;
+	warnings?: string[]; // Hook failures, etc.
 }
 
 export interface WorktreeConfig {

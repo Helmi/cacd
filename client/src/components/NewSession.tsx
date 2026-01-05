@@ -151,10 +151,15 @@ export const NewSession = ({ token, onClose, onSessionCreated, projectName }: Ne
                     const err = await res.json();
                     throw new Error(err.error || 'Failed to create worktree');
                 }
-                
+
                 const data = await res.json();
                 if (data.worktree && data.worktree.path) {
                     targetPath = data.worktree.path;
+                }
+
+                // Show warnings if any (e.g., hook failures)
+                if (data.worktree?.warnings?.length > 0) {
+                    alert(`Worktree created with warnings:\n${data.worktree.warnings.join('\n')}`);
                 }
             }
 

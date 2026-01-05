@@ -98,6 +98,13 @@ export const NewWorktree = ({ token, onClose, onSuccess, projectName }: NewWorkt
                 throw new Error(err.error || 'Failed to create worktree');
             }
 
+            const data = await res.json();
+
+            // Show warnings if any (e.g., hook failures)
+            if (data.worktree?.warnings?.length > 0) {
+                alert(`Worktree created with warnings:\n${data.worktree.warnings.join('\n')}`);
+            }
+
             onSuccess();
             onClose();
         } catch (e) {

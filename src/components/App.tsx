@@ -249,7 +249,7 @@ const App: React.FC<AppProps> = ({
 
 	// Helper function to handle worktree creation results
 	const handleWorktreeCreationResult = (
-		result: {success: boolean; error?: string},
+		result: {success: boolean; error?: string; warnings?: string[]},
 		creationData: {
 			path: string;
 			branch: string;
@@ -259,6 +259,10 @@ const App: React.FC<AppProps> = ({
 		},
 	) => {
 		if (result.success) {
+			// Show warnings if any (e.g., hook failures)
+			if (result.warnings && result.warnings.length > 0) {
+				setError(`Worktree created with warnings:\n${result.warnings.join('\n')}`);
+			}
 			handleReturnToMenu();
 			return;
 		}
@@ -429,9 +433,9 @@ const App: React.FC<AppProps> = ({
 				{path, branch, baseBranch, copySessionData, copyClaudeDirectory},
 			);
 		} else {
-			// Success case
+			// Success case - pass any warnings from hooks
 			handleWorktreeCreationResult(
-				{success: true},
+				{success: true, warnings: result.right.warnings},
 				{path, branch, baseBranch, copySessionData, copyClaudeDirectory},
 			);
 		}
@@ -472,7 +476,10 @@ const App: React.FC<AppProps> = ({
 			setError(errorMessage);
 			setView('new-worktree');
 		} else {
-			// Success - return to menu
+			// Success - show warnings if any, then return to menu
+			if (result.right.warnings && result.right.warnings.length > 0) {
+				setError(`Worktree created with warnings:\n${result.right.warnings.join('\n')}`);
+			}
 			handleReturnToMenu();
 		}
 	};

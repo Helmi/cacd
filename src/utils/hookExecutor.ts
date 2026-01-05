@@ -194,3 +194,61 @@ export function executeStatusHook(
 		);
 	});
 }
+
+/**
+ * Execute a project-local setup hook after worktree creation
+ * Returns warning message if hook fails, null on success
+ */
+export function executeProjectSetupHook(
+	command: string,
+	worktreePath: string,
+	env: Record<string, string>,
+): Effect.Effect<string | null, never> {
+	const environment: HookEnvironment = {
+		CCMANAGER_WORKTREE_PATH: worktreePath,
+		CCMANAGER_WORKTREE_BRANCH: env['ACD_BRANCH'] || 'unknown',
+		CCMANAGER_GIT_ROOT: env['ACD_ROOT_PATH'] || worktreePath,
+		...env,
+	};
+
+	return Effect.catchAll(
+		Effect.map(
+			executeHook(command, worktreePath, environment),
+			() => null, // Success - no warning
+		),
+		error => {
+			// Return warning message instead of throwing
+			console.error(`Setup hook failed: ${error.message}`);
+			return Effect.succeed(`Setup hook failed: ${error.message}`);
+		},
+	);
+}
+
+/**
+ * Execute a project-local teardown hook before worktree deletion
+ * Returns warning message if hook fails, null on success
+ */
+export function executeProjectTeardownHook(
+	command: string,
+	worktreePath: string,
+	env: Record<string, string>,
+): Effect.Effect<string | null, never> {
+	const environment: HookEnvironment = {
+		CCMANAGER_WORKTREE_PATH: worktreePath,
+		CCMANAGER_WORKTREE_BRANCH: env['ACD_BRANCH'] || 'unknown',
+		CCMANAGER_GIT_ROOT: env['ACD_ROOT_PATH'] || worktreePath,
+		...env,
+	};
+
+	return Effect.catchAll(
+		Effect.map(
+			executeHook(command, worktreePath, environment),
+			() => null, // Success - no warning
+		),
+		error => {
+			// Return warning message instead of throwing
+			console.error(`Teardown hook failed: ${error.message}`);
+			return Effect.succeed(`Teardown hook failed: ${error.message}`);
+		},
+	);
+}
