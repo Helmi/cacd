@@ -320,10 +320,18 @@ const ProjectList: React.FC<ProjectListProps> = ({
 
 	return (
 		<Box flexDirection="column">
-			<Box borderStyle="round" borderColor="cyan" paddingX={1} marginBottom={1}>
-				<Text bold color="cyan">
-					Agent Control Desk - Project Manager
-				</Text>
+			<Box marginBottom={1} flexDirection="column">
+				<Text color="cyan">                                       ░▒▓░</Text>
+				<Text color="cyan"> ░▒▓███████▓▒░  ░▒▓███████▓▒░        ░▒▓▓▒    ░▒▓███████▓▒░ ░▒▓████████▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓█▓▒░    ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓██▓▒░     ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░  ░▒▓██▓▒░      ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░        ░▒▓█████████▓▒░ ░▒▓███████▓▒░  ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓██▓▒░   ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░    ░▒▓██▓▒░    ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan"> ░▒▓███████▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓▓▒░       ░▒▓███████▓▒░ ░▒▓████████▓▒░</Text>
+				<Text color="cyan">                                 ░▓▒░</Text>
 			</Box>
 
 			{webConfig && (

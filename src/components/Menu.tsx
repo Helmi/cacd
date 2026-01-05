@@ -510,9 +510,17 @@ const Menu: React.FC<MenuProps> = ({
 	return (
 		<Box flexDirection="column">
 			<Box marginBottom={1} flexDirection="column">
-				<Text bold color="cyan">
-					Agent Control Desk - AI Agent Manager
-				</Text>
+				<Text color="cyan">                                       ░▒▓░</Text>
+				<Text color="cyan"> ░▒▓███████▓▒░  ░▒▓███████▓▒░        ░▒▓▓▒    ░▒▓███████▓▒░ ░▒▓████████▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓█▓▒░    ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓██▓▒░     ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░  ░▒▓██▓▒░      ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░        ░▒▓█████████▓▒░ ░▒▓███████▓▒░  ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓██▓▒░   ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░    ░▒▓██▓▒░    ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan">░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░</Text>
+				<Text color="cyan"> ░▒▓███████▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓▓▒░       ░▒▓███████▓▒░ ░▒▓████████▓▒░</Text>
+				<Text color="cyan">                                 ░▓▒░</Text>
 				{projectName && (
 					<Text bold color="green">
 						{projectName}

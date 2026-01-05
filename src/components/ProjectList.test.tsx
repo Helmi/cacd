@@ -124,7 +124,7 @@ describe('ProjectList', () => {
 		// Wait for component to render
 		await new Promise(resolve => setTimeout(resolve, 50));
 
-		expect(lastFrame()).toContain('Agent Control Desk - Project Manager');
+		expect(lastFrame()).toContain('░▒▓███████▓▒░');
 		expect(lastFrame()).toContain('Select a project:');
 	});
 
