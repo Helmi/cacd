@@ -34,10 +34,10 @@ const {ENV_VARS, generateRandomPort} = await import('./constants/env.js');
 const cli = meow(
 	`
 	Usage
-	  $ acd                    Launch the TUI
-	  $ acd add [path]         Add a project (default: current directory)
-	  $ acd remove <path>      Remove a project from the list
-	  $ acd list               List all tracked projects
+	  $ cacd                    Launch the TUI
+	  $ cacd add [path]         Add a project (default: current directory)
+	  $ cacd remove <path>      Remove a project from the list
+	  $ cacd list               List all tracked projects
 
 	Options
 	  --help                Show help
@@ -47,15 +47,15 @@ const cli = meow(
 	  --devc-exec-command   Command to execute in devcontainer
 
 	Environment Variables
-	  ACD_PORT              Port for web interface
-	  ACD_CONFIG_DIR        Configuration directory (default: ~/.config/ccmanager/)
+	  CACD_PORT              Port for web interface
+	  CACD_CONFIG_DIR        Configuration directory (default: ~/.config/cacd/)
 
 	Examples
-	  $ acd                         # Launch TUI
-	  $ acd add                     # Add current directory as project
-	  $ acd add /path/to/project    # Add specific project
-	  $ acd list                    # Show tracked projects
-	  $ acd --port 8080             # Launch TUI on specific port
+	  $ cacd                         # Launch TUI
+	  $ cacd add                     # Add current directory as project
+	  $ cacd add /path/to/project    # Add specific project
+	  $ cacd list                    # Show tracked projects
+	  $ cacd --port 8080             # Launch TUI on specific port
 `,
 	{
 		importMeta: import.meta,
@@ -107,7 +107,7 @@ if (subcommand === 'remove') {
 	const projectPath = cli.input[1];
 	if (!projectPath) {
 		console.error('Error: Path required for remove command');
-		console.error('Usage: acd remove <path>');
+		console.error('Usage: cacd remove <path>');
 		process.exit(1);
 	}
 	const removed = projectManager.removeProject(projectPath);
@@ -129,8 +129,8 @@ if (subcommand === 'list') {
 		console.log('No projects tracked yet.');
 		console.log('');
 		console.log('Add a project with:');
-		console.log('  acd add .              # Add current directory');
-		console.log('  acd add /path/to/repo  # Add specific path');
+		console.log('  cacd add .              # Add current directory');
+		console.log('  cacd add /path/to/repo  # Add specific path');
 	} else {
 		console.log(`Tracked projects (${projects.length}):`);
 		console.log('');
@@ -151,16 +151,16 @@ if (subcommand && !['add', 'remove', 'list'].includes(subcommand)) {
 	console.error(`Unknown command: ${subcommand}`);
 	console.error('');
 	console.error('Available commands:');
-	console.error('  acd add [path]    Add a project');
-	console.error('  acd remove <path> Remove a project');
-	console.error('  acd list          List projects');
-	console.error('  acd               Launch TUI');
+	console.error('  cacd add [path]    Add a project');
+	console.error('  cacd remove <path> Remove a project');
+	console.error('  cacd list          List projects');
+	console.error('  cacd               Launch TUI');
 	process.exit(1);
 }
 
 // If no subcommand, continue to TUI - check TTY
 if (!process.stdin.isTTY || !process.stdout.isTTY) {
-	console.error('Error: acd must be run in an interactive terminal (TTY)');
+	console.error('Error: cacd must be run in an interactive terminal (TTY)');
 	process.exit(1);
 }
 
@@ -211,7 +211,7 @@ const customConfigDir = isCustomConfigDir();
 // Get the preferred outbound IP address by creating a UDP socket
 // This returns the IP that would be used to reach the internet
 function getExternalIP(): Promise<string | undefined> {
-	return new Promise((resolve) => {
+	return new Promise(resolve => {
 		const socket = dgram.createSocket('udp4');
 		socket.connect(80, '8.8.8.8', () => {
 			const addr = socket.address();
@@ -226,10 +226,12 @@ function getExternalIP(): Promise<string | undefined> {
 }
 
 // Get local hostname if it resolves to the same IP as our external IP
-function getLocalHostname(externalIP: string | undefined): Promise<string | undefined> {
+function getLocalHostname(
+	externalIP: string | undefined,
+): Promise<string | undefined> {
 	if (!externalIP) return Promise.resolve(undefined);
 
-	return new Promise((resolve) => {
+	return new Promise(resolve => {
 		const hostname = os.hostname();
 		// Try to resolve the hostname to IPv4
 		dns.lookup(hostname, {family: 4}, (err, addr) => {
@@ -257,7 +259,7 @@ try {
 		configDir,
 		isCustomConfigDir: customConfigDir,
 	};
-} catch (err) {
+} catch (_err) {
 	// Log error but don't fail startup
 	// We can't see this log easily in TUI mode, but it's there for debugging if redirected
 }

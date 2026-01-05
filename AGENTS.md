@@ -1,13 +1,13 @@
-# Agent Control Desk (ACD) - Repository Guidelines
+# CA⚡CD - Coding Agent Control Desk - Repository Guidelines
 
-**Agent Control Desk** is a hard fork of the original `ccmanager` project.
+**Coding Agent Control Desk (CACD)** is a hard fork of the original `ccmanager` project.
 **Primary Goal:** Evolve the tool into a comprehensive control plane for AI agents, featuring a robust WebUI alongside the original TUI, and significantly extending the feature set beyond simple session management.
 
 ## Upstream Repository
 
 - **Original repo:** https://github.com/kbwo/ccmanager (for reference only, not a git remote)
 - **This repo:** git@github.com:Helmi/agent-control-desk.git (remote: `origin`)
-- **Config paths** remain `~/.config/ccmanager/` for backwards compatibility
+- **Note:** This project has fully diverged from upstream. No backward compatibility with ccmanager configs.
 
 ### Upstream Compatibility Guidelines
 
@@ -18,9 +18,9 @@
 - **Avoid renaming** core modules unless upstream does the same
 - **When adding features**, prefer extending existing patterns over introducing new architectural concepts
 - **Periodically check upstream** for bug fixes, especially in `sessionManager.ts`, `worktreeService.ts`, and state detection logic
-- **Document divergences** — when ACD must deviate significantly, note it here so future merges are easier
+- **Document divergences** — when CACD must deviate significantly, note it here so future merges are easier
 
-### ACD-Specific Additions (divergences from upstream)
+### CACD-Specific Additions (divergences from upstream)
 
 - `client/` — Full React WebUI (not in upstream)
 - `src/services/apiServer.ts` — Fastify + Socket.IO server
@@ -44,7 +44,7 @@
 ## Build, Test & Development Commands
 - `npm run build`: Compiles the Backend (`tsc`) **AND** the Frontend (`client/` build).
 - `npm start`: Runs the compiled CLI/Server (`dist/cli.js`).
-    - Requires `ACD_PROJECTS_DIR` env var for multi-project mode.
+    - Requires `CACD_PROJECTS_DIR` env var for multi-project mode.
 - `npm run dev`: Launches Backend in watch mode.
 - `npm run test`: Runs the Vitest suite for the backend.
 - `npm run lint`: Checks code style across the project.

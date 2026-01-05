@@ -170,12 +170,11 @@ const Session: React.FC<SessionProps> = ({
 
 		// Immediately resize the PTY and terminal to current dimensions
 		// This fixes rendering issues when terminal width changed while in menu
-		// https://github.com/kbwo/ccmanager/issues/2
 		const currentCols = process.stdout.columns || 80;
 		const currentRows = process.stdout.rows || 24;
 
 		// Do not delete try-catch
-		// Prevent ccmanager from exiting when claude process has already exited
+		// Prevent CACD from exiting when claude process has already exited
 		try {
 			session.process.resize(currentCols, currentRows);
 			if (session.terminal) {

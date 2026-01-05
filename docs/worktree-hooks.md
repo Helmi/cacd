@@ -1,10 +1,10 @@
 # Worktree Hooks
 
-CCManager supports executing custom hooks when worktrees are created, allowing you to automate tasks like setting up development environments, creating configuration files, or sending notifications.
+CACD supports executing custom hooks when worktrees are created, allowing you to automate tasks like setting up development environments, creating configuration files, or sending notifications.
 
 ## Configuration
 
-Worktree hooks are configured in the CCManager configuration file (`~/.config/ccmanager/config.json`). You can configure them through the UI or by editing the configuration file directly.
+Worktree hooks are configured in the CACD configuration file (`~/.config/cacd/config.json`). You can configure them through the UI or by editing the configuration file directly.
 
 ### Available Hooks
 
@@ -27,20 +27,20 @@ The `post_creation` hook is executed after a new worktree is successfully create
 
 By default, hooks are executed in the newly created worktree directory. This means your commands will run with the worktree path as the current working directory.
 
-If you need to execute commands in the git root directory instead, you can use the `CCMANAGER_GIT_ROOT` environment variable:
+If you need to execute commands in the git root directory instead, you can use the `CACD_GIT_ROOT` environment variable:
 
 ```bash
-cd "$CCMANAGER_GIT_ROOT" && your-command-here
+cd "$CACD_GIT_ROOT" && your-command-here
 ```
 
 ## Environment Variables
 
 When a worktree hook is executed, the following environment variables are available:
 
-- `CCMANAGER_WORKTREE_PATH`: The absolute path to the newly created worktree
-- `CCMANAGER_WORKTREE_BRANCH`: The branch name of the worktree
-- `CCMANAGER_GIT_ROOT`: The root path of the git repository
-- `CCMANAGER_BASE_BRANCH`: The base branch used to create the worktree (optional)
+- `CACD_WORKTREE_PATH`: The absolute path to the newly created worktree
+- `CACD_WORKTREE_BRANCH`: The branch name of the worktree
+- `CACD_GIT_ROOT`: The root path of the git repository
+- `CACD_BASE_BRANCH`: The base branch used to create the worktree (optional)
 
 ## Post Creation Hook Examples
 
@@ -124,7 +124,7 @@ if [ -n "$UNTRACKED_FILES" ]; then
                     fi
                 done <<< "$UNTRACKED_DIRS"
             fi
-            
+
             # Copy file only if it's not in an untracked directory
             if [ "$is_in_dir" = false ]; then
                 echo "  Copying file: $file"
@@ -141,5 +141,5 @@ echo "Done! Untracked files and directories have been copied to '$DEST_DIR'"
 ```
 
 ```bash
-<path to extract-untracked.sh> $CCMANAGER_GIT_ROOT $CCMANAGER_WORKTREE_PATH
+<path to extract-untracked.sh> $CACD_GIT_ROOT $CACD_WORKTREE_PATH
 ```

@@ -38,7 +38,7 @@
 - [x] **Authentication:** Secure Token-based access (Random UUID generated on start).
 - [x] **Magic Link:** TUI displays a one-click login URL (`http://0.0.0.0:3000/?token=...`).
 - [x] **Distribution:** Client builds to `client/dist`, served statically by the CLI.
-- [x] **Multi-Project:** Auto-enabled mode when `ACD_PROJECTS_DIR` env var is present.
+- [x] **Multi-Project:** Auto-enabled mode when `CACD_PROJECTS_DIR` env var is present.
 
 ### Phase 5: UI/UX Refinement & Power Features
 - [ ] **Visual Overhaul: "Terminal-Native UI"**
@@ -55,15 +55,15 @@
 
 ## 🔮 Future / Ideas
 - [ ] **Mobile Optimization:** Focused "Monitoring Mode" for phones (view sessions, simple inputs).
-- [ ] **Log Viewer:** Accessible debug view for `ccmanager.log` (hidden/advanced option).
+- [ ] **Log Viewer:** Accessible debug view for `cacd.log` (hidden/advanced option).
 - [ ] **Theme Support:** Dark/Light mode toggle for Web UI.
 - [ ] **File Explorer:** Simple file tree view for browsing worktrees remotely.
-- [ ] **Daemon Mode:** Run CCManager as a background service (headless).
+- [ ] **Daemon Mode:** Run CACD as a background service (headless).
     - Decouple completely from TUI lifecycle.
     - **Authentication:** Implement persistent auth (User/Pass or fixed token) for headless security.
     - **Persistence:** Sessions survive UI disconnects/restarts naturally.
-- [ ] **Project-Specific Configuration:** Support `.ccmanager.json` in project root to override global settings (e.g., hooks, presets) per repository.
+- [ ] **Project-Specific Configuration:** Support `.cacd.json` in project root to override global settings (e.g., hooks, presets) per repository.
 
 ## 🧭 Strategic / Rebranding
-- [ ] **Project Rename:** Rename to reflect broader scope (not just Claude). The tool is becoming a general AI Agent Session Manager.
-- [ ] **Hard Fork Decision:** Evaluate officially decoupling from upstream `ccmanager` to pursue the Web/Daemon architecture without constraints.
+- [x] **Project Rename:** Renamed to CACD (Coding Agent Control Desk) to reflect broader scope as a general AI Agent Session Manager.
+- [x] **Hard Fork Decision:** Officially decoupled from upstream `ccmanager` to pursue the Web/Daemon architecture without constraints.

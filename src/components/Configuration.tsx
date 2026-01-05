@@ -8,9 +8,11 @@ import ConfigureWorktree from './ConfigureWorktree.js';
 import ConfigureCommand from './ConfigureCommand.js';
 import ConfigureOther from './ConfigureOther.js';
 import {shortcutManager} from '../services/shortcutManager.js';
+import Header from './Header.js';
 
 interface ConfigurationProps {
 	onComplete: () => void;
+	onQuit?: () => void;
 }
 
 type ConfigView =
@@ -27,43 +29,53 @@ interface MenuItem {
 	value: string;
 }
 
-const Configuration: React.FC<ConfigurationProps> = ({onComplete}) => {
+const Configuration: React.FC<ConfigurationProps> = ({onComplete, onQuit}) => {
 	const [view, setView] = useState<ConfigView>('menu');
 
 	const menuItems: MenuItem[] = [
 		{
-			label: 'S ⌨  Configure Shortcuts',
+			label: 'S - Shortcuts',
 			value: 'shortcuts',
 		},
 		{
-			label: 'H 🔧  Configure Status Hooks',
+			label: 'H - Status Hooks',
 			value: 'statusHooks',
 		},
 		{
-			label: 'T 🔨  Configure Worktree Hooks',
+			label: 'T - Worktree Hooks',
 			value: 'worktreeHooks',
 		},
 		{
-			label: 'W 📁  Configure Worktree Settings',
+			label: 'W - Worktree Settings',
 			value: 'worktree',
 		},
 		{
-			label: 'C 🚀  Configure Command Presets',
+			label: 'C - Command Presets',
 			value: 'presets',
 		},
 		{
-			label: 'O 🧪  Other & Experimental',
+			label: 'O - Other & Experimental',
 			value: 'other',
 		},
 		{
-			label: 'B ← Back to Main Menu',
+			label: 'B - Back to Main Menu',
 			value: 'back',
+		},
+		{
+			label: 'Q - Quit',
+			value: 'quit',
 		},
 	];
 
 	const handleSelect = (item: MenuItem) => {
 		if (item.value === 'back') {
 			onComplete();
+		} else if (item.value === 'quit') {
+			if (onQuit) {
+				onQuit();
+			} else {
+				process.exit(0);
+			}
 		} else if (item.value === 'shortcuts') {
 			setView('shortcuts');
 		} else if (item.value === 'statusHooks') {
@@ -111,6 +123,13 @@ const Configuration: React.FC<ConfigurationProps> = ({onComplete}) => {
 			case 'b':
 				onComplete();
 				break;
+			case 'q':
+				if (onQuit) {
+					onQuit();
+				} else {
+					process.exit(0);
+				}
+				break;
 		}
 
 		// Handle escape key
@@ -145,11 +164,7 @@ const Configuration: React.FC<ConfigurationProps> = ({onComplete}) => {
 
 	return (
 		<Box flexDirection="column">
-			<Box marginBottom={1}>
-				<Text bold color="green">
-					Configuration
-				</Text>
-			</Box>
+			<Header subtitle="Global Config" />
 
 			<Box marginBottom={1}>
 				<Text dimColor>Select a configuration option:</Text>
@@ -161,6 +176,13 @@ const Configuration: React.FC<ConfigurationProps> = ({onComplete}) => {
 				isFocused={true}
 				limit={10}
 			/>
+
+			<Box marginTop={1} borderStyle="round" borderColor="gray" paddingX={1}>
+				<Text dimColor>
+					These settings apply globally. For project-specific hooks, create a
+					.cacd.json file in the project root.
+				</Text>
+			</Box>
 		</Box>
 	);
 };

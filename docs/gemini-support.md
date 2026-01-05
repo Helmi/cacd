@@ -1,10 +1,10 @@
 # Gemini CLI Support
 
-CCManager now supports [Gemini CLI](https://github.com/google-gemini/gemini-cli) in addition to Claude Code, allowing you to manage sessions with different AI coding assistants.
+CACD supports [Gemini CLI](https://github.com/google-gemini/gemini-cli) in addition to Claude Code, allowing you to manage sessions with different AI coding assistants.
 
 ## Overview
 
-The new state detection strategy feature allows CCManager to properly track the state of different CLI tools by recognizing their unique output patterns. Each CLI tool has different prompts and status indicators, and CCManager can now adapt to these differences.
+The state detection strategy feature allows CACD to properly track the state of different CLI tools by recognizing their unique output patterns. Each CLI tool has different prompts and status indicators, and CACD can adapt to these differences.
 
 ## State Detection Strategies
 
@@ -12,10 +12,10 @@ The new state detection strategy feature allows CCManager to properly track the 
 
 Claude Code uses the following patterns for state detection:
 
-- **Waiting for Input**: 
+- **Waiting for Input**:
   - `│ Do you want...`
   - `│ Would you like...`
-- **Busy**: 
+- **Busy**:
   - `ESC to interrupt` (case insensitive)
 - **Idle**: Any other state
 

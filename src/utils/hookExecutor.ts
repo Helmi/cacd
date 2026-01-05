@@ -6,10 +6,10 @@ import {WorktreeService} from '../services/worktreeService.js';
 import {configurationManager} from '../services/configurationManager.js';
 
 export interface HookEnvironment {
-	CCMANAGER_WORKTREE_PATH: string;
-	CCMANAGER_WORKTREE_BRANCH: string;
-	CCMANAGER_GIT_ROOT: string;
-	CCMANAGER_BASE_BRANCH?: string;
+	CACD_WORKTREE_PATH: string;
+	CACD_WORKTREE_BRANCH: string;
+	CACD_GIT_ROOT: string;
+	CACD_BASE_BRANCH?: string;
 	[key: string]: string | undefined;
 }
 
@@ -30,9 +30,9 @@ export interface HookEnvironment {
  * import {executeHook} from './utils/hookExecutor.js';
  *
  * const env = {
- *   CCMANAGER_WORKTREE_PATH: '/path/to/worktree',
- *   CCMANAGER_WORKTREE_BRANCH: 'feature-branch',
- *   CCMANAGER_GIT_ROOT: '/path/to/repo'
+ *   CACD_WORKTREE_PATH: '/path/to/worktree',
+ *   CACD_WORKTREE_BRANCH: 'feature-branch',
+ *   CACD_GIT_ROOT: '/path/to/repo'
  * };
  *
  * // Execute hook with error recovery
@@ -121,13 +121,13 @@ export function executeWorktreePostCreationHook(
 	baseBranch?: string,
 ): Effect.Effect<void, never> {
 	const environment: HookEnvironment = {
-		CCMANAGER_WORKTREE_PATH: worktree.path,
-		CCMANAGER_WORKTREE_BRANCH: worktree.branch || 'unknown',
-		CCMANAGER_GIT_ROOT: gitRoot,
+		CACD_WORKTREE_PATH: worktree.path,
+		CACD_WORKTREE_BRANCH: worktree.branch || 'unknown',
+		CACD_GIT_ROOT: gitRoot,
 	};
 
 	if (baseBranch) {
-		environment.CCMANAGER_BASE_BRANCH = baseBranch;
+		environment.CACD_BASE_BRANCH = baseBranch;
 	}
 
 	return Effect.catchAll(
@@ -176,12 +176,12 @@ export function executeStatusHook(
 
 		// Build environment for status hook
 		const environment: HookEnvironment = {
-			CCMANAGER_WORKTREE_PATH: session.worktreePath,
-			CCMANAGER_WORKTREE_BRANCH: branch,
-			CCMANAGER_GIT_ROOT: session.worktreePath, // For status hooks, we use worktree path as cwd
-			CCMANAGER_OLD_STATE: oldState,
-			CCMANAGER_NEW_STATE: newState,
-			CCMANAGER_SESSION_ID: session.id,
+			CACD_WORKTREE_PATH: session.worktreePath,
+			CACD_WORKTREE_BRANCH: branch,
+			CACD_GIT_ROOT: session.worktreePath, // For status hooks, we use worktree path as cwd
+			CACD_OLD_STATE: oldState,
+			CACD_NEW_STATE: newState,
+			CACD_SESSION_ID: session.id,
 		};
 
 		yield* Effect.catchAll(
@@ -205,9 +205,9 @@ export function executeProjectSetupHook(
 	env: Record<string, string>,
 ): Effect.Effect<string | null, never> {
 	const environment: HookEnvironment = {
-		CCMANAGER_WORKTREE_PATH: worktreePath,
-		CCMANAGER_WORKTREE_BRANCH: env['ACD_BRANCH'] || 'unknown',
-		CCMANAGER_GIT_ROOT: env['ACD_ROOT_PATH'] || worktreePath,
+		CACD_WORKTREE_PATH: worktreePath,
+		CACD_WORKTREE_BRANCH: env['CACD_BRANCH'] || 'unknown',
+		CACD_GIT_ROOT: env['CACD_ROOT_PATH'] || worktreePath,
 		...env,
 	};
 
@@ -234,9 +234,9 @@ export function executeProjectTeardownHook(
 	env: Record<string, string>,
 ): Effect.Effect<string | null, never> {
 	const environment: HookEnvironment = {
-		CCMANAGER_WORKTREE_PATH: worktreePath,
-		CCMANAGER_WORKTREE_BRANCH: env['ACD_BRANCH'] || 'unknown',
-		CCMANAGER_GIT_ROOT: env['ACD_ROOT_PATH'] || worktreePath,
+		CACD_WORKTREE_PATH: worktreePath,
+		CACD_WORKTREE_BRANCH: env['CACD_BRANCH'] || 'unknown',
+		CACD_GIT_ROOT: env['CACD_ROOT_PATH'] || worktreePath,
 		...env,
 	};
 

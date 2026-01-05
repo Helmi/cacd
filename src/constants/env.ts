@@ -1,8 +1,8 @@
 // Environment variable names
 export const ENV_VARS = {
-	MULTI_PROJECT_ROOT: 'ACD_PROJECTS_DIR',
-	CONFIG_DIR: 'ACD_CONFIG_DIR',
-	PORT: 'ACD_PORT',
+	MULTI_PROJECT_ROOT: 'CACD_PROJECTS_DIR',
+	CONFIG_DIR: 'CACD_CONFIG_DIR',
+	PORT: 'CACD_PORT',
 } as const;
 
 // Port configuration

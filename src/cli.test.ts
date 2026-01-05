@@ -32,10 +32,10 @@ describe('CLI', () => {
 
 	describe('--multi-project flag', () => {
 		it.skipIf(!isNodePtyAvailable())(
-			'should exit with error when ACD_PROJECTS_DIR is not set',
+			'should exit with error when CACD_PROJECTS_DIR is not set',
 			async () => {
 				// Ensure the env var is not set
-				delete process.env['ACD_PROJECTS_DIR'];
+				delete process.env['CACD_PROJECTS_DIR'];
 
 				// Create a wrapper script that mocks TTY
 				const wrapperScript = `
@@ -71,10 +71,10 @@ describe('CLI', () => {
 
 				expect(result.code).toBe(1);
 				expect(result.stderr).toContain(
-					'ACD_PROJECTS_DIR environment variable must be set',
+					'CACD_PROJECTS_DIR environment variable must be set',
 				);
 				expect(result.stderr).toContain(
-					'export ACD_PROJECTS_DIR=/path/to/projects',
+					'export CACD_PROJECTS_DIR=/path/to/projects',
 				);
 			},
 		);
@@ -83,7 +83,7 @@ describe('CLI', () => {
 			'should not check for env var when --multi-project is not used',
 			async () => {
 				// Ensure the env var is not set
-				delete process.env['ACD_PROJECTS_DIR'];
+				delete process.env['CACD_PROJECTS_DIR'];
 
 				const result = await new Promise<{code: number; stderr: string}>(
 					resolve => {
@@ -105,7 +105,7 @@ describe('CLI', () => {
 				);
 
 				expect(result.code).toBe(0);
-				expect(result.stderr).not.toContain('ACD_PROJECTS_DIR');
+				expect(result.stderr).not.toContain('CACD_PROJECTS_DIR');
 			},
 		);
 	});

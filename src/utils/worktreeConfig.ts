@@ -63,15 +63,11 @@ export function getWorktreeParentBranch(
 	return Effect.catchAll(
 		Effect.tryPromise({
 			try: signal =>
-				execFileAsync(
-					'git',
-					['config', '--worktree', 'ccmanager.parentBranch'],
-					{
-						cwd: worktreePath,
-						encoding: 'utf8',
-						signal,
-					},
-				).then(result => result.stdout.trim() || null),
+				execFileAsync('git', ['config', '--worktree', 'cacd.parentBranch'], {
+					cwd: worktreePath,
+					encoding: 'utf8',
+					signal,
+				}).then(result => result.stdout.trim() || null),
 			catch: error => error,
 		}),
 		error => {
@@ -133,13 +129,13 @@ export function setWorktreeParentBranch(
 		return Effect.void;
 	}
 
-	const command = `git config --worktree ccmanager.parentBranch ${parentBranch}`;
+	const command = `git config --worktree cacd.parentBranch ${parentBranch}`;
 	return Effect.catchAll(
 		Effect.tryPromise({
 			try: signal =>
 				execFileAsync(
 					'git',
-					['config', '--worktree', 'ccmanager.parentBranch', parentBranch],
+					['config', '--worktree', 'cacd.parentBranch', parentBranch],
 					{
 						cwd: worktreePath,
 						encoding: 'utf8',

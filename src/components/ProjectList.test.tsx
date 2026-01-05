@@ -124,7 +124,7 @@ describe('ProjectList', () => {
 		// Wait for component to render
 		await new Promise(resolve => setTimeout(resolve, 50));
 
-		expect(lastFrame()).toContain('Agent Control Desk - Project Manager');
+		expect(lastFrame()).toContain('░▒▓███████▓▒░');
 		expect(lastFrame()).toContain('Select a project:');
 	});
 
@@ -162,7 +162,7 @@ describe('ProjectList', () => {
 
 		const frame = lastFrame();
 		expect(frame).toContain('No projects tracked yet');
-		expect(frame).toContain('acd add');
+		expect(frame).toContain('cacd add');
 	});
 
 	it('should display invalid project indicator', async () => {

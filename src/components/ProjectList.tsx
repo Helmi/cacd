@@ -3,11 +3,11 @@ import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
 import {GitProject, Project} from '../types/index.js';
 import {projectManager} from '../services/projectManager.js';
-import {MENU_ICONS} from '../constants/statusIcons.js';
 import TextInputWrapper from './TextInputWrapper.js';
 import {useSearchMode} from '../hooks/useSearchMode.js';
 import {globalSessionOrchestrator} from '../services/globalSessionOrchestrator.js';
 import {SessionManager} from '../services/sessionManager.js';
+import Header from './Header.js';
 
 interface ProjectListProps {
 	onSelectProject: (project: GitProject) => void;
@@ -43,7 +43,9 @@ const ProjectList: React.FC<ProjectListProps> = ({
 	const [addingProject, setAddingProject] = useState(false);
 	const [addProjectPath, setAddProjectPath] = useState('');
 	const [addProjectError, setAddProjectError] = useState<string | null>(null);
-	const [confirmingDelete, setConfirmingDelete] = useState<Project | null>(null);
+	const [confirmingDelete, setConfirmingDelete] = useState<Project | null>(
+		null,
+	);
 	const [highlightedItem, setHighlightedItem] = useState<MenuItem | null>(null);
 	const limit = 10;
 
@@ -121,23 +123,23 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			}
 
 			menuItems.push({
-				label: `A ➕ Add Project`,
+				label: `A - Add Project`,
 				value: 'add-project',
 			});
 			menuItems.push({
-				label: `D 🗑️  Remove Project`,
+				label: `D - Remove Project`,
 				value: 'remove-project',
 			});
 			menuItems.push({
-				label: `C ⚙️  Settings`,
+				label: `C - Global Config`,
 				value: 'settings',
 			});
 			menuItems.push({
-				label: `R 🔄 Refresh`,
+				label: `R - Refresh`,
 				value: 'refresh',
 			});
 			menuItems.push({
-				label: `Q ${MENU_ICONS.EXIT} Exit`,
+				label: `Q - Quit`,
 				value: 'exit',
 			});
 		}
@@ -185,7 +187,9 @@ const ProjectList: React.FC<ProjectListProps> = ({
 		}
 		// Otherwise use the highlighted item from SelectInput
 		if (highlightedItem?.project) {
-			return projects.find(p => p.path === highlightedItem.project?.path) || null;
+			return (
+				projects.find(p => p.path === highlightedItem.project?.path) || null
+			);
 		}
 		return null;
 	};
@@ -298,6 +302,11 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			const project = getHighlightedProject();
 			if (project) {
 				setConfirmingDelete(project);
+			} else {
+				// Show hint if no project is highlighted
+				setAddProjectError(
+					'Highlight a project first, then press D to remove it',
+				);
 			}
 		} else if (item.value === 'settings') {
 			if (onOpenConfiguration) {
@@ -320,58 +329,38 @@ const ProjectList: React.FC<ProjectListProps> = ({
 
 	return (
 		<Box flexDirection="column">
-			<Box borderStyle="round" borderColor="cyan" paddingX={1} marginBottom={1}>
-				<Text bold color="cyan">
-					Agent Control Desk - Project Manager
-				</Text>
-			</Box>
-
-			{webConfig && (
-				<Box
-					borderStyle="round"
-					borderColor="blue"
-					paddingX={1}
-					marginBottom={1}
-					flexDirection="column"
-				>
-					<Text bold color="blue">
-						Web Interface Available
-					</Text>
-					<Text>
-						Local: <Text color="cyan" underline>{webConfig.url}</Text>
-					</Text>
-					{webConfig.hostname && (
-						<Text>
-							Network: <Text color="cyan" underline>{webConfig.hostname}</Text>
-						</Text>
-					)}
-					{!webConfig.hostname && webConfig.externalUrl && (
-						<Text>
-							Network: <Text color="cyan" underline>{webConfig.externalUrl}</Text>
-						</Text>
-					)}
-					{webConfig.isCustomConfigDir && (
-						<Text dimColor>Config: {webConfig.configDir}</Text>
-					)}
-				</Box>
-			)}
+			<Header webConfig={webConfig} />
 
 			<Box marginBottom={1}>
 				<Text dimColor>Select a project:</Text>
 			</Box>
 
 			{confirmingDelete ? (
-				<Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="red" paddingX={1}>
-					<Text color="red" bold>Remove project from list?</Text>
+				<Box
+					flexDirection="column"
+					marginBottom={1}
+					borderStyle="round"
+					borderColor="red"
+					paddingX={1}
+				>
+					<Text color="red" bold>
+						Remove project from list?
+					</Text>
 					<Text>{confirmingDelete.name}</Text>
 					<Text dimColor>{confirmingDelete.path}</Text>
 					<Box marginTop={1}>
 						<Text>Press </Text>
-						<Text color="green" bold>Y</Text>
+						<Text color="green" bold>
+							Y
+						</Text>
 						<Text> to confirm, </Text>
-						<Text color="yellow" bold>N</Text>
+						<Text color="yellow" bold>
+							N
+						</Text>
 						<Text> or </Text>
-						<Text color="yellow" bold>ESC</Text>
+						<Text color="yellow" bold>
+							ESC
+						</Text>
 						<Text> to cancel</Text>
 					</Box>
 					<Text dimColor>(This only removes from the list, not from disk)</Text>
@@ -387,12 +376,8 @@ const ProjectList: React.FC<ProjectListProps> = ({
 							placeholder="Enter path to git repository..."
 						/>
 					</Box>
-					<Text dimColor>
-						Enter to add, Escape to cancel
-					</Text>
-					<Text dimColor>
-						Tip: Run `acd add .` from any project directory
-					</Text>
+					<Text dimColor>Enter to add, Escape to cancel</Text>
+					<Text dimColor>Tip: Run `cacd add .` from any project directory</Text>
 				</Box>
 			) : isSearchMode ? (
 				<Box marginBottom={1}>
@@ -417,8 +402,8 @@ const ProjectList: React.FC<ProjectListProps> = ({
 					</Box>
 					<Box flexDirection="column">
 						<Text>Get started by adding a project:</Text>
-						<Text dimColor>  • Press A to add a project</Text>
-						<Text dimColor>  • Or run: acd add /path/to/project</Text>
+						<Text dimColor> • Press A to add a project</Text>
+						<Text dimColor> • Or run: cacd add /path/to/project</Text>
 					</Box>
 				</Box>
 			) : isSearchMode && items.length === 0 ? (
