@@ -211,7 +211,7 @@ const customConfigDir = isCustomConfigDir();
 // Get the preferred outbound IP address by creating a UDP socket
 // This returns the IP that would be used to reach the internet
 function getExternalIP(): Promise<string | undefined> {
-	return new Promise((resolve) => {
+	return new Promise(resolve => {
 		const socket = dgram.createSocket('udp4');
 		socket.connect(80, '8.8.8.8', () => {
 			const addr = socket.address();
@@ -226,10 +226,12 @@ function getExternalIP(): Promise<string | undefined> {
 }
 
 // Get local hostname if it resolves to the same IP as our external IP
-function getLocalHostname(externalIP: string | undefined): Promise<string | undefined> {
+function getLocalHostname(
+	externalIP: string | undefined,
+): Promise<string | undefined> {
 	if (!externalIP) return Promise.resolve(undefined);
 
-	return new Promise((resolve) => {
+	return new Promise(resolve => {
 		const hostname = os.hostname();
 		// Try to resolve the hostname to IPv4
 		dns.lookup(hostname, {family: 4}, (err, addr) => {
@@ -257,7 +259,7 @@ try {
 		configDir,
 		isCustomConfigDir: customConfigDir,
 	};
-} catch (err) {
+} catch (_err) {
 	// Log error but don't fail startup
 	// We can't see this log easily in TUI mode, but it's there for debugging if redirected
 }

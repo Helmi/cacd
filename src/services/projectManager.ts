@@ -65,7 +65,8 @@ export class ProjectManager implements IProjectManager {
 
 	getWorktreeService(projectPath?: string): IWorktreeService {
 		// Use provided path or fall back to current project path or current directory
-		const targetPath = projectPath || this.currentProject?.path || process.cwd();
+		const targetPath =
+			projectPath || this.currentProject?.path || process.cwd();
 
 		// Check cache first
 		if (this.worktreeServiceCache.has(targetPath)) {
@@ -112,10 +113,12 @@ export class ProjectManager implements IProjectManager {
 				const data = readFileSync(this.legacyDataPath, 'utf-8');
 				const legacyProjects = JSON.parse(data) || [];
 				// Convert to new format (add isValid field)
-				this.projects = legacyProjects.map((p: {path: string; name: string; lastAccessed: number}) => ({
-					...p,
-					isValid: true,
-				}));
+				this.projects = legacyProjects.map(
+					(p: {path: string; name: string; lastAccessed: number}) => ({
+						...p,
+						isValid: true,
+					}),
+				);
 				// Save in new format
 				this.saveProjects();
 			}
@@ -133,10 +136,7 @@ export class ProjectManager implements IProjectManager {
 	 */
 	private saveProjects(): void {
 		try {
-			writeFileSync(
-				this.dataPath,
-				JSON.stringify(this.projects, null, 2),
-			);
+			writeFileSync(this.dataPath, JSON.stringify(this.projects, null, 2));
 		} catch (error) {
 			console.error('Failed to save projects:', error);
 		}
@@ -311,7 +311,11 @@ export class ProjectManager implements IProjectManager {
 	/**
 	 * Load projects using Effect
 	 */
-	loadProjectsEffect(): Effect.Effect<Project[], FileSystemError | ConfigError, never> {
+	loadProjectsEffect(): Effect.Effect<
+		Project[],
+		FileSystemError | ConfigError,
+		never
+	> {
 		return Effect.try({
 			try: () => {
 				if (existsSync(this.dataPath)) {
@@ -344,7 +348,9 @@ export class ProjectManager implements IProjectManager {
 	/**
 	 * Save projects using Effect
 	 */
-	saveProjectsEffect(projects: Project[]): Effect.Effect<void, FileSystemError, never> {
+	saveProjectsEffect(
+		projects: Project[],
+	): Effect.Effect<void, FileSystemError, never> {
 		return Effect.try({
 			try: () => {
 				writeFileSync(this.dataPath, JSON.stringify(projects, null, 2));

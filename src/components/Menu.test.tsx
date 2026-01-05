@@ -332,10 +332,8 @@ describe.skip('Menu component rendering', () => {
 		const firstRenderOutput = lastFrame();
 
 		// Count occurrences of the logo (check for unique part of ASCII art)
-		const titleCount = (
-			firstRenderOutput?.match(/░▒▓███████▓▒░/g) ||
-			[]
-		).length;
+		const titleCount = (firstRenderOutput?.match(/░▒▓███████▓▒░/g) || [])
+			.length;
 		expect(titleCount).toBeGreaterThanOrEqual(1);
 
 		// Unmount and re-render with new key
@@ -353,10 +351,8 @@ describe.skip('Menu component rendering', () => {
 		await new Promise(resolve => setTimeout(resolve, 100));
 
 		const secondRenderOutput = lastFrame2();
-		const titleCount2 = (
-			secondRenderOutput?.match(/░▒▓███████▓▒░/g) ||
-			[]
-		).length;
+		const titleCount2 = (secondRenderOutput?.match(/░▒▓███████▓▒░/g) || [])
+			.length;
 		expect(titleCount2).toBeGreaterThanOrEqual(1);
 	});
 
@@ -376,8 +372,7 @@ describe.skip('Menu component rendering', () => {
 		const output = lastFrame();
 
 		// Check logo appears (ASCII art has multiple occurrences of the pattern per line)
-		const titleMatches =
-			output?.match(/░▒▓███████▓▒░/g) || [];
+		const titleMatches = output?.match(/░▒▓███████▓▒░/g) || [];
 		expect(titleMatches.length).toBeGreaterThanOrEqual(1);
 
 		// Check description appears only once
@@ -417,9 +412,24 @@ describe.skip('Menu component rendering', () => {
 
 		// Setup: 3 other projects (using new Project interface)
 		const mockProjects = [
-			{name: 'Project A', path: '/test/project-a', lastAccessed: Date.now(), isValid: true},
-			{name: 'Project B', path: '/test/project-b', lastAccessed: Date.now(), isValid: true},
-			{name: 'Project C', path: '/test/project-c', lastAccessed: Date.now(), isValid: true},
+			{
+				name: 'Project A',
+				path: '/test/project-a',
+				lastAccessed: Date.now(),
+				isValid: true,
+			},
+			{
+				name: 'Project B',
+				path: '/test/project-b',
+				lastAccessed: Date.now(),
+				isValid: true,
+			},
+			{
+				name: 'Project C',
+				path: '/test/project-c',
+				lastAccessed: Date.now(),
+				isValid: true,
+			},
 		];
 
 		vi.spyOn(worktreeService, 'getWorktreesEffect').mockReturnValue(
@@ -480,8 +490,18 @@ describe.skip('Menu component rendering', () => {
 
 		// Setup: 2 other projects
 		const mockProjects = [
-			{name: 'Project A', path: '/test/project-a', lastAccessed: Date.now(), isValid: true},
-			{name: 'Project B', path: '/test/project-b', lastAccessed: Date.now(), isValid: true},
+			{
+				name: 'Project A',
+				path: '/test/project-a',
+				lastAccessed: Date.now(),
+				isValid: true,
+			},
+			{
+				name: 'Project B',
+				path: '/test/project-b',
+				lastAccessed: Date.now(),
+				isValid: true,
+			},
 		];
 
 		vi.spyOn(worktreeService, 'getWorktreesEffect').mockReturnValue(

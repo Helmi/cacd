@@ -19,7 +19,10 @@ import {
 	executeProjectTeardownHook,
 } from '../utils/hookExecutor.js';
 import {configurationManager} from './configurationManager.js';
-import {loadProjectConfig, buildHookEnvironment} from '../utils/projectConfig.js';
+import {
+	loadProjectConfig,
+	buildHookEnvironment,
+} from '../utils/projectConfig.js';
 
 const CLAUDE_DIR = '.claude';
 

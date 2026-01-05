@@ -26,8 +26,23 @@ interface TerminalSessionProps {
   onRemove: () => void
 }
 
+// Get theme colors from CSS custom properties
+function getTerminalTheme(): {background: string; foreground: string; cursor: string; selectionBackground: string} {
+  const styles = getComputedStyle(document.documentElement)
+  const bg = styles.getPropertyValue('--terminal-bg').trim() || 'hsl(222, 47%, 5%)'
+  const fg = styles.getPropertyValue('--foreground').trim() || 'hsl(0, 0%, 88%)'
+  const cursor = styles.getPropertyValue('--primary').trim() || 'hsl(160, 70%, 45%)'
+
+  return {
+    background: bg.startsWith('hsl') ? bg : `hsl(${bg})`,
+    foreground: fg.startsWith('hsl') ? fg : `hsl(${fg})`,
+    cursor: cursor.startsWith('hsl') ? cursor : `hsl(${cursor})`,
+    selectionBackground: 'rgba(100, 200, 150, 0.3)',
+  }
+}
+
 export function TerminalSession({ session, slotIndex, isFocused = false, onFocus, onRemove }: TerminalSessionProps) {
-  const { socket, toggleContextSidebar, contextSidebarSessionId, stopSession } = useAppStore()
+  const { socket, toggleContextSidebar, contextSidebarSessionId, stopSession, theme, fontScale } = useAppStore()
   const [isMaximized, setIsMaximized] = useState(false)
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<XTerm | null>(null)
@@ -44,13 +59,8 @@ export function TerminalSession({ session, slotIndex, isFocused = false, onFocus
     const term = new XTerm({
       cursorBlink: true,
       fontFamily: 'var(--font-mono), JetBrains Mono, ui-monospace, monospace',
-      fontSize: 14,
-      theme: {
-        background: 'hsl(222, 47%, 5%)',
-        foreground: 'hsl(0, 0%, 88%)',
-        cursor: 'hsl(160, 70%, 45%)',
-        selectionBackground: 'rgba(100, 200, 150, 0.3)',
-      },
+      fontSize: Math.round(14 * (fontScale / 100)),
+      theme: getTerminalTheme(),
     })
 
     const fitAddon = new FitAddon()
@@ -131,6 +141,26 @@ export function TerminalSession({ session, slotIndex, isFocused = false, onFocus
       }
     }, 100)
   }, [isMaximized])
+
+  // Update terminal theme when app theme changes
+  useEffect(() => {
+    if (xtermRef.current) {
+      // Give CSS time to apply new theme variables
+      setTimeout(() => {
+        if (xtermRef.current) {
+          xtermRef.current.options.theme = getTerminalTheme()
+        }
+      }, 50)
+    }
+  }, [theme])
+
+  // Update terminal font size when fontScale changes
+  useEffect(() => {
+    if (xtermRef.current) {
+      xtermRef.current.options.fontSize = Math.round(14 * (fontScale / 100))
+      fitAddonRef.current?.fit()
+    }
+  }, [fontScale])
 
   const handleCopyOutput = () => {
     if (xtermRef.current) {

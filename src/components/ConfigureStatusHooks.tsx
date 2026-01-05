@@ -164,8 +164,7 @@ const ConfigureStatusHooks: React.FC<ConfigureStatusHooksProps> = ({
 
 				<Box marginTop={1}>
 					<Text dimColor>
-						Environment variables available: CACD_OLD_STATE,
-						CACD_NEW_STATE,
+						Environment variables available: CACD_OLD_STATE, CACD_NEW_STATE,
 					</Text>
 				</Box>
 				<Box>

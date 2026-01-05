@@ -43,7 +43,9 @@ const ProjectList: React.FC<ProjectListProps> = ({
 	const [addingProject, setAddingProject] = useState(false);
 	const [addProjectPath, setAddProjectPath] = useState('');
 	const [addProjectError, setAddProjectError] = useState<string | null>(null);
-	const [confirmingDelete, setConfirmingDelete] = useState<Project | null>(null);
+	const [confirmingDelete, setConfirmingDelete] = useState<Project | null>(
+		null,
+	);
 	const [highlightedItem, setHighlightedItem] = useState<MenuItem | null>(null);
 	const limit = 10;
 
@@ -185,7 +187,9 @@ const ProjectList: React.FC<ProjectListProps> = ({
 		}
 		// Otherwise use the highlighted item from SelectInput
 		if (highlightedItem?.project) {
-			return projects.find(p => p.path === highlightedItem.project?.path) || null;
+			return (
+				projects.find(p => p.path === highlightedItem.project?.path) || null
+			);
 		}
 		return null;
 	};
@@ -300,7 +304,9 @@ const ProjectList: React.FC<ProjectListProps> = ({
 				setConfirmingDelete(project);
 			} else {
 				// Show hint if no project is highlighted
-				setAddProjectError('Highlight a project first, then press D to remove it');
+				setAddProjectError(
+					'Highlight a project first, then press D to remove it',
+				);
 			}
 		} else if (item.value === 'settings') {
 			if (onOpenConfiguration) {
@@ -330,17 +336,31 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			</Box>
 
 			{confirmingDelete ? (
-				<Box flexDirection="column" marginBottom={1} borderStyle="round" borderColor="red" paddingX={1}>
-					<Text color="red" bold>Remove project from list?</Text>
+				<Box
+					flexDirection="column"
+					marginBottom={1}
+					borderStyle="round"
+					borderColor="red"
+					paddingX={1}
+				>
+					<Text color="red" bold>
+						Remove project from list?
+					</Text>
 					<Text>{confirmingDelete.name}</Text>
 					<Text dimColor>{confirmingDelete.path}</Text>
 					<Box marginTop={1}>
 						<Text>Press </Text>
-						<Text color="green" bold>Y</Text>
+						<Text color="green" bold>
+							Y
+						</Text>
 						<Text> to confirm, </Text>
-						<Text color="yellow" bold>N</Text>
+						<Text color="yellow" bold>
+							N
+						</Text>
 						<Text> or </Text>
-						<Text color="yellow" bold>ESC</Text>
+						<Text color="yellow" bold>
+							ESC
+						</Text>
 						<Text> to cancel</Text>
 					</Box>
 					<Text dimColor>(This only removes from the list, not from disk)</Text>
@@ -356,12 +376,8 @@ const ProjectList: React.FC<ProjectListProps> = ({
 							placeholder="Enter path to git repository..."
 						/>
 					</Box>
-					<Text dimColor>
-						Enter to add, Escape to cancel
-					</Text>
-					<Text dimColor>
-						Tip: Run `cacd add .` from any project directory
-					</Text>
+					<Text dimColor>Enter to add, Escape to cancel</Text>
+					<Text dimColor>Tip: Run `cacd add .` from any project directory</Text>
 				</Box>
 			) : isSearchMode ? (
 				<Box marginBottom={1}>
@@ -386,8 +402,8 @@ const ProjectList: React.FC<ProjectListProps> = ({
 					</Box>
 					<Box flexDirection="column">
 						<Text>Get started by adding a project:</Text>
-						<Text dimColor>  • Press A to add a project</Text>
-						<Text dimColor>  • Or run: cacd add /path/to/project</Text>
+						<Text dimColor> • Press A to add a project</Text>
+						<Text dimColor> • Or run: cacd add /path/to/project</Text>
 					</Box>
 				</Box>
 			) : isSearchMode && items.length === 0 ? (
