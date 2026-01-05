@@ -1,6 +1,7 @@
 import { AppProvider, useAppStore } from '@/lib/store'
 import { Layout } from '@/components/layout'
 import { SessionGrid } from '@/components/SessionGrid'
+import { ErrorBanner } from '@/components/ErrorBanner'
 import { Terminal } from 'lucide-react'
 
 function MainContent() {
@@ -28,6 +29,7 @@ function MainContent() {
 function App() {
   return (
     <AppProvider>
+      <ErrorBanner />
       <Layout>
         <MainContent />
       </Layout>

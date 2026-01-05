@@ -430,7 +430,7 @@ export class APIServer {
 		return '';
 	}
 
-	public async start(port: number = 80, host: string = '0.0.0.0') {
+	public async start(port: number = 3000, host: string = '127.0.0.1') {
 		// Wait for setup to complete before starting
 		await this.setupPromise;
 

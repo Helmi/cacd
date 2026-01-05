@@ -47,11 +47,17 @@ export function TerminalSession({ session, slotIndex, isFocused = false, onFocus
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const sessionIdRef = useRef(session.id)
 
   const isContextOpen = contextSidebarSessionId === session.id
 
   // Format name from path
   const formatName = (path: string) => path.split('/').pop() || path
+
+  // Keep sessionIdRef in sync
+  useEffect(() => {
+    sessionIdRef.current = session.id
+  }, [session.id])
 
   useEffect(() => {
     if (!terminalRef.current) return
@@ -76,37 +82,41 @@ export function TerminalSession({ session, slotIndex, isFocused = false, onFocus
     xtermRef.current = term
     fitAddonRef.current = fitAddon
 
-    // Subscribe to session
-    socket.emit('subscribe_session', session.id)
+    // Capture the current socket and sessionId for cleanup
+    const currentSocket = socket
+    const currentSessionId = session.id
 
-    // Handle incoming data
+    // Subscribe to session
+    currentSocket.emit('subscribe_session', currentSessionId)
+
+    // Handle incoming data - uses ref for latest session.id check
     const handleData = (msg: { sessionId: string; data: string } | string) => {
       const content = typeof msg === 'string' ? msg : msg.data
       const msgSessionId = typeof msg === 'string' ? null : msg.sessionId
 
-      // Strict check: Ignore data from other sessions
-      if (msgSessionId && msgSessionId !== session.id) {
+      // Strict check: Ignore data from other sessions using ref for current value
+      if (msgSessionId && msgSessionId !== sessionIdRef.current) {
         return
       }
 
       term.write(content)
     }
 
-    socket.on('terminal_data', handleData)
+    currentSocket.on('terminal_data', handleData)
 
-    // Handle outgoing data
-    term.onData((data) => {
-      socket.emit('input', { sessionId: session.id, data })
+    // Handle outgoing data - uses ref for current session.id
+    const onDataDisposable = term.onData((data) => {
+      currentSocket.emit('input', { sessionId: sessionIdRef.current, data })
     })
 
     // Handle resize
     const handleResize = () => {
-      if (fitAddonRef.current) {
+      if (fitAddonRef.current && xtermRef.current) {
         fitAddonRef.current.fit()
-        socket.emit('resize', {
-          sessionId: session.id,
-          cols: term.cols,
-          rows: term.rows,
+        currentSocket.emit('resize', {
+          sessionId: sessionIdRef.current,
+          cols: xtermRef.current.cols,
+          rows: xtermRef.current.rows,
         })
       }
     }
@@ -125,11 +135,15 @@ export function TerminalSession({ session, slotIndex, isFocused = false, onFocus
     }
 
     return () => {
-      socket.emit('unsubscribe_session', session.id)
-      socket.off('terminal_data', handleData)
+      // Use captured references for cleanup to ensure correct socket/session
+      currentSocket.emit('unsubscribe_session', currentSessionId)
+      currentSocket.off('terminal_data', handleData)
       window.removeEventListener('resize', handleResize)
       resizeObserver.disconnect()
+      onDataDisposable.dispose()
       term.dispose()
+      xtermRef.current = null
+      fitAddonRef.current = null
     }
   }, [session.id, socket])
 

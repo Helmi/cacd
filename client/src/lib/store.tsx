@@ -44,6 +44,9 @@ interface AppState {
   // Connection
   connectionStatus: ConnectionStatus
 
+  // Error handling
+  error: string | null
+
   // Socket
   socket: Socket
 }
@@ -78,6 +81,9 @@ interface AppActions {
   // Session management
   createSession: (path: string, presetId?: string) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<void>
+
+  // Error handling
+  clearError: () => void
 }
 
 type AppStore = AppState & AppActions
@@ -112,6 +118,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Connection state
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting')
 
+  // Error state
+  const [error, setError] = useState<string | null>(null)
+
   // Apply theme to document
   useEffect(() => {
     const root = document.documentElement
@@ -136,31 +145,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('cacd_fontScale', String(fontScale))
   }, [fontScale])
 
-  const fetchData = useCallback(() => {
+  const fetchData = useCallback(async () => {
     const headers = { 'x-access-token': token || '' }
 
-    // Fetch State
-    fetch('/api/state', { headers }).then(res => res.json()).then(state => {
+    const handleFetchError = (endpoint: string) => (err: Error) => {
+      console.error(`Failed to fetch ${endpoint}:`, err)
+      setError(`Failed to load data from server. Check your connection.`)
+    }
+
+    try {
+      // Fetch all data in parallel
+      const [stateRes, sessionsRes, worktreesRes, projectsRes] = await Promise.all([
+        fetch('/api/state', { headers }),
+        fetch('/api/sessions', { headers }),
+        fetch('/api/worktrees', { headers }),
+        fetch('/api/projects', { headers }),
+      ])
+
+      // Check for HTTP errors
+      if (!stateRes.ok || !sessionsRes.ok || !worktreesRes.ok || !projectsRes.ok) {
+        setError('Failed to load data from server. Some requests returned errors.')
+        return
+      }
+
+      const [state, sessionsData, worktreesData, projectsData] = await Promise.all([
+        stateRes.json(),
+        sessionsRes.json(),
+        worktreesRes.json(),
+        projectsRes.json(),
+      ])
+
       if (state.selectedProject) setCurrentProject(state.selectedProject)
-    }).catch(console.error)
+      setSessions(sessionsData)
+      setWorktrees(worktreesData)
+      setProjects(projectsData.projects || [])
 
-    // Fetch Sessions
-    fetch('/api/sessions', { headers })
-      .then(res => res.json())
-      .then(setSessions)
-      .catch(console.error)
-
-    // Fetch Worktrees
-    fetch('/api/worktrees', { headers })
-      .then(res => res.json())
-      .then(setWorktrees)
-      .catch(console.error)
-
-    // Fetch Projects
-    fetch('/api/projects', { headers })
-      .then(res => res.json())
-      .then((data: { projects: Project[] }) => setProjects(data.projects || []))
-      .catch(console.error)
+      // Clear any previous error on success
+      setError(null)
+    } catch (err) {
+      handleFetchError('data')(err as Error)
+    }
   }, [])
 
   // Socket.IO event handlers
@@ -182,7 +206,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const selectProject = async (path: string) => {
     try {
-      await fetch('/api/project/select', {
+      const res = await fetch('/api/project/select', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -190,10 +214,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
         body: JSON.stringify({ path })
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || 'Failed to select project')
+        return
+      }
       setSelectedSessions([])
       fetchData()
     } catch (e) {
       console.error(e)
+      setError('Failed to select project. Check your connection.')
     }
   }
 
@@ -276,6 +306,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ path, presetId })
       })
       const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to create session')
+        return false
+      }
       if (data.success) {
         fetchData()
         setSelectedSessions([data.id])
@@ -284,13 +318,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return false
     } catch (e) {
       console.error(e)
+      setError('Failed to create session. Check your connection.')
       return false
     }
   }
 
   const stopSession = async (sessionId: string) => {
     try {
-      await fetch('/api/session/stop', {
+      const res = await fetch('/api/session/stop', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -298,11 +333,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
         body: JSON.stringify({ id: sessionId })
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || 'Failed to stop session')
+        return
+      }
       fetchData()
     } catch (e) {
       console.error(e)
+      setError('Failed to stop session. Check your connection.')
     }
   }
+
+  const clearError = () => setError(null)
 
   const store: AppStore = {
     // State
@@ -319,6 +362,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     font,
     fontScale,
     connectionStatus,
+    error,
     socket,
 
     // Actions
@@ -340,6 +384,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFontScale,
     createSession,
     stopSession,
+    clearError,
   }
 
   return <AppContext.Provider value={store}>{children}</AppContext.Provider>
