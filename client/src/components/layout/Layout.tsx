@@ -2,6 +2,7 @@ import { ReactNode } from 'react'
 import { Header } from './Header'
 import { Footer } from './Footer'
 import { Sidebar } from './Sidebar'
+import { ContextSidebar } from '@/components/ContextSidebar'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/lib/store'
 
@@ -10,7 +11,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
-  const { sidebarOpen, sidebarCollapsed } = useAppStore()
+  const { sidebarOpen, sidebarCollapsed, contextSidebarSessionId } = useAppStore()
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
@@ -25,6 +26,7 @@ export function Layout({ children }: LayoutProps) {
         >
           {children}
         </main>
+        {contextSidebarSessionId && <ContextSidebar />}
       </div>
       <Footer />
     </div>
