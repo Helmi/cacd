@@ -16,6 +16,13 @@ export interface GitStatus {
 	parentBranch: string | null;
 }
 
+export interface ChangedFile {
+	path: string;
+	status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+	additions: number;
+	deletions: number;
+}
+
 interface ExecResult {
 	stdout: string;
 	stderr: string;
@@ -360,3 +367,194 @@ function toGitError(command: string, error: unknown): GitError {
 		stderr: String(error),
 	});
 }
+
+/**
+ * Get list of changed files in a worktree with their status and line counts
+ *
+ * @param {string} worktreePath - Absolute path to the worktree directory
+ * @returns {Effect.Effect<ChangedFile[], GitError>} Effect containing list of changed files
+ */
+export const getChangedFiles = (
+	worktreePath: string,
+): Effect.Effect<ChangedFile[], GitError> =>
+	Effect.gen(function* () {
+		// Get staged and unstaged changes with numstat
+		const stagedResult = yield* runGit(
+			['diff', '--staged', '--numstat'],
+			worktreePath,
+		);
+		const unstagedResult = yield* runGit(['diff', '--numstat'], worktreePath);
+
+		// Get untracked files
+		const untrackedResult = yield* runGit(
+			['ls-files', '--others', '--exclude-standard'],
+			worktreePath,
+		);
+
+		// Get file status (for rename detection)
+		const statusResult = yield* runGit(
+			['status', '--porcelain', '-uall'],
+			worktreePath,
+		);
+
+		const changedFiles = new Map<string, ChangedFile>();
+
+		// Parse numstat output (additions deletions filename)
+		const parseNumstat = (output: string) => {
+			for (const line of output.split('\n')) {
+				if (!line.trim()) continue;
+				const parts = line.split('\t');
+				if (parts.length >= 3) {
+					const additions = parts[0] === '-' ? 0 : Number.parseInt(parts[0]!, 10) || 0;
+					const deletions = parts[1] === '-' ? 0 : Number.parseInt(parts[1]!, 10) || 0;
+					const filePath = parts.slice(2).join('\t'); // Handle filenames with tabs
+
+					const existing = changedFiles.get(filePath);
+					if (existing) {
+						existing.additions += additions;
+						existing.deletions += deletions;
+					} else {
+						changedFiles.set(filePath, {
+							path: filePath,
+							status: 'modified',
+							additions,
+							deletions,
+						});
+					}
+				}
+			}
+		};
+
+		parseNumstat(stagedResult.stdout);
+		parseNumstat(unstagedResult.stdout);
+
+		// Parse porcelain status to detect file status types
+		for (const line of statusResult.stdout.split('\n')) {
+			if (!line.trim()) continue;
+			const statusCode = line.substring(0, 2);
+			let filePath = line.substring(3);
+
+			// Handle renamed files (old -> new)
+			if (filePath.includes(' -> ')) {
+				filePath = filePath.split(' -> ')[1]!;
+			}
+
+			const existing = changedFiles.get(filePath);
+			let status: ChangedFile['status'] = 'modified';
+
+			if (statusCode.includes('A') || statusCode === '??') {
+				status = 'added';
+			} else if (statusCode.includes('D')) {
+				status = 'deleted';
+			} else if (statusCode.includes('R')) {
+				status = 'renamed';
+			}
+
+			if (existing) {
+				existing.status = status;
+			} else if (statusCode === '??') {
+				// Untracked file
+				changedFiles.set(filePath, {
+					path: filePath,
+					status: 'untracked',
+					additions: 0,
+					deletions: 0,
+				});
+			}
+		}
+
+		// Add untracked files without line counts
+		for (const line of untrackedResult.stdout.split('\n')) {
+			if (!line.trim()) continue;
+			if (!changedFiles.has(line)) {
+				changedFiles.set(line, {
+					path: line,
+					status: 'untracked',
+					additions: 0,
+					deletions: 0,
+				});
+			}
+		}
+
+		return Array.from(changedFiles.values()).sort((a, b) =>
+			a.path.localeCompare(b.path),
+		);
+	});
+
+export const getChangedFilesLimited = createEffectConcurrencyLimited(
+	(worktreePath: string) => getChangedFiles(worktreePath),
+	10,
+);
+
+/**
+ * Get unified diff for a specific file in a worktree
+ *
+ * @param {string} worktreePath - Absolute path to the worktree directory
+ * @param {string} filePath - Relative path to the file within the worktree
+ * @returns {Effect.Effect<string, GitError>} Effect containing the unified diff output
+ */
+export const getFileDiff = (
+	worktreePath: string,
+	filePath: string,
+): Effect.Effect<string, GitError> =>
+	Effect.gen(function* () {
+		// Check if file is untracked
+		const statusResult = yield* runGit(
+			['status', '--porcelain', '--', filePath],
+			worktreePath,
+		);
+
+		const statusLine = statusResult.stdout.trim();
+		if (statusLine.startsWith('??')) {
+			// Untracked file - show entire content as added
+			const contentResult = yield* Effect.catchAll(
+				runGit(['show', `:${filePath}`], worktreePath),
+				() =>
+					// File not staged, read from disk
+					Effect.tryPromise({
+						try: async () => {
+							const fs = await import('fs/promises');
+							const fullPath = `${worktreePath}/${filePath}`;
+							const content = await fs.readFile(fullPath, 'utf8');
+							return {stdout: content, stderr: ''};
+						},
+						catch: error =>
+							new GitError({
+								command: `read ${filePath}`,
+								exitCode: -1,
+								stderr: String(error),
+							}),
+					}),
+			);
+
+			// Format as diff
+			const lines = contentResult.stdout.split('\n');
+			const diffLines = [
+				`diff --git a/${filePath} b/${filePath}`,
+				'new file mode 100644',
+				'--- /dev/null',
+				`+++ b/${filePath}`,
+				`@@ -0,0 +1,${lines.length} @@`,
+				...lines.map(line => `+${line}`),
+			];
+			return diffLines.join('\n');
+		}
+
+		// Get combined staged and unstaged diff
+		const stagedDiff = yield* Effect.catchAll(
+			runGit(['diff', '--staged', '--', filePath], worktreePath),
+			() => Effect.succeed<ExecResult>({stdout: '', stderr: ''}),
+		);
+
+		const unstagedDiff = yield* Effect.catchAll(
+			runGit(['diff', '--', filePath], worktreePath),
+			() => Effect.succeed<ExecResult>({stdout: '', stderr: ''}),
+		);
+
+		// Combine diffs (prefer showing both if both exist)
+		if (stagedDiff.stdout && unstagedDiff.stdout) {
+			return `${stagedDiff.stdout}\n\n--- Unstaged changes ---\n\n${unstagedDiff.stdout}`;
+		}
+
+		return stagedDiff.stdout || unstagedDiff.stdout || '';
+	});

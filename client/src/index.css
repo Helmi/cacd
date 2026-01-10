@@ -48,7 +48,7 @@
     --status-active: 145 70% 45%;
     --status-idle: 45 70% 50%;
     --status-error: 0 70% 50%;
-    --status-pending: 280 60% 55%;
+    --status-pending: 30 90% 50%; /* orange - user action needed */
 
     /* Font */
     --font-mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -82,7 +82,7 @@
     --status-active: 120 60% 50%;
     --status-idle: 50 100% 60%;
     --status-error: 0 75% 60%;
-    --status-pending: 330 100% 70%;
+    --status-pending: 30 100% 60%; /* orange */
   }
 
   /* Solarized Dark theme */
@@ -113,7 +113,7 @@
     --status-active: 140 50% 45%;
     --status-idle: 45 100% 45%;
     --status-error: 0 70% 50%;
-    --status-pending: 280 50% 55%;
+    --status-pending: 30 80% 50%; /* orange */
   }
 
   /* Dracula theme */
@@ -144,7 +144,7 @@
     --status-active: 135 70% 60%;
     --status-idle: 60 70% 70%;
     --status-error: 0 100% 70%;
-    --status-pending: 280 70% 70%;
+    --status-pending: 30 90% 60%; /* orange */
   }
 
   /* Nord theme */
@@ -175,7 +175,7 @@
     --status-active: 140 45% 55%;
     --status-idle: 40 70% 60%;
     --status-error: 0 60% 60%;
-    --status-pending: 280 45% 65%;
+    --status-pending: 30 75% 55%; /* orange */
   }
 
   /* Light theme */
@@ -208,7 +208,7 @@
     --status-active: 145 60% 35%;
     --status-idle: 45 80% 40%;
     --status-error: 0 70% 45%;
-    --status-pending: 280 60% 45%;
+    --status-pending: 30 85% 50%; /* orange */
   }
 
   /* GitHub Light theme */
@@ -239,7 +239,7 @@
     --status-active: 145 50% 38%;
     --status-idle: 45 75% 42%;
     --status-error: 0 65% 48%;
-    --status-pending: 285 55% 48%;
+    --status-pending: 30 85% 48%; /* orange */
   }
 
   /* Solarized Light theme */
@@ -270,7 +270,7 @@
     --status-active: 140 45% 42%;
     --status-idle: 45 90% 42%;
     --status-error: 0 65% 45%;
-    --status-pending: 280 45% 48%;
+    --status-pending: 30 80% 48%; /* orange */
   }
 
   /* One Light theme */
@@ -301,7 +301,7 @@
     --status-active: 140 55% 40%;
     --status-idle: 40 80% 45%;
     --status-error: 0 70% 50%;
-    --status-pending: 320 60% 50%;
+    --status-pending: 30 85% 50%; /* orange */
   }
 
   /* Atom Light theme */
@@ -332,7 +332,7 @@
     --status-active: 140 58% 38%;
     --status-idle: 42 78% 42%;
     --status-error: 0 68% 48%;
-    --status-pending: 310 58% 48%;
+    --status-pending: 30 85% 48%; /* orange */
   }
 
   * {
@@ -346,6 +346,7 @@
 
   body {
     @apply bg-background text-foreground font-mono antialiased;
+    font-size: 16px; /* Base font size - matches terminal */
   }
 }
 
@@ -366,6 +367,12 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground));
+}
+
+/* Fix Radix ScrollArea viewport overflow */
+[data-radix-scroll-area-viewport] > div {
+  display: block !important;
+  width: 100% !important;
 }
 
 /* Font class utilities */

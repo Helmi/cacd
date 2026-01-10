@@ -16,10 +16,7 @@ initializeConfigDir();
 
 // Now dynamically import services that depend on config directory
 // This ensures they're loaded AFTER initializeConfigDir() runs
-const {default: React} = await import('react');
-const {render} = await import('ink');
 const {default: meow} = await import('meow');
-const {default: App} = await import('./components/App.js');
 const {worktreeConfigManager} = await import(
 	'./services/worktreeConfigManager.js'
 );
@@ -44,6 +41,7 @@ const cli = meow(
 	  --help                Show help
 	  --version             Show version
 	  --port <number>       Port for web interface (overrides config/env)
+	  --headless            Run API server only (no TUI) - useful for dev mode
 	  --devc-up-command     Command to start devcontainer
 	  --devc-exec-command   Command to execute in devcontainer
 
@@ -64,6 +62,10 @@ const cli = meow(
 		flags: {
 			port: {
 				type: 'number',
+			},
+			headless: {
+				type: 'boolean',
+				default: false,
 			},
 			devcUpCommand: {
 				type: 'string',
@@ -160,9 +162,11 @@ if (subcommand && !['add', 'remove', 'list'].includes(subcommand)) {
 	process.exit(1);
 }
 
-// If no subcommand, continue to TUI - check TTY
-if (!process.stdin.isTTY || !process.stdout.isTTY) {
+// If no subcommand, continue to TUI - check TTY (unless headless)
+const isHeadless = cli.flags.headless;
+if (!isHeadless && (!process.stdin.isTTY || !process.stdout.isTTY)) {
 	console.error('Error: cacd must be run in an interactive terminal (TTY)');
+	console.error('Use --headless to run API server only without TUI');
 	process.exit(1);
 }
 
@@ -290,20 +294,48 @@ const appProps = {
 	webConfig,
 };
 
-const app = render(React.createElement(App, appProps));
+// In headless mode, just run the API server without TUI
+if (isHeadless) {
+	console.log('Running in headless mode (API server only)');
+	console.log(`API Server: ${webConfig?.url || `http://localhost:${port}`}`);
+	if (webConfig?.externalUrl) {
+		console.log(`External:   ${webConfig.externalUrl}`);
+	}
+	console.log('');
+	console.log('Press Ctrl+C to stop');
 
-// Clean up sessions on exit
-process.on('SIGINT', () => {
-	globalSessionOrchestrator.destroyAllSessions();
-	app.unmount();
-	process.exit(0);
-});
+	// Clean up sessions on exit (headless)
+	process.on('SIGINT', () => {
+		console.log('\nShutting down...');
+		globalSessionOrchestrator.destroyAllSessions();
+		process.exit(0);
+	});
 
-process.on('SIGTERM', () => {
-	globalSessionOrchestrator.destroyAllSessions();
-	app.unmount();
-	process.exit(0);
-});
+	process.on('SIGTERM', () => {
+		globalSessionOrchestrator.destroyAllSessions();
+		process.exit(0);
+	});
+} else {
+	// Normal TUI mode - import ink and React only when needed
+	const {default: React} = await import('react');
+	const {render} = await import('ink');
+	const {default: App} = await import('./components/App.js');
+
+	const app = render(React.createElement(App, appProps));
+
+	// Clean up sessions on exit
+	process.on('SIGINT', () => {
+		globalSessionOrchestrator.destroyAllSessions();
+		app.unmount();
+		process.exit(0);
+	});
+
+	process.on('SIGTERM', () => {
+		globalSessionOrchestrator.destroyAllSessions();
+		app.unmount();
+		process.exit(0);
+	});
+}
 
 // Export for testing
 export const parsedArgs = cli;

@@ -31,6 +31,7 @@ export interface Worktree {
 
 export interface Session {
 	id: string;
+	name?: string;
 	worktreePath: string;
 	process: IPty;
 	output: string[]; // Recent output for state detection

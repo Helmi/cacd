@@ -1,11 +1,22 @@
 import { AppProvider, useAppStore } from '@/lib/store'
 import { Layout } from '@/components/layout'
 import { SessionGrid } from '@/components/SessionGrid'
+import { InlineDiffViewer } from '@/components/InlineDiffViewer'
 import { ErrorBanner } from '@/components/ErrorBanner'
+import { AddProjectModal } from '@/components/AddProjectModal'
+import { AddWorktreeModal } from '@/components/AddWorktreeModal'
+import { AddSessionModal } from '@/components/AddSessionModal'
+import { SettingsModal } from '@/components/SettingsModal'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { Terminal } from 'lucide-react'
 
 function MainContent() {
-  const { selectedSessions } = useAppStore()
+  const { selectedSessions, viewingFileDiff } = useAppStore()
+
+  // Show diff viewer when viewing a file diff
+  if (viewingFileDiff) {
+    return <InlineDiffViewer />
+  }
 
   if (selectedSessions.length === 0) {
     return (
@@ -26,13 +37,28 @@ function MainContent() {
   return <SessionGrid />
 }
 
-function App() {
+function AppContent() {
   return (
-    <AppProvider>
+    <>
       <ErrorBanner />
       <Layout>
         <MainContent />
       </Layout>
+      {/* Modals - rendered based on store state */}
+      <AddProjectModal />
+      <AddWorktreeModal />
+      <AddSessionModal />
+      <SettingsModal />
+    </>
+  )
+}
+
+function App() {
+  return (
+    <AppProvider>
+      <TooltipProvider delayDuration={300}>
+        <AppContent />
+      </TooltipProvider>
     </AppProvider>
   )
 }

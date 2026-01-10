@@ -20,7 +20,7 @@ export function Footer() {
   }
 
   return (
-    <footer className="flex h-6 items-center justify-between border-t border-border bg-sidebar px-2 text-[10px] text-muted-foreground">
+    <footer className="flex h-7 items-center justify-between border-t border-border bg-sidebar px-3 text-xs text-muted-foreground">
       <div className="flex items-center gap-3">
         {/* Connection status */}
         <div className="flex items-center gap-1">

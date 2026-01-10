@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
 import { io, Socket } from 'socket.io-client'
-import type { Session, Worktree, Project, ThemeType, FontType, ConnectionStatus } from './types'
+import type { Session, Worktree, Project, ThemeType, FontType, ConnectionStatus, AppConfig, ChangedFile } from './types'
+import { mapBackendToFrontend, mapFrontendToBackend, getDefaultConfig } from './configMapper'
 
 // Get token from URL or localStorage
 const getToken = () => {
@@ -36,6 +37,22 @@ interface AppState {
   sidebarCollapsed: boolean
   contextSidebarSessionId: string | null
 
+  // Modal State
+  addProjectModalOpen: boolean
+  addWorktreeModalOpen: boolean
+  addWorktreeProjectPath: string | null  // Pre-selected project context for worktree
+  addSessionModalOpen: boolean
+  addSessionWorktreePath: string | null  // Pre-selected worktree context
+  addSessionProjectPath: string | null  // Pre-selected project context
+  settingsModalOpen: boolean
+
+  // File Diff Viewing State
+  viewingFileDiff: { sessionId: string; file: ChangedFile; worktreePath: string } | null
+
+  // Config
+  config: AppConfig
+  configLoading: boolean
+
   // Theme
   theme: ThemeType
   font: FontType
@@ -43,6 +60,9 @@ interface AppState {
 
   // Connection
   connectionStatus: ConnectionStatus
+
+  // Server info
+  isDevMode: boolean
 
   // Error handling
   error: string | null
@@ -79,8 +99,34 @@ interface AppActions {
   setFontScale: (scale: number) => void
 
   // Session management
-  createSession: (path: string, presetId?: string) => Promise<boolean>
+  createSession: (path: string, presetId?: string, sessionName?: string) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<void>
+
+  // Project management
+  addProject: (path: string, description?: string) => Promise<boolean>
+  removeProject: (path: string) => Promise<boolean>
+
+  // Worktree management
+  createWorktree: (path: string, branch: string, baseBranch: string, copySessionData: boolean, copyClaudeDirectory: boolean, projectPath?: string) => Promise<boolean>
+  deleteWorktree: (path: string, deleteBranch: boolean, projectPath?: string) => Promise<boolean>
+
+  // Modal actions
+  openAddProjectModal: () => void
+  closeAddProjectModal: () => void
+  openAddWorktreeModal: (projectPath?: string) => void
+  closeAddWorktreeModal: () => void
+  openAddSessionModal: (worktreePath?: string, projectPath?: string) => void
+  closeAddSessionModal: () => void
+  openSettingsModal: () => void
+  closeSettingsModal: () => void
+
+  // Config
+  updateConfig: (config: AppConfig) => Promise<boolean>
+  configLoading: boolean
+
+  // File diff viewing
+  openFileDiff: (sessionId: string, file: ChangedFile, worktreePath: string) => void
+  closeFileDiff: () => void
 
   // Error handling
   clearError: () => void
@@ -104,6 +150,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [contextSidebarSessionId, setContextSidebarSessionId] = useState<string | null>(null)
 
+  // Modal state
+  const [addProjectModalOpen, setAddProjectModalOpen] = useState(false)
+  const [addWorktreeModalOpen, setAddWorktreeModalOpen] = useState(false)
+  const [addWorktreeProjectPath, setAddWorktreeProjectPath] = useState<string | null>(null)
+  const [addSessionModalOpen, setAddSessionModalOpen] = useState(false)
+  const [addSessionWorktreePath, setAddSessionWorktreePath] = useState<string | null>(null)
+  const [addSessionProjectPath, setAddSessionProjectPath] = useState<string | null>(null)
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false)
+  const [viewingFileDiff, setViewingFileDiff] = useState<{ sessionId: string; file: ChangedFile; worktreePath: string } | null>(null)
+
+  // Config state - loaded from backend API
+  const [config, setConfig] = useState<AppConfig>(getDefaultConfig())
+  const [configLoading, setConfigLoading] = useState(true)
+
   // Theme state - load from localStorage
   const [theme, setThemeState] = useState<ThemeType>(() => {
     return (localStorage.getItem('cacd_theme') as ThemeType) || 'default'
@@ -117,6 +177,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Connection state
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting')
+
+  // Server info
+  const [isDevMode, setIsDevMode] = useState(false)
 
   // Error state
   const [error, setError] = useState<string | null>(null)
@@ -154,12 +217,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      // Fetch all data in parallel
-      const [stateRes, sessionsRes, worktreesRes, projectsRes] = await Promise.all([
+      // Fetch all data in parallel (including config)
+      const [stateRes, sessionsRes, worktreesRes, projectsRes, configRes] = await Promise.all([
         fetch('/api/state', { headers }),
         fetch('/api/sessions', { headers }),
         fetch('/api/worktrees', { headers }),
         fetch('/api/projects', { headers }),
+        fetch('/api/config', { headers }),
       ])
 
       // Check for HTTP errors
@@ -176,14 +240,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ])
 
       if (state.selectedProject) setCurrentProject(state.selectedProject)
+      if (state.isDevMode !== undefined) setIsDevMode(state.isDevMode)
       setSessions(sessionsData)
       setWorktrees(worktreesData)
       setProjects(projectsData.projects || [])
+
+      // Load config from backend
+      if (configRes.ok) {
+        const configData = await configRes.json()
+        setConfig(mapBackendToFrontend(configData))
+      }
+      setConfigLoading(false)
 
       // Clear any previous error on success
       setError(null)
     } catch (err) {
       handleFetchError('data')(err as Error)
+      setConfigLoading(false)
     }
   }, [])
 
@@ -295,7 +368,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setFont = (f: FontType) => setFontState(f)
   const setFontScale = (s: number) => setFontScaleState(s)
 
-  const createSession = async (path: string, presetId?: string): Promise<boolean> => {
+  const createSession = async (path: string, presetId?: string, sessionName?: string): Promise<boolean> => {
     try {
       const res = await fetch('/api/session/create', {
         method: 'POST',
@@ -303,7 +376,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           'Content-Type': 'application/json',
           'x-access-token': token || ''
         },
-        body: JSON.stringify({ path, presetId })
+        body: JSON.stringify({ path, presetId, sessionName })
       })
       const data = await res.json()
       if (!res.ok) {
@@ -313,6 +386,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (data.success) {
         fetchData()
         setSelectedSessions([data.id])
+        setFocusedSessionId(data.id)
+        setContextSidebarSessionId(data.id) // Auto-open context sidebar for new sessions
         return true
       }
       return false
@@ -347,6 +422,174 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const clearError = () => setError(null)
 
+  // Modal actions
+  const openAddProjectModal = () => setAddProjectModalOpen(true)
+  const closeAddProjectModal = () => setAddProjectModalOpen(false)
+  const openAddWorktreeModal = (projectPath?: string) => {
+    setAddWorktreeProjectPath(projectPath || null)
+    setAddWorktreeModalOpen(true)
+  }
+  const closeAddWorktreeModal = () => {
+    setAddWorktreeModalOpen(false)
+    setAddWorktreeProjectPath(null)
+  }
+  const openAddSessionModal = (worktreePath?: string, projectPath?: string) => {
+    setAddSessionWorktreePath(worktreePath || null)
+    setAddSessionProjectPath(projectPath || null)
+    setAddSessionModalOpen(true)
+  }
+  const closeAddSessionModal = () => {
+    setAddSessionModalOpen(false)
+    setAddSessionWorktreePath(null)
+    setAddSessionProjectPath(null)
+  }
+  const openSettingsModal = () => setSettingsModalOpen(true)
+  const closeSettingsModal = () => setSettingsModalOpen(false)
+
+  const openFileDiff = (sessionId: string, file: ChangedFile, worktreePath: string) => {
+    setViewingFileDiff({ sessionId, file, worktreePath })
+  }
+  const closeFileDiff = () => setViewingFileDiff(null)
+
+  const updateConfig = async (newConfig: AppConfig): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': token || ''
+        },
+        body: JSON.stringify(mapFrontendToBackend(newConfig))
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || 'Failed to save configuration')
+        return false
+      }
+      setConfig(newConfig)
+      return true
+    } catch (e) {
+      console.error(e)
+      setError('Failed to save configuration. Check your connection.')
+      return false
+    }
+  }
+
+  const addProject = async (path: string, description?: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/project/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': token || ''
+        },
+        body: JSON.stringify({ path, description })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to add project')
+        return false
+      }
+      if (data.success) {
+        fetchData()
+        return true
+      }
+      return false
+    } catch (e) {
+      console.error(e)
+      setError('Failed to add project. Check your connection.')
+      return false
+    }
+  }
+
+  const removeProject = async (path: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/project/remove', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': token || ''
+        },
+        body: JSON.stringify({ path })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to remove project')
+        return false
+      }
+      if (data.success) {
+        fetchData()
+        return true
+      }
+      return false
+    } catch (e) {
+      console.error(e)
+      setError('Failed to remove project. Check your connection.')
+      return false
+    }
+  }
+
+  const createWorktree = async (
+    path: string,
+    branch: string,
+    baseBranch: string,
+    copySessionData: boolean,
+    copyClaudeDirectory: boolean,
+    projectPath?: string
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/worktree/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': token || ''
+        },
+        body: JSON.stringify({ path, branch, baseBranch, copySessionData, copyClaudeDirectory, projectPath })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to create worktree')
+        return false
+      }
+      if (data.success) {
+        fetchData()
+        return true
+      }
+      return false
+    } catch (e) {
+      console.error(e)
+      setError('Failed to create worktree. Check your connection.')
+      return false
+    }
+  }
+
+  const deleteWorktree = async (path: string, deleteBranch: boolean, projectPath?: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/worktree/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': token || ''
+        },
+        body: JSON.stringify({ path, deleteBranch, projectPath })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to delete worktree')
+        return false
+      }
+      if (data.success) {
+        fetchData()
+        return true
+      }
+      return false
+    } catch (e) {
+      console.error(e)
+      setError('Failed to delete worktree. Check your connection.')
+      return false
+    }
+  }
+
   const store: AppStore = {
     // State
     projects,
@@ -358,10 +601,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sidebarOpen,
     sidebarCollapsed,
     contextSidebarSessionId,
+    addProjectModalOpen,
+    addWorktreeModalOpen,
+    addWorktreeProjectPath,
+    addSessionModalOpen,
+    addSessionWorktreePath,
+    addSessionProjectPath,
+    settingsModalOpen,
+    viewingFileDiff,
+    config,
+    configLoading,
     theme,
     font,
     fontScale,
     connectionStatus,
+    isDevMode,
     error,
     socket,
 
@@ -379,11 +633,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     openContextSidebar,
     closeContextSidebar,
     toggleContextSidebar,
+    openAddProjectModal,
+    closeAddProjectModal,
+    openAddWorktreeModal,
+    closeAddWorktreeModal,
+    openAddSessionModal,
+    closeAddSessionModal,
+    openSettingsModal,
+    closeSettingsModal,
+    openFileDiff,
+    closeFileDiff,
+    updateConfig,
     setTheme,
     setFont,
     setFontScale,
     createSession,
     stopSession,
+    addProject,
+    removeProject,
+    createWorktree,
+    deleteWorktree,
     clearError,
   }
 
@@ -398,4 +667,4 @@ export function useAppStore() {
   return context
 }
 
-export { socket }
+export { socket, token }

@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "setup": "npm install && cp -r \"$CACD_ROOT_PATH/.ui-reference\" .ui-reference 2>/dev/null || true"
+  }
+}

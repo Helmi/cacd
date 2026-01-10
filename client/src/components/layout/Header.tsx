@@ -1,19 +1,15 @@
 import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { SettingsDropdown } from '@/components/SettingsDropdown'
-import { Zap, Plus, PanelLeft } from 'lucide-react'
+import { ThemeSelector } from '@/components/ThemeSelector'
+import { FontSelector } from '@/components/FontSelector'
+import { FontScaleControl } from '@/components/FontScaleControl'
+import { PanelLeft, Settings } from 'lucide-react'
 
 export function Header() {
-  const { projects, worktrees, sessions, toggleSidebar } = useAppStore()
+  const { projects, worktrees, sessions, toggleSidebar, isDevMode, openSettingsModal } = useAppStore()
 
   return (
-    <header className="flex h-8 items-center justify-between border-b border-border bg-sidebar px-2 text-xs">
+    <header className="flex h-9 items-center justify-between border-b border-border bg-sidebar px-3 text-sm">
       <div className="flex items-center gap-2">
         {/* Sidebar toggle for mobile */}
         <Button
@@ -25,11 +21,15 @@ export function Header() {
           <PanelLeft className="h-3.5 w-3.5" />
         </Button>
 
+        {/* DEV indicator */}
+        {isDevMode && (
+          <span className="rounded bg-yellow-500 px-1.5 py-0.5 text-xs font-bold text-black">
+            DEV
+          </span>
+        )}
+
         {/* Logo */}
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <Zap className="h-3.5 w-3.5 text-primary" />
-          <span className="font-medium text-foreground">CA<span className="text-primary">⚡</span>CD</span>
-        </div>
+        <span className="font-semibold text-foreground">CA<span className="text-lg">⚡</span>CD</span>
 
         {/* Stats */}
         <div className="ml-4 hidden items-center gap-3 text-muted-foreground sm:flex">
@@ -42,22 +42,21 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-1">
-        {/* New dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-6 w-6">
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="text-xs">
-            <DropdownMenuItem>New Session</DropdownMenuItem>
-            <DropdownMenuItem>New Worktree</DropdownMenuItem>
-            <DropdownMenuItem>New Project</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Settings */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onClick={openSettingsModal}
+          title="Settings"
+        >
+          <Settings className="h-3.5 w-3.5" />
+        </Button>
 
         {/* Theme/font controls */}
-        <SettingsDropdown />
+        <ThemeSelector />
+        <FontSelector />
+        <FontScaleControl />
       </div>
     </header>
   )

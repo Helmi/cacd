@@ -6,7 +6,7 @@
 ## Upstream Repository
 
 - **Original repo:** https://github.com/kbwo/ccmanager (for reference only, not a git remote)
-- **This repo:** git@github.com:Helmi/agent-control-desk.git (remote: `origin`)
+- **This repo:** git@github.com:Helmi/agent-control-desk.git (remote: `origin`, local folder: `cacd`)
 - **Note:** This project has fully diverged from upstream. No backward compatibility with ccmanager configs.
 
 ### Upstream Compatibility Guidelines
@@ -27,7 +27,20 @@
 - `src/services/coreService.ts` — State orchestration between TUI and WebUI
 - Multi-project support via `ProjectManager` and `GlobalSessionOrchestrator`
 
-## UI Reference rebuild (2026-03-01)
+## UI Reference
+
+The UI reference design is located at `.ui-reference/` in the project root (gitignored).
+- **Source repo:** https://github.com/Helmi/v0-agent-control-desk (branch: `v0-updates`)
+- **Main project location:** `/Users/helmi/code/cacd/.ui-reference/`
+- **Worktree setup:** Automatically copied to worktrees via `.cacd.json` setup script
+
+**Important:** Before starting UI work, always update the reference from remote:
+```bash
+cd /Users/helmi/code/acd-ui-reference && git pull origin v0-updates
+cp -r /Users/helmi/code/acd-ui-reference/* /Users/helmi/code/cacd/.ui-reference/
+```
+
+Use this as a guide for UI/UX improvements when rebuilding the WebUI.
 
 ## Project Structure & Module Organization
 - `src/` (Backend/TUI): Holds the Node.js source code.
@@ -41,13 +54,39 @@
 - `dist/`: Compiled backend artifacts (`cli.js`).
 - `docs/`: Long-form documentation and architectural notes.
 
+## Package Manager
+
+Use **bun** for this project. Important: use `bun run <script>` (not bare `bun test` which uses Bun's test runner instead of Vitest).
+
 ## Build, Test & Development Commands
-- `npm run build`: Compiles the Backend (`tsc`) **AND** the Frontend (`client/` build).
-- `npm start`: Runs the compiled CLI/Server (`dist/cli.js`).
-    - Requires `CACD_PROJECTS_DIR` env var for multi-project mode.
-- `npm run dev`: Launches Backend in watch mode.
-- `npm run test`: Runs the Vitest suite for the backend.
-- `npm run lint`: Checks code style across the project.
+- `bun install`: Install dependencies.
+- `bun run build`: Compiles the Backend (`tsc`) **AND** the Frontend (`client/` build).
+- `bun run start`: Runs the compiled CLI/Server (`dist/cli.js`).
+- `bun run test`: Runs the Vitest suite for the backend.
+- `bun run lint`: Checks code style across the project.
+
+### Development Workflow
+
+**Hot-reload dev server** (recommended for development):
+```bash
+bun run dev
+```
+Runs both backend (tsx watch + headless) and frontend (Vite dev server) concurrently with hot reload. Access WebUI at `http://localhost:5173` (Vite proxies API requests to backend).
+
+**Individual dev commands:**
+- `bun run dev:server` — Backend only in headless mode (API server, no TUI)
+- `bun run dev:client` — Frontend Vite dev server only
+- `bun run dev:tui` — Backend with TUI (original dev mode)
+
+**Note:** PTY sessions die when the backend restarts. This is unavoidable without architecture changes. For development, just restart sessions as needed.
+
+### Global Install Workflow
+
+Build and install globally for system-wide access:
+```bash
+bun run install:global
+```
+This builds both backend and frontend, then installs via `npm install -g . --install-strategy=nested` so `cacd` command is available globally. The nested strategy is required to avoid ink/ansi-styles dependency conflicts. Run again to update after changes.
 
 ## Architecture
 The application operates in a **Hybrid Mode**:
@@ -77,4 +116,4 @@ The application operates in a **Hybrid Mode**:
 ## Commit & Pull Request Guidelines
 - **Conventional Commits:** `type: subject` (e.g., `feat: add web terminal view`, `refactor: rename environment variable`).
 - **Context:** Mention if a change affects TUI, WebUI, or both.
-- **Verification:** Ensure `npm run build` passes (builds both ends) before pushing.
+- **Verification:** Ensure `bun run build` passes (builds both ends) before pushing.

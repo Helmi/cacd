@@ -11,8 +11,9 @@ import {ValidationError} from '../types/errors.js';
 import {Effect} from 'effect';
 import path from 'path';
 import {fileURLToPath} from 'url';
+import {getGitStatusLimited, getChangedFilesLimited, getFileDiff} from '../utils/gitStatus.js';
 import {randomUUID} from 'crypto';
-import {generateRandomPort} from '../constants/env.js';
+import {generateRandomPort, isDevMode} from '../constants/env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,7 +59,10 @@ export class APIServer {
 	private setupRoutes() {
 		// --- State ---
 		this.app.get('/api/state', async () => {
-			return coreService.getState();
+			return {
+				...coreService.getState(),
+				isDevMode: isDevMode(),
+			};
 		});
 
 		// --- Projects (registry-based API) ---
@@ -142,15 +146,147 @@ export class APIServer {
 		);
 
 		// --- Worktrees ---
+		// Returns worktrees for ALL registered projects
 		this.app.get('/api/worktrees', async () => {
-			const result = await coreService.refreshWorktrees();
-			if (result._tag === 'Right') {
-				return result.right;
+			const projects = projectManager.getProjects();
+			const allWorktrees: Array<{
+				path: string;
+				branch?: string;
+				isMainWorktree: boolean;
+				hasSession: boolean;
+				gitStatus?: {
+					filesAdded: number;
+					filesDeleted: number;
+					aheadCount: number;
+					behindCount: number;
+					parentBranch: string | null;
+				};
+				gitStatusError?: string;
+			}> = [];
+
+			for (const project of projects) {
+				if (!project.isValid) continue;
+				try {
+					const worktreeService = projectManager.instance.getWorktreeService(
+						project.path,
+					);
+					const result = await Effect.runPromise(
+						Effect.either(worktreeService.getWorktreesEffect()),
+					);
+					if (result._tag === 'Right') {
+						// Fetch git status for each worktree in parallel
+						const worktreesWithStatus = await Promise.all(
+							result.right.map(async wt => {
+								const gitResult = await Effect.runPromise(
+									Effect.either(getGitStatusLimited(wt.path)),
+								);
+								return {
+									...wt,
+									gitStatus:
+										gitResult._tag === 'Right' ? gitResult.right : undefined,
+									gitStatusError:
+										gitResult._tag === 'Left'
+											? gitResult.left.message
+											: undefined,
+								};
+							}),
+						);
+						for (const wt of worktreesWithStatus) {
+							allWorktrees.push(wt);
+						}
+					}
+				} catch (error) {
+					logger.warn(
+						`Failed to get worktrees for project ${project.path}:`,
+						error,
+					);
+				}
 			}
-			throw new Error('Failed to fetch worktrees');
+
+			return allWorktrees;
 		});
 
-		this.app.get('/api/branches', async (request, reply) => {
+		// --- Git Status Endpoints ---
+		// Get list of changed files for a worktree
+		this.app.get<{
+			Querystring: {path: string};
+		}>('/api/worktree/files', async (request, reply) => {
+			const {path: worktreePath} = request.query;
+
+			if (!worktreePath) {
+				return reply.code(400).send({error: 'path query parameter required'});
+			}
+
+			const result = await Effect.runPromise(
+				Effect.either(getChangedFilesLimited(worktreePath)),
+			);
+
+			if (result._tag === 'Left') {
+				return reply.code(500).send({error: result.left.message});
+			}
+
+			return result.right;
+		});
+
+		// Get diff for a specific file in a worktree
+		this.app.get<{
+			Querystring: {path: string; file: string};
+		}>('/api/worktree/diff', async (request, reply) => {
+			const {path: worktreePath, file: filePath} = request.query;
+
+			if (!worktreePath || !filePath) {
+				return reply
+					.code(400)
+					.send({error: 'path and file query parameters required'});
+			}
+
+			const result = await Effect.runPromise(
+				Effect.either(getFileDiff(worktreePath, filePath)),
+			);
+
+			if (result._tag === 'Left') {
+				return reply.code(500).send({error: result.left.message});
+			}
+
+			return {diff: result.right};
+		});
+
+		this.app.get<{
+			Querystring: {projectPath?: string};
+		}>('/api/branches', async (request, reply) => {
+			const {projectPath} = request.query;
+
+			// If projectPath provided, get branches for that specific project
+			if (projectPath) {
+				try {
+					const {execFileSync} = await import('child_process');
+					const output = execFileSync(
+						'git',
+						['branch', '-a', '--format=%(refname:short)'],
+						{
+							cwd: projectPath,
+							encoding: 'utf8',
+						},
+					);
+
+					const branches = output
+						.split('\n')
+						.map((b: string) => b.trim())
+						.filter((b: string) => b.length > 0 && !b.includes('HEAD'))
+						.map((b: string) => b.replace(/^origin\//, ''))
+						.filter(
+							(b: string, i: number, arr: string[]) => arr.indexOf(b) === i,
+						)
+						.sort();
+
+					return branches;
+				} catch (error) {
+					logger.error(`Failed to get branches for ${projectPath}:`, error);
+					return [];
+				}
+			}
+
+			// Fallback to current worktree service (for backwards compatibility)
 			const effect = coreService.worktreeService.getAllBranchesEffect();
 			const result = await Effect.runPromise(Effect.either(effect));
 
@@ -167,13 +303,27 @@ export class APIServer {
 				baseBranch: string;
 				copySessionData: boolean;
 				copyClaudeDirectory: boolean;
+				projectPath?: string;
 			};
 		}>('/api/worktree/create', async (request, reply) => {
-			const {path, branch, baseBranch, copySessionData, copyClaudeDirectory} =
-				request.body;
-			logger.info(`API: Creating worktree ${path} from ${baseBranch}`);
+			const {
+				path,
+				branch,
+				baseBranch,
+				copySessionData,
+				copyClaudeDirectory,
+				projectPath,
+			} = request.body;
+			logger.info(
+				`API: Creating worktree ${path} from ${baseBranch} in project ${projectPath || 'default'}`,
+			);
 
-			const effect = coreService.worktreeService.createWorktreeEffect(
+			// Get worktree service for the specified project, or fall back to default
+			const worktreeService = projectPath
+				? projectManager.instance.getWorktreeService(projectPath)
+				: coreService.worktreeService;
+
+			const effect = worktreeService.createWorktreeEffect(
 				path,
 				branch,
 				baseBranch,
@@ -191,15 +341,20 @@ export class APIServer {
 			return {success: true, worktree: result.right};
 		});
 
-		this.app.post<{Body: {path: string; deleteBranch: boolean}}>(
+		this.app.post<{Body: {path: string; deleteBranch: boolean; projectPath?: string}}>(
 			'/api/worktree/delete',
 			async (request, reply) => {
-				const {path, deleteBranch} = request.body;
+				const {path, deleteBranch, projectPath} = request.body;
 				logger.info(
-					`API: Deleting worktree ${path} (deleteBranch: ${deleteBranch})`,
+					`API: Deleting worktree ${path} (deleteBranch: ${deleteBranch}) in project ${projectPath || 'default'}`,
 				);
 
-				const effect = coreService.worktreeService.deleteWorktreeEffect(path, {
+				// Get worktree service for the specified project, or fall back to default
+				const worktreeService = projectPath
+					? projectManager.instance.getWorktreeService(projectPath)
+					: coreService.worktreeService;
+
+				const effect = worktreeService.deleteWorktreeEffect(path, {
 					deleteBranch,
 				});
 				const result = await Effect.runPromise(Effect.either(effect));
@@ -241,18 +396,19 @@ export class APIServer {
 			const sessions = coreService.sessionManager.getAllSessions();
 			return sessions.map(s => ({
 				id: s.id,
+				name: s.name,
 				path: s.worktreePath,
 				state: s.stateMutex.getSnapshot().state,
 				isActive: s.isActive,
 			}));
 		});
 
-		this.app.post<{Body: {path: string; presetId?: string}}>(
+		this.app.post<{Body: {path: string; presetId?: string; sessionName?: string}}>(
 			'/api/session/create',
 			async (request, reply) => {
-				const {path, presetId} = request.body;
+				const {path, presetId, sessionName} = request.body;
 				logger.info(
-					`API: Creating session for ${path} with preset: ${presetId || 'default'}`,
+					`API: Creating session "${sessionName || 'unnamed'}" for ${path} with preset: ${presetId || 'default'}`,
 				);
 
 				const effect = coreService.sessionManager.createSessionWithPresetEffect(
@@ -270,7 +426,7 @@ export class APIServer {
 				// Ensure it's marked active
 				coreService.sessionManager.setSessionActive(path, true);
 
-				return {success: true, id: session.id};
+				return {success: true, id: session.id, name: session.name};
 			},
 		);
 
@@ -371,6 +527,11 @@ export class APIServer {
 					}
 				});
 
+				socket.on('unsubscribe_session', (sessionId: string) => {
+					logger.info(`Client ${socket.id} unsubscribed from session ${sessionId}`);
+					socket.leave(`session:${sessionId}`);
+				});
+
 				socket.on(
 					'input',
 					({sessionId, data}: {sessionId: string; data: string}) => {
@@ -440,7 +601,7 @@ export class APIServer {
 	 */
 	public async start(
 		port: number = 3000,
-		host: string = '127.0.0.1',
+		host: string = '0.0.0.0',
 		devMode: boolean = false,
 	): Promise<{address: string; port: number}> {
 		// Wait for setup to complete before starting

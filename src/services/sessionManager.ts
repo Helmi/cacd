@@ -521,6 +521,14 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			const detectedState = this.detectTerminalState(session);
 			const now = Date.now();
 
+			// DEBUG: Log state detection
+			console.log(
+				'[SessionManager] State detected:',
+				detectedState,
+				'Current:',
+				oldState,
+			);
+
 			// If detected state is different from current state
 			if (detectedState !== oldState) {
 				// If this is a new pending state or the pending state changed

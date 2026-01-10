@@ -30,9 +30,13 @@
 	},
 	"scripts": {
 		"build": "tsc && cd client && npm install && npm run build",
-		"dev": "CACD_DEV=1 tsx watch src/cli.tsx",
+		"dev": "concurrently -n \"API,WEB\" -c \"blue,magenta\" \"bun run dev:server\" \"bun run dev:client\"",
+		"dev:server": "CACD_DEV=1 tsx watch --clear-screen=false src/cli.tsx --headless",
+		"dev:client": "cd client && bun run dev",
+		"dev:tui": "CACD_DEV=1 tsx watch src/cli.tsx",
 		"dev:build": "tsc --watch",
 		"start": "node dist/cli.js",
+		"install:global": "bun run build && npm install -g . --install-strategy=nested",
 		"test": "vitest --run",
 		"lint": "eslint src",
 		"lint:fix": "eslint src --fix",
@@ -44,6 +48,7 @@
 		"dist"
 	],
 	"dependencies": {
+		"ansi-styles": "^6.2.1",
 		"@fastify/cors": "^11.2.0",
 		"@fastify/static": "^8.3.0",
 		"@xterm/headless": "^5.5.0",
@@ -67,6 +72,7 @@
 		"@typescript-eslint/parser": "^8.33.1",
 		"@vdemedes/prettier-config": "^2.0.1",
 		"chalk": "^5.2.0",
+		"concurrently": "^9.2.1",
 		"eslint": "^9.28.0",
 		"eslint-config-prettier": "^10.1.5",
 		"eslint-plugin-prettier": "^5.4.1",
@@ -79,5 +85,12 @@
 		"typescript": "^5.0.3",
 		"vitest": "^3.2.2"
 	},
-	"prettier": "@vdemedes/prettier-config"
+	"prettier": "@vdemedes/prettier-config",
+	"overrides": {
+		"ink": {
+			"slice-ansi": {
+				"ansi-styles": "^6.2.1"
+			}
+		}
+	}
 }

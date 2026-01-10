@@ -4,6 +4,10 @@ dist
 .idea/
 tmp/
 ui-reference/
+.ui-reference/
 
 # Dev mode local config directory
 .cacd-dev/
+
+# Dev test projects
+.dev-projects/
