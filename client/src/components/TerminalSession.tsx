@@ -136,6 +136,14 @@ export function TerminalSession({
 		// Capture current socket and sessionId for cleanup
 		const currentSocket = socket;
 		const currentSessionId = session.id;
+		const isDevMode = import.meta.env.DEV;
+
+		// Debug log in dev mode
+		if (isDevMode) {
+			console.log(
+				`[TerminalSession] Subscribing to session ${currentSessionId}, socket ${currentSocket.id}`,
+			);
+		}
 
 		// Subscribe to session
 		currentSocket.emit('subscribe_session', currentSessionId);
@@ -198,8 +206,17 @@ export function TerminalSession({
 			// Mark as unmounted to prevent old listeners from firing
 			isMounted = false;
 
-			// Use captured references for cleanup to ensure correct socket/session
+			// Debug log in dev mode
+			if (isDevMode) {
+				console.log(
+					`[TerminalSession] Unsubscribing from session ${currentSessionId}, socket ${currentSocket.id}`,
+				);
+			}
+
+			// Unsubscribe BEFORE removing listeners to ensure proper cleanup
 			currentSocket.emit('unsubscribe_session', currentSessionId);
+
+			// Use captured references for cleanup to ensure correct socket/session
 			currentSocket.off('terminal_data', handleData);
 			window.removeEventListener('resize', handleResize);
 			resizeObserver.disconnect();

@@ -24,6 +24,9 @@ export class APIServer {
 	private token: string;
 	private setupPromise: Promise<void>;
 
+	// Track socket subscriptions to prevent duplicates in dev mode
+	private socketSubscriptions = new Map<string, string>(); // socketId -> sessionId
+
 	constructor() {
 		this.app = Fastify({logger: false});
 		this.token = randomUUID();
@@ -499,7 +502,20 @@ export class APIServer {
 				logger.info(`Web client connected: ${socket.id}`);
 
 				socket.on('subscribe_session', (sessionId: string) => {
-					// Force leave other session rooms to prevent crosstalk
+					const socketId = socket.id;
+
+					// Check if switching sessions - leave previous room explicitly
+					const previousSessionId = this.socketSubscriptions.get(socketId);
+					if (previousSessionId && previousSessionId !== sessionId) {
+						socket.leave(`session:${previousSessionId}`);
+						if (isDevMode) {
+							logger.info(
+								`Client ${socketId} switched from ${previousSessionId} to ${sessionId}`,
+							);
+						}
+					}
+
+					// Force leave ALL other session rooms (belt and suspenders)
 					for (const room of socket.rooms) {
 						if (
 							room.startsWith('session:') &&
@@ -509,8 +525,11 @@ export class APIServer {
 						}
 					}
 
-					logger.info(`Client ${socket.id} subscribed to session ${sessionId}`);
+					// Track subscription
+					this.socketSubscriptions.set(socketId, sessionId);
 					socket.join(`session:${sessionId}`);
+
+					logger.info(`Client ${socketId} subscribed to session ${sessionId}`);
 
 					// Find session and send current history
 					const sessions = coreService.sessionManager.getAllSessions();
@@ -528,7 +547,14 @@ export class APIServer {
 				});
 
 				socket.on('unsubscribe_session', (sessionId: string) => {
-					logger.info(`Client ${socket.id} unsubscribed from session ${sessionId}`);
+					const socketId = socket.id;
+					logger.info(`Client ${socketId} unsubscribed from session ${sessionId}`);
+
+					// Clear from tracking if this was the tracked session
+					if (this.socketSubscriptions.get(socketId) === sessionId) {
+						this.socketSubscriptions.delete(socketId);
+					}
+
 					socket.leave(`session:${sessionId}`);
 				});
 
@@ -561,6 +587,13 @@ export class APIServer {
 						}
 					},
 				);
+
+				// Cleanup on disconnect
+				socket.on('disconnect', () => {
+					const socketId = socket.id;
+					this.socketSubscriptions.delete(socketId);
+					logger.info(`Client ${socketId} disconnected`);
+				});
 			});
 		});
 	}

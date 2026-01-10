@@ -39,6 +39,36 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	private waitingWithBottomBorder: Map<string, boolean> = new Map();
 	private busyTimers: Map<string, NodeJS.Timeout> = new Map();
 
+	// Track all active state check intervals for cleanup (especially hot reload)
+	private activeIntervals: Map<string, NodeJS.Timeout> = new Map();
+
+	// Dev mode detection
+	private readonly isDevMode = process.env.CACD_DEV === '1';
+
+	public destroy(): void {
+		// Clear all state check intervals
+		for (const [sessionId, interval] of this.activeIntervals) {
+			clearInterval(interval);
+			if (this.isDevMode) {
+				logger.info(`[SessionManager] Cleared interval for session ${sessionId}`);
+			}
+		}
+		this.activeIntervals.clear();
+
+		// Clear busy timers
+		for (const [sessionId, timer] of this.busyTimers) {
+			clearTimeout(timer);
+		}
+		this.busyTimers.clear();
+
+		// Remove all event listeners
+		this.removeAllListeners();
+
+		if (this.isDevMode) {
+			logger.info('[SessionManager] Destroyed SessionManager');
+		}
+	}
+
 	private async spawn(
 		command: string,
 		args: string[],
@@ -514,6 +544,15 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		// Setup data handler
 		this.setupDataHandler(session);
 
+		// Hot reload protection: Clear existing interval if any
+		if (session.stateCheckInterval) {
+			if (this.isDevMode) {
+				logger.warn(`[SessionManager] Session ${session.id} already has state check interval - cleaning up previous`);
+			}
+			clearInterval(session.stateCheckInterval);
+			this.activeIntervals.delete(session.id);
+		}
+
 		// Set up interval-based state detection with persistence
 		session.stateCheckInterval = setInterval(() => {
 			const stateData = session.stateMutex.getSnapshot();
@@ -522,12 +561,14 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			const now = Date.now();
 
 			// DEBUG: Log state detection
-			console.log(
-				'[SessionManager] State detected:',
-				detectedState,
-				'Current:',
-				oldState,
-			);
+			if (this.isDevMode) {
+				console.log(
+					'[SessionManager] State detected:',
+					detectedState,
+					'Current:',
+					oldState,
+				);
+			}
 
 			// If detected state is different from current state
 			if (detectedState !== oldState) {
@@ -601,6 +642,9 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			}
 		}, STATE_CHECK_INTERVAL_MS);
 
+		// Track interval for cleanup
+		this.activeIntervals.set(session.id, session.stateCheckInterval);
+
 		// Setup exit handler
 		this.setupExitHandler(session);
 	}
@@ -611,9 +655,10 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			this.cancelAutoApprovalVerification(session, 'Session cleanup');
 		}
 
-		// Clear the state check interval
+		// Clear the state check interval and remove from tracking
 		if (session.stateCheckInterval) {
 			clearInterval(session.stateCheckInterval);
+			this.activeIntervals.delete(session.id);
 			session.stateCheckInterval = undefined;
 		}
 		// Clear any pending state and update state to idle before destroying

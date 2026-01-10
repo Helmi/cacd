@@ -19,6 +19,9 @@ export interface AppState {
 export class CoreService extends EventEmitter {
 	private static instance: CoreService;
 
+	// Dev mode detection for hot reload cleanup
+	private static readonly isDevMode = process.env.CACD_DEV === '1';
+
 	// Services
 	public sessionManager: SessionManager;
 	public worktreeService: WorktreeService;
@@ -32,6 +35,12 @@ export class CoreService extends EventEmitter {
 
 	private constructor() {
 		super();
+
+		// Hot reload cleanup: Destroy previous instance if exists in dev mode
+		if (CoreService.isDevMode && CoreService.instance) {
+			CoreService.destroy();
+		}
+
 		// Initialize with default services
 		this.sessionManager = globalSessionOrchestrator.getManagerForProject();
 		this.worktreeService = new WorktreeService();
@@ -45,6 +54,29 @@ export class CoreService extends EventEmitter {
 			CoreService.instance = new CoreService();
 		}
 		return CoreService.instance;
+	}
+
+	/**
+	 * Destroy the CoreService instance and cleanup all resources.
+	 * Called on hot reload in dev mode to prevent resource accumulation.
+	 */
+	public static destroy(): void {
+		if (CoreService.instance) {
+			// Remove all event listeners
+			CoreService.instance.removeAllListeners();
+
+			// Cleanup session manager intervals and listeners
+			if (typeof CoreService.instance.sessionManager.destroy === 'function') {
+				CoreService.instance.sessionManager.destroy();
+			}
+
+			// Reset instance
+			CoreService.instance = null as unknown as CoreService;
+
+			if (CoreService.isDevMode) {
+				console.log('[CoreService] Destroyed CoreService instance for hot reload');
+			}
+		}
 	}
 
 	private setupServiceListeners() {
