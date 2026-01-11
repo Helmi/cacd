@@ -43,9 +43,14 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	private activeIntervals: Map<string, NodeJS.Timeout> = new Map();
 
 	// Dev mode detection
-	private readonly isDevMode = process.env.CACD_DEV === '1';
+	private readonly isDevMode = process.env['CACD_DEV'] === '1';
 
 	public destroy(): void {
+		// Clean up all sessions first
+		for (const worktreePath of this.sessions.keys()) {
+			this.destroySession(worktreePath);
+		}
+
 		// Clear all state check intervals
 		for (const [sessionId, interval] of this.activeIntervals) {
 			clearInterval(interval);
@@ -929,13 +934,6 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 				});
 			},
 		});
-	}
-
-	destroy(): void {
-		// Clean up all sessions
-		for (const worktreePath of this.sessions.keys()) {
-			this.destroySession(worktreePath);
-		}
 	}
 
 	static getSessionCounts(sessions: Session[]): SessionCounts {

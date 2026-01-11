@@ -508,7 +508,7 @@ export class APIServer {
 					const previousSessionId = this.socketSubscriptions.get(socketId);
 					if (previousSessionId && previousSessionId !== sessionId) {
 						socket.leave(`session:${previousSessionId}`);
-						if (isDevMode) {
+						if (isDevMode()) {
 							logger.info(
 								`Client ${socketId} switched from ${previousSessionId} to ${sessionId}`,
 							);

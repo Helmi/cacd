@@ -25,12 +25,13 @@ export class ClaudeStateDetector extends BaseStateDetector {
 		}
 
 		// Check for busy state
-		// Handle both old ("esc to interrupt") and new ("ctrl+c to interrupt") patterns
-		if (
-			lowerContent.includes('esc to interrupt') ||
-			lowerContent.includes('ctrl+c to interrupt')
-		) {
+		if (lowerContent.includes('ctrl+c to interrupt')) {
 			return 'busy';
+		}
+
+		// maybe a possible chance to detect idle state more reliable?
+		if (lowerContent.includes('↵ send')) {
+			return 'idle';
 		}
 
 		// Otherwise idle
