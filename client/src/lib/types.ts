@@ -82,19 +82,37 @@ export interface Project {
 // Connection status for Socket.IO
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'error'
 
-// Agent parameter definition
-export interface AgentParameter {
-  flag: string
-  name: string
-  description?: string
+// Agent option (single configurable parameter for an agent)
+export interface AgentOption {
+  id: string // Stable identity for storage/constraints
+  flag: string // CLI flag (e.g., '--model') or empty for positional args
+  label: string // UI label
+  description?: string // Tooltip/help text
+  type: 'boolean' | 'string'
+  default?: boolean | string
+  choices?: { value: string; label?: string }[] // If present, render as dropdown
+  group?: string // Mutual exclusivity group
 }
 
-// Agent configuration
+// Agent configuration (CLI tool or terminal)
 export interface AgentConfig {
   id: string
   name: string
-  command: string
-  parameters: AgentParameter[]
+  description?: string
+  kind: 'agent' | 'terminal'
+  command: string // Executable (e.g., 'claude', '$SHELL')
+  baseArgs?: string[] // Fixed args always passed
+  options: AgentOption[]
+  detectionStrategy?: string // For state detection (agents only)
+  icon?: string // Brand icon ID or generic Lucide icon name
+  iconColor?: string // Hex color (only for generic icons)
+}
+
+// Agents config from API
+export interface AgentsConfig {
+  agents: AgentConfig[]
+  defaultAgentId: string
+  schemaVersion: number
 }
 
 // Status hooks configuration

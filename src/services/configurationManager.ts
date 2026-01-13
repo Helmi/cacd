@@ -10,6 +10,8 @@ import {
 	CommandConfig,
 	CommandPreset,
 	CommandPresetsConfig,
+	AgentConfig,
+	AgentsConfig,
 	DEFAULT_SHORTCUTS,
 } from '../types/index.js';
 import {
@@ -18,6 +20,107 @@ import {
 	ValidationError,
 } from '../types/errors.js';
 import {getConfigDir} from '../utils/configDir.js';
+
+// Current schema version for agents config
+const AGENTS_SCHEMA_VERSION = 1;
+
+// Default agent configurations shipped with CACD
+const DEFAULT_AGENTS: AgentConfig[] = [
+	{
+		id: 'claude',
+		name: 'Claude Code',
+		description: 'Anthropic Claude CLI for coding assistance',
+		kind: 'agent',
+		command: 'claude',
+		icon: 'claude',
+		options: [
+			{
+				id: 'yolo',
+				flag: '--dangerously-skip-permissions',
+				label: 'YOLO Mode',
+				description: 'Skip all permission prompts',
+				type: 'boolean',
+				default: false,
+			},
+			{
+				id: 'continue',
+				flag: '--continue',
+				label: 'Continue',
+				description: 'Continue the most recent conversation',
+				type: 'boolean',
+				default: false,
+				group: 'resume-mode',
+			},
+			{
+				id: 'resume',
+				flag: '--resume',
+				label: 'Resume',
+				description: 'Resume a specific conversation by ID',
+				type: 'string',
+				group: 'resume-mode',
+			},
+			{
+				id: 'model',
+				flag: '--model',
+				label: 'Model',
+				description: 'Model to use',
+				type: 'string',
+				choices: [
+					{value: 'sonnet', label: 'Sonnet'},
+					{value: 'opus', label: 'Opus'},
+					{value: 'haiku', label: 'Haiku'},
+				],
+			},
+		],
+		detectionStrategy: 'claude',
+	},
+	{
+		id: 'codex',
+		name: 'Codex CLI',
+		description: 'OpenAI Codex CLI',
+		kind: 'agent',
+		command: 'codex',
+		icon: 'openai',
+		options: [
+			{
+				id: 'model',
+				flag: '-m',
+				label: 'Model',
+				description: 'Model to use',
+				type: 'string',
+			},
+		],
+		detectionStrategy: 'codex',
+	},
+	{
+		id: 'gemini',
+		name: 'Gemini CLI',
+		description: 'Google Gemini CLI',
+		kind: 'agent',
+		command: 'gemini',
+		icon: 'gemini',
+		options: [
+			{
+				id: 'model',
+				flag: '-m',
+				label: 'Model',
+				description: 'Model to use',
+				type: 'string',
+			},
+		],
+		detectionStrategy: 'gemini',
+	},
+	{
+		id: 'terminal',
+		name: 'Terminal',
+		description: 'Plain shell session',
+		kind: 'terminal',
+		command: '$SHELL',
+		icon: 'terminal',
+		iconColor: '#6B7280',
+		options: [],
+	},
+];
 
 export class ConfigurationManager {
 	private configPath: string;
@@ -125,6 +228,9 @@ export class ConfigurationManager {
 
 		// Migrate legacy command config to presets if needed
 		this.migrateLegacyCommandToPresets();
+
+		// Initialize or migrate agents config
+		this.initializeAgentsConfig();
 	}
 
 	private migrateLegacyShortcuts(): void {
@@ -378,6 +484,271 @@ export class ConfigurationManager {
 		const presets = this.getCommandPresets();
 		presets.selectPresetOnStart = enabled;
 		this.setCommandPresets(presets);
+	}
+
+	// ============================================================================
+	// Agent Configuration Methods
+	// ============================================================================
+
+	/**
+	 * Initialize agents config with defaults or migrate from presets.
+	 * Called during loadConfig().
+	 */
+	private initializeAgentsConfig(): void {
+		if (this.config.agents) {
+			// Already have agents config, just ensure schema version
+			if (!this.config.agents.schemaVersion) {
+				this.config.agents.schemaVersion = AGENTS_SCHEMA_VERSION;
+				this.saveConfig();
+			}
+			return;
+		}
+
+		// No agents config yet - check if we should migrate from presets
+		if (this.config.commandPresets && this.config.commandPresets.presets.length > 0) {
+			// Migrate existing presets to agents
+			const migratedAgents = this.migratePresetsToAgents(
+				this.config.commandPresets.presets,
+			);
+
+			// Merge with default agents (add defaults that aren't already present)
+			const mergedAgents = [...migratedAgents];
+			for (const defaultAgent of DEFAULT_AGENTS) {
+				if (!mergedAgents.some(a => a.id === defaultAgent.id)) {
+					mergedAgents.push(defaultAgent);
+				}
+			}
+
+			this.config.agents = {
+				agents: mergedAgents,
+				defaultAgentId: migratedAgents[0]?.id || 'claude',
+				schemaVersion: AGENTS_SCHEMA_VERSION,
+			};
+		} else {
+			// Fresh install - use defaults
+			this.config.agents = {
+				agents: [...DEFAULT_AGENTS],
+				defaultAgentId: 'claude',
+				schemaVersion: AGENTS_SCHEMA_VERSION,
+			};
+		}
+
+		this.saveConfig();
+	}
+
+	/**
+	 * Migrate CommandPreset[] to AgentConfig[].
+	 * Uses lossless migration: args become baseArgs, options stay empty.
+	 */
+	private migratePresetsToAgents(presets: CommandPreset[]): AgentConfig[] {
+		return presets.map((preset, index) => {
+			// Check if this matches a known default agent
+			const matchingDefault = DEFAULT_AGENTS.find(
+				d => d.command === preset.command && d.kind === 'agent',
+			);
+
+			if (matchingDefault) {
+				// Use the default agent's options but keep preset's name/id
+				return {
+					...matchingDefault,
+					id: preset.id || `migrated-${index}`,
+					name: preset.name || matchingDefault.name,
+					baseArgs: preset.args, // Preserve any custom args
+				};
+			}
+
+			// Unknown agent - create with baseArgs fallback
+			return {
+				id: preset.id || `migrated-${index}`,
+				name: preset.name || `${preset.command} (Migrated)`,
+				kind: 'agent' as const,
+				command: preset.command,
+				baseArgs: preset.args,
+				options: [],
+				detectionStrategy: preset.detectionStrategy,
+			};
+		});
+	}
+
+	/**
+	 * Get the agents configuration.
+	 */
+	getAgentsConfig(): AgentsConfig {
+		if (!this.config.agents) {
+			this.initializeAgentsConfig();
+		}
+		return this.config.agents!;
+	}
+
+	/**
+	 * Set the entire agents configuration.
+	 */
+	setAgentsConfig(agents: AgentsConfig): void {
+		this.config.agents = agents;
+		this.saveConfig();
+	}
+
+	/**
+	 * Get all configured agents.
+	 */
+	getAgents(): AgentConfig[] {
+		return this.getAgentsConfig().agents;
+	}
+
+	/**
+	 * Get the default agent.
+	 */
+	getDefaultAgent(): AgentConfig {
+		const config = this.getAgentsConfig();
+		const defaultAgent = config.agents.find(a => a.id === config.defaultAgentId);
+		return defaultAgent || config.agents[0]!;
+	}
+
+	/**
+	 * Get an agent by ID.
+	 */
+	getAgentById(id: string): AgentConfig | undefined {
+		return this.getAgents().find(a => a.id === id);
+	}
+
+	/**
+	 * Add or update an agent.
+	 */
+	saveAgent(agent: AgentConfig): void {
+		const config = this.getAgentsConfig();
+		const existingIndex = config.agents.findIndex(a => a.id === agent.id);
+
+		if (existingIndex >= 0) {
+			config.agents[existingIndex] = agent;
+		} else {
+			config.agents.push(agent);
+		}
+
+		this.setAgentsConfig(config);
+	}
+
+	/**
+	 * Delete an agent by ID.
+	 * Cannot delete if it's the last agent or if it's the default.
+	 */
+	deleteAgent(id: string): boolean {
+		const config = this.getAgentsConfig();
+
+		// Don't delete if it's the last agent
+		if (config.agents.length <= 1) {
+			return false;
+		}
+
+		// Don't delete the default agent without reassigning
+		if (config.defaultAgentId === id) {
+			const remaining = config.agents.filter(a => a.id !== id);
+			if (remaining.length > 0) {
+				config.defaultAgentId = remaining[0]!.id;
+			} else {
+				return false;
+			}
+		}
+
+		config.agents = config.agents.filter(a => a.id !== id);
+		this.setAgentsConfig(config);
+		return true;
+	}
+
+	/**
+	 * Set the default agent ID.
+	 */
+	setDefaultAgent(id: string): boolean {
+		const config = this.getAgentsConfig();
+		if (!config.agents.some(a => a.id === id)) {
+			return false;
+		}
+		config.defaultAgentId = id;
+		this.setAgentsConfig(config);
+		return true;
+	}
+
+	/**
+	 * Build command arguments from agent config and selected options.
+	 * @param agent The agent configuration
+	 * @param selectedOptions Map of option ID to value (boolean for toggles, string for inputs)
+	 * @returns Array of command arguments
+	 */
+	buildAgentArgs(
+		agent: AgentConfig,
+		selectedOptions: Record<string, boolean | string>,
+	): string[] {
+		const args: string[] = [];
+
+		// Add base args first (for migration/advanced use)
+		if (agent.baseArgs) {
+			args.push(...agent.baseArgs);
+		}
+
+		// Process each option
+		for (const option of agent.options) {
+			const value = selectedOptions[option.id];
+
+			if (value === undefined || value === false || value === '') {
+				continue; // Skip disabled or empty options
+			}
+
+			if (option.type === 'boolean' && value === true) {
+				// Boolean flag - just add the flag
+				if (option.flag) {
+					args.push(option.flag);
+				}
+			} else if (option.type === 'string' && typeof value === 'string' && value) {
+				// String option - add flag and value
+				if (option.flag) {
+					args.push(option.flag, value);
+				} else {
+					// No flag means positional argument
+					args.push(value);
+				}
+			}
+		}
+
+		return args;
+	}
+
+	/**
+	 * Validate that selected options don't violate mutual exclusivity constraints.
+	 * @returns Array of error messages (empty if valid)
+	 */
+	validateAgentOptions(
+		agent: AgentConfig,
+		selectedOptions: Record<string, boolean | string>,
+	): string[] {
+		const errors: string[] = [];
+
+		// Group options by their group field
+		const groups = new Map<string, {option: typeof agent.options[0]; value: boolean | string}[]>();
+
+		for (const option of agent.options) {
+			if (!option.group) continue;
+
+			const value = selectedOptions[option.id];
+			const isActive = value !== undefined && value !== false && value !== '';
+
+			if (isActive) {
+				if (!groups.has(option.group)) {
+					groups.set(option.group, []);
+				}
+				groups.get(option.group)!.push({option, value});
+			}
+		}
+
+		// Check for multiple active options in the same group
+		for (const [groupName, activeOptions] of groups) {
+			if (activeOptions.length > 1) {
+				const labels = activeOptions.map(o => o.option.label).join(', ');
+				errors.push(
+					`Options "${labels}" are mutually exclusive (group: ${groupName}). Select only one.`,
+				);
+			}
+		}
+
+		return errors;
 	}
 
 	getWorktreeLastOpened(): Record<string, number> {

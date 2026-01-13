@@ -140,6 +140,51 @@ export interface CommandPresetsConfig {
 	selectPresetOnStart?: boolean; // Whether to show preset selector before starting session
 }
 
+// ============================================================================
+// Agent Configuration System (replaces CommandPreset)
+// ============================================================================
+
+/**
+ * A single configurable option for an agent.
+ * Options are rendered as form fields in the UI and assembled into argv at spawn.
+ */
+export interface AgentOption {
+	id: string; // Stable identity for storage and constraints
+	flag: string; // CLI flag (e.g., '--model') or empty for positional args
+	label: string; // UI label
+	description?: string; // Tooltip/help text
+	type: 'boolean' | 'string';
+	default?: boolean | string;
+	choices?: {value: string; label?: string}[]; // If present, render as dropdown
+	group?: string; // Mutual exclusivity group (options in same group are radio buttons)
+}
+
+/**
+ * Configuration for an agent (CLI tool) or terminal.
+ * Agents have structured options; terminals are plain shells.
+ */
+export interface AgentConfig {
+	id: string;
+	name: string;
+	description?: string;
+	kind: 'agent' | 'terminal';
+	command: string; // Executable (e.g., 'claude', '$SHELL')
+	baseArgs?: string[]; // Fixed args always passed (for migration/advanced use)
+	options: AgentOption[];
+	detectionStrategy?: StateDetectionStrategy; // For state detection (agents only)
+	icon?: string; // Brand icon ID or generic Lucide icon name
+	iconColor?: string; // Hex color (only for generic icons)
+}
+
+/**
+ * Agents configuration section in ConfigurationData.
+ */
+export interface AgentsConfig {
+	agents: AgentConfig[];
+	defaultAgentId: string;
+	schemaVersion: number; // For future migrations
+}
+
 export interface DevcontainerConfig {
 	upCommand: string; // Command to start devcontainer
 	execCommand: string; // Command to execute in devcontainer
@@ -151,7 +196,8 @@ export interface ConfigurationData {
 	worktreeHooks?: WorktreeHookConfig;
 	worktree?: WorktreeConfig;
 	command?: CommandConfig;
-	commandPresets?: CommandPresetsConfig; // New field for command presets
+	commandPresets?: CommandPresetsConfig; // Legacy field - kept for migration
+	agents?: AgentsConfig; // New agent configuration system
 	autoApproval?: {
 		enabled: boolean; // Whether auto-approval is enabled
 		customCommand?: string; // Custom verification command; must output JSON matching AutoApprovalResponse

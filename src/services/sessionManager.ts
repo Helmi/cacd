@@ -316,11 +316,12 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			command: string;
 			args?: string[];
 			fallbackArgs?: string[];
-		},
+		} | undefined,
 		options: {
 			isPrimaryCommand?: boolean;
 			detectionStrategy?: StateDetectionStrategy;
 			devcontainerConfig?: DevcontainerConfig;
+			sessionName?: string;
 		} = {},
 	): Promise<Session> {
 		const id = this.createSessionId();
@@ -328,6 +329,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 
 		const session: Session = {
 			id,
+			name: options.sessionName,
 			worktreePath,
 			process: ptyProcess,
 			output: [],
@@ -441,6 +443,60 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 						error instanceof Error
 							? error.message
 							: 'Failed to create session with preset',
+				});
+			},
+		});
+	}
+
+	/**
+	 * Create a session using a resolved agent command and args.
+	 * This is the new method for the agent configuration system.
+	 *
+	 * @param worktreePath - Path to the worktree
+	 * @param command - Resolved command (e.g., 'claude', '/bin/zsh')
+	 * @param args - Resolved arguments array
+	 * @param detectionStrategy - Optional state detection strategy
+	 * @param sessionName - Optional custom session name
+	 */
+	createSessionWithAgentEffect(
+		worktreePath: string,
+		command: string,
+		args: string[],
+		detectionStrategy?: StateDetectionStrategy,
+		sessionName?: string,
+	): Effect.Effect<Session, ProcessError, never> {
+		return Effect.tryPromise({
+			try: async () => {
+				// Check if session already exists
+				const existing = this.sessions.get(worktreePath);
+				if (existing) {
+					return existing;
+				}
+
+				// Spawn the process
+				const ptyProcess = await this.spawn(command, args, worktreePath);
+
+				// Create session without fallback config (agents don't use fallback)
+				const session = this.createSessionInternal(
+					worktreePath,
+					ptyProcess,
+					undefined, // No legacy commandConfig
+					{
+						isPrimaryCommand: true,
+						detectionStrategy: detectionStrategy,
+						sessionName: sessionName,
+					},
+				);
+
+				return session;
+			},
+			catch: (error: unknown) => {
+				return new ProcessError({
+					command: `createSessionWithAgent (${command})`,
+					message:
+						error instanceof Error
+							? error.message
+							: 'Failed to create session with agent',
 				});
 			},
 		});
