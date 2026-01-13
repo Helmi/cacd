@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { StatusIndicator } from '@/components/StatusIndicator'
 import { AgentIcon } from '@/components/AgentIcon'
@@ -32,7 +31,6 @@ import {
   GitBranch,
   PanelLeftClose,
   Plus,
-  Search,
   X,
 } from 'lucide-react'
 
@@ -171,9 +169,6 @@ export function Sidebar() {
     setKnownWorktreePaths(currentPaths)
   }, [worktrees, knownWorktreePaths])
 
-  // Search/filter state
-  const [searchQuery, setSearchQuery] = useState('')
-  const [showFilter, setShowFilter] = useState(false)
 
   // Auto-expand tree to show sessions
   useEffect(() => {
@@ -235,37 +230,10 @@ export function Sidebar() {
     })
   }
 
-  // Filter data based on search query
+  // Data passthrough (filtering removed for now)
   const filteredData = useMemo(() => {
-    if (!searchQuery) {
-      return { projects, worktrees, sessions }
-    }
-
-    const query = searchQuery.toLowerCase()
-
-    // Filter sessions by path (which includes worktree name)
-    const filteredSessions = sessions.filter(s =>
-      s.path.toLowerCase().includes(query) || s.id.toLowerCase().includes(query)
-    )
-
-    // Get paths of filtered sessions
-    const sessionPaths = new Set(filteredSessions.map(s => s.path))
-
-    // Filter worktrees that have matching sessions or match the query
-    const filteredWorktrees = worktrees.filter(w =>
-      sessionPaths.has(w.path) ||
-      w.path.toLowerCase().includes(query) ||
-      w.branch?.toLowerCase().includes(query)
-    )
-
-    // For simplicity, show all projects when filtering
-    // (sessions are linked to worktrees, not directly to projects)
-    return {
-      projects,
-      worktrees: filteredWorktrees,
-      sessions: filteredSessions,
-    }
-  }, [projects, worktrees, sessions, searchQuery])
+    return { projects, worktrees, sessions }
+  }, [projects, worktrees, sessions])
 
   // Helper to get sessions for a worktree
   const getSessionsForWorktree = (worktreePath: string) => {
@@ -351,117 +319,84 @@ export function Sidebar() {
 
   // Expanded sidebar
   return (
-    <aside className="flex w-52 flex-col border-r border-border bg-sidebar lg:w-56 overflow-hidden">
-      {/* Sidebar header with filter */}
-      <div className="flex items-center gap-1 border-b border-border px-1 py-1">
-        {showFilter ? (
-          <>
-            <div className="relative flex-1">
-              <Search className="absolute left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Filter..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-6 pl-6 pr-6 text-sm"
-                autoFocus
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 shrink-0"
-              onClick={() => {
-                setShowFilter(false)
-                setSearchQuery('')
-              }}
-            >
-              <X className="h-3 w-3" />
+    <aside className="flex w-56 flex-col border-r border-border bg-sidebar lg:w-64 overflow-hidden">
+      {/* Pattern separator bar with actions */}
+      <div className="flex items-center gap-1 px-2 py-1.5 pattern-dots border-b border-border">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-6 px-2 gap-1.5 text-xs" title="Add new...">
+              <Plus className="h-3 w-3" />
+              <span className="hidden lg:inline">New</span>
             </Button>
-          </>
-        ) : (
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5"
-              onClick={() => setShowFilter(true)}
-              title="Filter sessions"
-            >
-              <Search className="h-3 w-3" />
-            </Button>
-            <span className="flex-1 truncate text-sm text-muted-foreground">Sessions</span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="text-xs">
+            <DropdownMenuItem onClick={() => openAddSessionModal()} className="text-xs">
+              <Plus className="h-3 w-3 mr-2" />
+              New Session
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => openAddWorktreeModal()} className="text-xs">
+              <GitBranch className="h-3 w-3 mr-2" />
+              New Worktree
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={openAddProjectModal} className="text-xs">
+              <FolderPlus className="h-3 w-3 mr-2" />
+              Add Project
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" title="Add new...">
-                  <Plus className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="text-xs">
-                <DropdownMenuItem onClick={() => openAddSessionModal()} className="text-xs">
-                  <Plus className="h-3 w-3 mr-2" />
-                  New Session
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openAddWorktreeModal()} className="text-xs">
-                  <GitBranch className="h-3 w-3 mr-2" />
-                  New Worktree
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={openAddProjectModal} className="text-xs">
-                  <FolderPlus className="h-3 w-3 mr-2" />
-                  Add Project
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+        <div className="flex-1" />
 
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 shrink-0 md:hidden"
-              onClick={toggleSidebar}
-              title="Close sidebar"
-            >
-              <PanelLeftClose className="h-3 w-3" />
-            </Button>
-          </>
-        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0 md:hidden"
+          onClick={toggleSidebar}
+          title="Close sidebar"
+        >
+          <PanelLeftClose className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
       {/* Tree content */}
       <ScrollArea className="flex-1">
-        <div className="py-0.5">
+        <div className="py-1">
           {filteredData.projects.map((project, projectIndex) => {
             const projectWorktrees = getWorktreesForProject(project.path)
             const isExpanded = expandedProjects.has(project.path)
             const isCurrentProject = currentProject?.path === project.path
 
             return (
-              <div key={project.path} className={projectIndex > 0 ? 'border-t border-border' : ''}>
-                {/* Project row with context menu */}
+              <div key={project.path} className={cn(projectIndex > 0 && 'mt-2')}>
+                {/* Project header - prominent separator */}
                 <ContextMenu>
                   <ContextMenuTrigger asChild>
                     <button
                       onClick={() => toggleProject(project.path)}
                       className={cn(
-                        'flex w-full min-w-0 items-center gap-1.5 px-2 py-1.5 text-sm hover:bg-secondary',
-                        isCurrentProject && 'bg-secondary/50'
+                        'group flex w-full min-w-0 items-center gap-2 px-2 py-2 text-sm',
+                        'bg-muted/50 hover:bg-muted transition-colors',
+                        isCurrentProject && 'bg-muted'
                       )}
                     >
-                      {isExpanded ? (
-                        <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      )}
-                      <Folder className="h-3 w-3 shrink-0 text-primary" />
+                      {/* Folder icon with badge background */}
+                      <div className={cn(
+                        'flex items-center justify-center w-6 h-6 rounded shrink-0',
+                        'transition-all duration-150',
+                        isExpanded ? 'bg-primary' : 'bg-muted-foreground/20 group-hover:bg-muted-foreground/30'
+                      )}>
+                        <Folder className={cn(
+                          'h-3.5 w-3.5',
+                          isExpanded ? 'text-primary-foreground' : 'text-muted-foreground'
+                        )} />
+                      </div>
                       <span className="truncate font-medium flex-1 text-left">{project.name}</span>
+                      {isExpanded ? (
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      )}
                     </button>
                   </ContextMenuTrigger>
                   <ContextMenuContent>
@@ -486,9 +421,9 @@ export function Sidebar() {
 
                 {/* Worktrees */}
                 {isExpanded && (
-                  <div className="pl-3 min-w-0">
+                  <div className="py-1 min-w-0">
                     {projectWorktrees.length === 0 ? (
-                      <div className="px-2 py-1 text-sm text-muted-foreground italic">
+                      <div className="px-3 py-2 text-xs text-muted-foreground italic">
                         No worktrees
                       </div>
                     ) : (
@@ -503,17 +438,19 @@ export function Sidebar() {
                               <ContextMenuTrigger asChild>
                                 <button
                                   onClick={() => toggleWorktree(worktree.path)}
-                                  className="flex w-full min-w-0 items-center gap-1.5 px-1 py-1 text-sm hover:bg-secondary rounded"
+                                  className="flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-sm hover:bg-secondary/50 transition-colors"
                                 >
                                   {isWorktreeExpanded ? (
                                     <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
                                   ) : (
                                     <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
                                   )}
-                                  <GitBranch className="h-3 w-3 shrink-0 text-accent" />
+                                  <GitBranch className="h-3.5 w-3.5 shrink-0 text-accent" />
                                   <span className={cn(
-                                    'truncate text-muted-foreground flex-1 text-left',
-                                    worktree.isMainWorktree && 'font-medium text-foreground/70'
+                                    'truncate flex-1 text-left',
+                                    worktree.isMainWorktree
+                                      ? 'font-medium text-foreground'
+                                      : 'text-muted-foreground'
                                   )}>
                                     {worktree.branch || formatName(worktree.path)}
                                   </span>
@@ -538,7 +475,7 @@ export function Sidebar() {
 
                             {/* Sessions */}
                             {isWorktreeExpanded && worktreeSessions.length > 0 && (
-                              <div className="space-y-px pl-4 min-w-0">
+                              <div className="py-0.5 pl-6 min-w-0">
                                 {worktreeSessions.map((session) => {
                                   const isSelected = selectedSessions.includes(session.id)
 
@@ -547,34 +484,34 @@ export function Sidebar() {
                                       <ContextMenuTrigger asChild>
                                         <div
                                           className={cn(
-                                            'group relative flex min-w-0 items-center gap-1.5 px-1 py-1 text-sm cursor-pointer transition-colors',
+                                            'group relative flex min-w-0 items-center gap-2 pl-2 pr-3 py-1.5 text-sm cursor-pointer rounded-l transition-colors',
                                             isSelected
-                                              ? 'bg-primary/5'
+                                              ? 'bg-primary/10'
                                               : 'hover:bg-secondary/50'
                                           )}
                                           onClick={(e) => handleSessionClick(session.id, e)}
                                           title="Click to view, Cmd/Ctrl+click for split view"
                                         >
-                                          <StatusIndicator status={mapSessionState(session.state)} />
-                                          <AgentIcon agent="claude-code" className="h-3 w-3 shrink-0" />
+                                          {/* Agent icon with status indicator overlay */}
+                                          <div className="relative shrink-0">
+                                            <AgentIcon icon="claude" className="h-4 w-4" />
+                                            <div className="absolute -bottom-0.5 -right-0.5">
+                                              <StatusIndicator status={mapSessionState(session.state)} size="sm" />
+                                            </div>
+                                          </div>
                                           <span className={cn(
-                                            'flex-1 truncate',
-                                            isSelected && 'text-primary font-medium'
+                                            'flex-1 truncate text-xs',
+                                            isSelected ? 'text-primary font-medium' : 'text-foreground'
                                           )}>
                                             {session.name || formatName(session.path)}
                                           </span>
-                                          {/* Selection pointer triangle - points left */}
-                                          <svg
-                                            viewBox="0 0 6 10"
-                                            className={cn(
-                                              'absolute right-0 top-1/2 -translate-y-1/2 h-2.5 w-1.5 fill-primary transition-opacity',
-                                              isSelected
-                                                ? 'opacity-80'
-                                                : 'opacity-0 group-hover:opacity-30'
-                                            )}
-                                          >
-                                            <polygon points="6,0 6,10 0,5" />
-                                          </svg>
+                                          {/* Selection indicator - subtle bar on right */}
+                                          <div className={cn(
+                                            'absolute right-0 top-1 bottom-1 w-[3px] rounded-full transition-all duration-150',
+                                            isSelected
+                                              ? 'bg-primary'
+                                              : 'bg-transparent group-hover:bg-muted-foreground/30'
+                                          )} />
                                         </div>
                                       </ContextMenuTrigger>
                                       <ContextMenuContent>
@@ -607,8 +544,8 @@ export function Sidebar() {
 
           {/* Show message if no projects */}
           {filteredData.projects.length === 0 && (
-            <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-              {searchQuery ? 'No matches found' : 'No projects'}
+            <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+              No projects added yet
             </div>
           )}
         </div>
