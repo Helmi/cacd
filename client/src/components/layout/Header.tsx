@@ -3,10 +3,10 @@ import { Button } from '@/components/ui/button'
 import { ThemeSelector } from '@/components/ThemeSelector'
 import { FontSelector } from '@/components/FontSelector'
 import { FontScaleControl } from '@/components/FontScaleControl'
-import { PanelLeft, Settings } from 'lucide-react'
+import { PanelLeft, Settings, Zap } from 'lucide-react'
 
 export function Header() {
-  const { projects, worktrees, sessions, toggleSidebar, isDevMode, openSettingsModal } = useAppStore()
+  const { toggleSidebar, isDevMode, openSettings } = useAppStore()
 
   return (
     <header className="flex h-9 items-center justify-between border-b border-border bg-sidebar px-3 text-sm">
@@ -21,24 +21,17 @@ export function Header() {
           <PanelLeft className="h-3.5 w-3.5" />
         </Button>
 
+        {/* Logo */}
+        <span className="text-lg font-bold tracking-tight text-foreground flex items-center">
+          CA<Zap className="h-4 w-4 mx-0.5 text-yellow-500 fill-yellow-500" />CD
+        </span>
+
         {/* DEV indicator */}
         {isDevMode && (
-          <span className="rounded bg-yellow-500 px-1.5 py-0.5 text-xs font-bold text-black">
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
             DEV
           </span>
         )}
-
-        {/* Logo */}
-        <span className="font-semibold text-foreground">CA<span className="text-lg">⚡</span>CD</span>
-
-        {/* Stats */}
-        <div className="ml-4 hidden items-center gap-3 text-muted-foreground sm:flex">
-          <span>{projects.length} project{projects.length !== 1 ? 's' : ''}</span>
-          <span className="text-border">│</span>
-          <span>{worktrees.length} worktree{worktrees.length !== 1 ? 's' : ''}</span>
-          <span className="text-border">│</span>
-          <span>{sessions.length} session{sessions.length !== 1 ? 's' : ''}</span>
-        </div>
       </div>
 
       <div className="flex items-center gap-1">
@@ -47,7 +40,7 @@ export function Header() {
           variant="ghost"
           size="icon"
           className="h-6 w-6"
-          onClick={openSettingsModal}
+          onClick={() => openSettings()}
           title="Settings"
         >
           <Settings className="h-3.5 w-3.5" />
