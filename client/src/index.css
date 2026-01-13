@@ -414,3 +414,8 @@
     hsl(var(--muted-foreground) / 0.15) 4px
   );
 }
+
+/* xterm.js terminal padding - FitAddon reads padding from .xterm element */
+.xterm {
+  padding: 8px 12px;
+}
