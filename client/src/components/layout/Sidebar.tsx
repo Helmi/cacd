@@ -26,7 +26,7 @@ import {
   ChevronsRight,
   ChevronDown,
   ChevronRight,
-  Folder,
+  FolderGit2,
   FolderPlus,
   GitBranch,
   PanelLeftClose,
@@ -315,7 +315,7 @@ export function Sidebar() {
                 className="h-7 w-7"
                 title={project.name}
               >
-                <Folder className="h-3.5 w-3.5" />
+                <FolderGit2 className="h-3.5 w-3.5" />
               </Button>
             ))}
           </div>
@@ -387,17 +387,10 @@ export function Sidebar() {
                         isCurrentProject && 'bg-muted'
                       )}
                     >
-                      {/* Folder icon with badge background */}
-                      <div className={cn(
-                        'flex items-center justify-center w-6 h-6 rounded shrink-0',
-                        'transition-all duration-150',
-                        isExpanded ? 'bg-primary' : 'bg-muted-foreground/20 group-hover:bg-muted-foreground/30'
-                      )}>
-                        <Folder className={cn(
-                          'h-3.5 w-3.5',
-                          isExpanded ? 'text-primary-foreground' : 'text-muted-foreground'
-                        )} />
-                      </div>
+                      <FolderGit2 className={cn(
+                        'h-4 w-4 shrink-0 transition-colors',
+                        isExpanded ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
+                      )} />
                       <span className="truncate font-medium flex-1 text-left">{project.name}</span>
                       {isExpanded ? (
                         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -452,13 +445,11 @@ export function Sidebar() {
                                   ) : (
                                     <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
                                   )}
-                                  <GitBranch className="h-3.5 w-3.5 shrink-0 text-accent" />
-                                  <span className={cn(
-                                    'truncate flex-1 text-left',
-                                    worktree.isMainWorktree
-                                      ? 'font-medium text-foreground'
-                                      : 'text-muted-foreground'
-                                  )}>
+                                  <GitBranch className={cn(
+                                    'h-3.5 w-3.5 shrink-0',
+                                    worktree.isMainWorktree ? 'text-accent' : 'text-muted-foreground'
+                                  )} />
+                                  <span className="truncate flex-1 text-left text-muted-foreground">
                                     {worktree.branch || formatName(worktree.path)}
                                   </span>
                                 </button>
@@ -482,7 +473,7 @@ export function Sidebar() {
 
                             {/* Sessions */}
                             {isWorktreeExpanded && worktreeSessions.length > 0 && (
-                              <div className="py-0.5 pl-6 min-w-0">
+                              <div className="py-0.5 pl-3 min-w-0">
                                 {worktreeSessions.map((session) => {
                                   const isSelected = selectedSessions.includes(session.id)
                                   const agent = getAgentById(session.agentId)
@@ -500,17 +491,13 @@ export function Sidebar() {
                                           onClick={(e) => handleSessionClick(session.id, e)}
                                           title="Click to view, Cmd/Ctrl+click for split view"
                                         >
-                                          {/* Agent icon with status indicator overlay */}
-                                          <div className="relative shrink-0">
-                                            <AgentIcon
-                                              icon={agent?.icon}
-                                              iconColor={agent?.iconColor}
-                                              className="h-4 w-4"
-                                            />
-                                            <div className="absolute -bottom-0.5 -right-0.5">
-                                              <StatusIndicator status={mapSessionState(session.state)} size="sm" />
-                                            </div>
-                                          </div>
+                                          {/* Status indicator and agent icon */}
+                                          <StatusIndicator status={mapSessionState(session.state)} size="sm" />
+                                          <AgentIcon
+                                            icon={agent?.icon}
+                                            iconColor={agent?.iconColor}
+                                            className="h-4 w-4 shrink-0"
+                                          />
                                           <span className={cn(
                                             'flex-1 truncate text-sm',
                                             isSelected ? 'text-primary font-medium' : 'text-foreground'

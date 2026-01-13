@@ -75,11 +75,15 @@ export function TerminalSession({
 		fontScale,
 		selectedSessions,
 		worktrees,
+		agents,
 	} = useAppStore();
 	const hasMultipleSessions = selectedSessions.length > 1;
 
 	// Find worktree for this session to get git status
 	const worktree = worktrees.find(w => w.path === session.path);
+
+	// Find agent config for this session
+	const agent = agents.find(a => a.id === session.agentId);
 
 	// Map font type to font family string
 	const fontFamilyMap: Record<string, string> = {
@@ -317,9 +321,11 @@ export function TerminalSession({
 			>
 				<div className="flex items-center gap-2 text-xs min-w-0">
 					<StatusIndicator status={mapSessionState(session.state)} />
-					{/* Session name with agent icon */}
-					{/* TODO: Pass actual agent icon when sessions track their agent */}
-					<AgentIcon icon="claude" className="h-4 w-4 shrink-0" />
+					<AgentIcon
+						icon={agent?.icon}
+						iconColor={agent?.iconColor}
+						className="h-4 w-4 shrink-0"
+					/>
 					<span className="font-medium text-card-foreground truncate">
 						{session.name || formatName(session.path)}
 					</span>

@@ -63,7 +63,7 @@ export function Footer() {
         {/* Version */}
         <div className="flex items-center gap-1">
           <Cpu className="h-3 w-3" />
-          <span>v0.1.0</span>
+          <span>v{import.meta.env.VITE_APP_VERSION}</span>
         </div>
       </div>
     </footer>

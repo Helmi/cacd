@@ -117,3 +117,41 @@ The application operates in a **Hybrid Mode**:
 - **Conventional Commits:** `type: subject` (e.g., `feat: add web terminal view`, `refactor: rename environment variable`).
 - **Context:** Mention if a change affects TUI, WebUI, or both.
 - **Verification:** Ensure `bun run build` passes (builds both ends) before pushing.
+
+## Release Process
+
+**Versioning:** Semver (major.minor.patch). Current version is in `package.json`.
+
+**Release commands:**
+- `bun run release` — Auto-bump based on commit types (feat→minor, fix→patch)
+- `bun run release:patch` — Force patch bump (0.1.0 → 0.1.1)
+- `bun run release:minor` — Force minor bump (0.1.0 → 0.2.0)
+- `bun run release:major` — Force major bump (0.1.0 → 1.0.0)
+
+**What release does:**
+1. Bumps version in `package.json`
+2. Generates/updates `CHANGELOG.md` from Conventional Commits
+3. Creates a git commit and tag (e.g., `v0.2.0`)
+
+**After release:**
+```bash
+git push --follow-tags    # Push commit + tag to trigger GitHub Actions
+```
+GitHub Actions handles npm publish and GitHub release creation.
+
+**Dry run:** Add `--dry-run` to preview without making changes:
+```bash
+bun run release -- --dry-run
+```
+
+### Agent Instructions for Releases
+
+**IMPORTANT:** Never execute release commands autonomously.
+
+When significant work is completed (features, bug fixes, milestones), proactively suggest a release to the user:
+- Recommend the appropriate bump type based on changes (patch/minor/major)
+- Explain what commits will be included
+- Offer to run a dry-run first
+
+**Only execute release commands after explicit user confirmation.** Example:
+> "We've completed the versioning feature. This would be a good time for a minor release (0.1.0 → 0.2.0). Want me to run `bun run release:minor`?"

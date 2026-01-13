@@ -42,7 +42,11 @@
 		"lint:fix": "eslint src --fix",
 		"typecheck": "tsc --noEmit",
 		"prepublishOnly": "npm run lint && npm run typecheck && npm run test && npm run build",
-		"prepare": "npm run build"
+		"prepare": "npm run build",
+		"release": "npx standard-version",
+		"release:minor": "npx standard-version --release-as minor",
+		"release:major": "npx standard-version --release-as major",
+		"release:patch": "npx standard-version --release-as patch"
 	},
 	"files": [
 		"dist"
@@ -80,6 +84,7 @@
 		"eslint-plugin-react-hooks": "^5.2.0",
 		"ink-testing-library": "^3.0.0",
 		"prettier": "3.6.2",
+		"standard-version": "^9.5.0",
 		"ts-node": "^10.9.1",
 		"tsx": "^4.19.4",
 		"typescript": "^5.0.3",
