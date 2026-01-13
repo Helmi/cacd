@@ -19,13 +19,13 @@
     --secondary: 222 30% 14%;
     --secondary-foreground: 0 0% 85%;
     --muted: 222 30% 18%;
-    --muted-foreground: 0 0% 55%;
+    --muted-foreground: 0 0% 65%;
     --accent: 280 60% 55%;
     --accent-foreground: 0 0% 95%;
     --destructive: 0 70% 45%;
     --destructive-foreground: 0 0% 95%;
-    --border: 222 20% 22%;
-    --input: 222 30% 14%;
+    --border: 222 20% 28%;
+    --input: 222 30% 18%;
     --ring: 160 70% 45%;
     --radius: 0.25rem;
 
@@ -67,10 +67,10 @@
     --secondary: 70 10% 16%;
     --secondary-foreground: 0 0% 90%;
     --muted: 70 10% 20%;
-    --muted-foreground: 60 10% 55%;
+    --muted-foreground: 60 10% 65%;
     --accent: 330 70% 60%;
     --accent-foreground: 0 0% 95%;
-    --border: 70 10% 26%;
+    --border: 70 10% 32%;
     --input: 70 10% 14%;
     --ring: 50 70% 55%;
     --sidebar: 70 10% 8%;
@@ -98,10 +98,10 @@
     --secondary: 192 80% 15%;
     --secondary-foreground: 186 8% 50%;
     --muted: 192 70% 18%;
-    --muted-foreground: 186 8% 45%;
+    --muted-foreground: 186 13% 55%;
     --accent: 45 100% 45%;
     --accent-foreground: 192 100% 11%;
-    --border: 192 60% 22%;
+    --border: 192 60% 28%;
     --input: 192 80% 14%;
     --ring: 175 60% 40%;
     --sidebar: 192 100% 9%;
@@ -129,10 +129,10 @@
     --secondary: 231 15% 24%;
     --secondary-foreground: 60 30% 92%;
     --muted: 231 15% 28%;
-    --muted-foreground: 231 10% 55%;
+    --muted-foreground: 231 10% 65%;
     --accent: 135 70% 65%;
     --accent-foreground: 231 15% 18%;
-    --border: 231 15% 32%;
+    --border: 231 15% 38%;
     --input: 231 15% 22%;
     --ring: 326 100% 74%;
     --sidebar: 231 15% 16%;
@@ -160,10 +160,10 @@
     --secondary: 220 16% 29%;
     --secondary-foreground: 219 28% 85%;
     --muted: 220 16% 33%;
-    --muted-foreground: 219 20% 55%;
+    --muted-foreground: 219 20% 65%;
     --accent: 179 25% 65%;
     --accent-foreground: 220 16% 22%;
-    --border: 220 16% 36%;
+    --border: 220 16% 42%;
     --input: 220 16% 25%;
     --ring: 193 43% 67%;
     --sidebar: 220 16% 20%;
@@ -191,7 +191,7 @@
     --secondary: 0 0% 94%;
     --secondary-foreground: 0 0% 25%;
     --muted: 0 0% 90%;
-    --muted-foreground: 0 0% 40%;
+    --muted-foreground: 0 0% 35%;
     --accent: 280 60% 55%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 70% 50%;
@@ -224,7 +224,7 @@
     --secondary: 0 0% 95%;
     --secondary-foreground: 0 0% 22%;
     --muted: 0 0% 93%;
-    --muted-foreground: 0 0% 42%;
+    --muted-foreground: 0 0% 36%;
     --accent: 285 60% 52%;
     --accent-foreground: 0 0% 100%;
     --border: 0 0% 86%;
@@ -255,7 +255,7 @@
     --secondary: 44 60% 90%;
     --secondary-foreground: 192 70% 28%;
     --muted: 44 50% 88%;
-    --muted-foreground: 192 50% 38%;
+    --muted-foreground: 192 50% 32%;
     --accent: 45 100% 45%;
     --accent-foreground: 44 87% 94%;
     --border: 44 40% 82%;
@@ -286,7 +286,7 @@
     --secondary: 0 0% 95%;
     --secondary-foreground: 0 0% 26%;
     --muted: 0 0% 92%;
-    --muted-foreground: 0 0% 45%;
+    --muted-foreground: 0 0% 38%;
     --accent: 320 70% 52%;
     --accent-foreground: 0 0% 98%;
     --border: 0 0% 84%;
@@ -317,7 +317,7 @@
     --secondary: 0 0% 94%;
     --secondary-foreground: 0 0% 24%;
     --muted: 0 0% 91%;
-    --muted-foreground: 0 0% 43%;
+    --muted-foreground: 0 0% 36%;
     --accent: 310 60% 50%;
     --accent-foreground: 0 0% 98%;
     --border: 0 0% 83%;
@@ -390,4 +390,27 @@
 
 .font-ibm {
   font-family: 'IBM Plex Mono', monospace !important;
+}
+
+/* Pattern backgrounds for decorative separators */
+.pattern-dots {
+  background-image: radial-gradient(circle, hsl(var(--muted-foreground) / 0.3) 1px, transparent 1px);
+  background-size: 6px 6px;
+}
+
+.pattern-grid {
+  background-image:
+    linear-gradient(hsl(var(--muted-foreground) / 0.15) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--muted-foreground) / 0.15) 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+
+.pattern-diagonal {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 3px,
+    hsl(var(--muted-foreground) / 0.15) 3px,
+    hsl(var(--muted-foreground) / 0.15) 4px
+  );
 }
