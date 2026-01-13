@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
 import { io, Socket } from 'socket.io-client'
-import type { Session, Worktree, Project, ThemeType, FontType, ConnectionStatus, AppConfig, ChangedFile } from './types'
+import type { Session, Worktree, Project, ThemeType, FontType, ConnectionStatus, AppConfig, ChangedFile, AgentConfig, AgentsConfig } from './types'
 import { mapBackendToFrontend, mapFrontendToBackend, getDefaultConfig } from './configMapper'
 
 // Get token from URL or localStorage
@@ -30,6 +30,11 @@ interface AppState {
   sessions: Session[]
   currentProject: Project | null
 
+  // Agents
+  agents: AgentConfig[]
+  defaultAgentId: string | null
+  agentsLoading: boolean
+
   // UI State
   selectedSessions: string[]
   focusedSessionId: string | null
@@ -44,7 +49,10 @@ interface AppState {
   addSessionModalOpen: boolean
   addSessionWorktreePath: string | null  // Pre-selected worktree context
   addSessionProjectPath: string | null  // Pre-selected project context
-  settingsModalOpen: boolean
+
+  // Settings Screen State
+  settingsOpen: boolean
+  settingsSection: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks'
 
   // File Diff Viewing State
   viewingFileDiff: { sessionId: string; file: ChangedFile; worktreePath: string } | null
@@ -74,7 +82,13 @@ interface AppState {
 interface AppActions {
   // Data fetching
   fetchData: () => void
+  fetchAgents: () => Promise<void>
   selectProject: (path: string) => Promise<void>
+
+  // Agent management
+  saveAgent: (agent: AgentConfig) => Promise<boolean>
+  deleteAgent: (agentId: string) => Promise<boolean>
+  setDefaultAgentId: (agentId: string) => Promise<boolean>
 
   // Session selection
   selectSession: (sessionId: string) => void
@@ -100,6 +114,7 @@ interface AppActions {
 
   // Session management
   createSession: (path: string, presetId?: string, sessionName?: string) => Promise<boolean>
+  createSessionWithAgent: (path: string, agentId: string, options?: Record<string, boolean | string>, sessionName?: string) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<void>
 
   // Project management
@@ -117,8 +132,9 @@ interface AppActions {
   closeAddWorktreeModal: () => void
   openAddSessionModal: (worktreePath?: string, projectPath?: string) => void
   closeAddSessionModal: () => void
-  openSettingsModal: () => void
-  closeSettingsModal: () => void
+  openSettings: (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => void
+  closeSettings: () => void
+  navigateSettings: (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => void
 
   // Config
   updateConfig: (config: AppConfig) => Promise<boolean>
@@ -143,6 +159,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<Session[]>([])
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
 
+  // Agents state
+  const [agents, setAgents] = useState<AgentConfig[]>([])
+  const [defaultAgentId, setDefaultAgentId] = useState<string | null>(null)
+  const [agentsLoading, setAgentsLoading] = useState(true)
+
   // UI state
   const [selectedSessions, setSelectedSessions] = useState<string[]>([])
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null)
@@ -157,8 +178,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [addSessionModalOpen, setAddSessionModalOpen] = useState(false)
   const [addSessionWorktreePath, setAddSessionWorktreePath] = useState<string | null>(null)
   const [addSessionProjectPath, setAddSessionProjectPath] = useState<string | null>(null)
-  const [settingsModalOpen, setSettingsModalOpen] = useState(false)
   const [viewingFileDiff, setViewingFileDiff] = useState<{ sessionId: string; file: ChangedFile; worktreePath: string } | null>(null)
+
+  // Settings screen state - load section from localStorage
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsSection, setSettingsSection] = useState<'general' | 'agents' | 'status-hooks' | 'worktree-hooks'>(() => {
+    const saved = localStorage.getItem('cacd_settings_section')
+    if (saved === 'general' || saved === 'agents' || saved === 'status-hooks' || saved === 'worktree-hooks') {
+      return saved
+    }
+    return 'general'
+  })
 
   // Config state - loaded from backend API
   const [config, setConfig] = useState<AppConfig>(getDefaultConfig())
@@ -260,6 +290,105 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // Fetch agents from /api/agents
+  const fetchAgents = useCallback(async () => {
+    const headers = { 'x-access-token': token || '' }
+    try {
+      setAgentsLoading(true)
+      const res = await fetch('/api/agents', { headers })
+      if (res.ok) {
+        const data: AgentsConfig = await res.json()
+        setAgents(data.agents)
+        setDefaultAgentId(data.defaultAgentId)
+      }
+    } catch (err) {
+      console.error('Failed to fetch agents:', err)
+    } finally {
+      setAgentsLoading(false)
+    }
+  }, [])
+
+  // Save (create or update) an agent
+  const saveAgent = async (agent: AgentConfig): Promise<boolean> => {
+    try {
+      const isNew = !agents.some(a => a.id === agent.id)
+      const url = isNew ? '/api/agents' : `/api/agents/${agent.id}`
+      const method = isNew ? 'POST' : 'PUT'
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': token || ''
+        },
+        body: JSON.stringify(agent)
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || 'Failed to save agent')
+        return false
+      }
+
+      await fetchAgents()
+      return true
+    } catch (e) {
+      console.error(e)
+      setError('Failed to save agent. Check your connection.')
+      return false
+    }
+  }
+
+  // Delete an agent
+  const deleteAgentAction = async (agentId: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/agents/${agentId}`, {
+        method: 'DELETE',
+        headers: { 'x-access-token': token || '' }
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || 'Failed to delete agent')
+        return false
+      }
+
+      await fetchAgents()
+      return true
+    } catch (e) {
+      console.error(e)
+      setError('Failed to delete agent. Check your connection.')
+      return false
+    }
+  }
+
+  // Set default agent
+  const setDefaultAgentIdAction = async (agentId: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/agents/default', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': token || ''
+        },
+        body: JSON.stringify({ id: agentId })
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || 'Failed to set default agent')
+        return false
+      }
+
+      setDefaultAgentId(agentId)
+      return true
+    } catch (e) {
+      console.error(e)
+      setError('Failed to set default agent. Check your connection.')
+      return false
+    }
+  }
+
   // Socket.IO event handlers
   useEffect(() => {
     socket.on('connect', () => setConnectionStatus('connected'))
@@ -268,6 +397,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     socket.on('session_update', fetchData)
 
     fetchData()
+    fetchAgents()
 
     return () => {
       socket.off('connect')
@@ -275,7 +405,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       socket.off('connect_error')
       socket.off('session_update')
     }
-  }, [fetchData])
+  }, [fetchData, fetchAgents])
 
   const selectProject = async (path: string) => {
     try {
@@ -293,7 +423,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return
       }
       setSelectedSessions([])
-      fetchData()
+      await fetchData()
     } catch (e) {
       console.error(e)
       setError('Failed to select project. Check your connection.')
@@ -384,10 +514,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false
       }
       if (data.success) {
-        fetchData()
+        await fetchData()
         setSelectedSessions([data.id])
         setFocusedSessionId(data.id)
         setContextSidebarSessionId(data.id) // Auto-open context sidebar for new sessions
+        return true
+      }
+      return false
+    } catch (e) {
+      console.error(e)
+      setError('Failed to create session. Check your connection.')
+      return false
+    }
+  }
+
+  // Create session with new agent system
+  const createSessionWithAgent = async (
+    path: string,
+    agentId: string,
+    options?: Record<string, boolean | string>,
+    sessionName?: string
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/session/create-with-agent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': token || ''
+        },
+        body: JSON.stringify({ path, agentId, options: options || {}, sessionName })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to create session')
+        return false
+      }
+      if (data.success) {
+        await fetchData()
+        setSelectedSessions([data.id])
+        setFocusedSessionId(data.id)
+        setContextSidebarSessionId(data.id)
         return true
       }
       return false
@@ -413,7 +579,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setError(data.error || 'Failed to stop session')
         return
       }
-      fetchData()
+      await fetchData()
     } catch (e) {
       console.error(e)
       setError('Failed to stop session. Check your connection.')
@@ -443,8 +609,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAddSessionWorktreePath(null)
     setAddSessionProjectPath(null)
   }
-  const openSettingsModal = () => setSettingsModalOpen(true)
-  const closeSettingsModal = () => setSettingsModalOpen(false)
+  const openSettings = (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => {
+    if (section) {
+      setSettingsSection(section)
+      localStorage.setItem('cacd_settings_section', section)
+    }
+    setSettingsOpen(true)
+  }
+  const closeSettings = () => setSettingsOpen(false)
+  const navigateSettings = (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => {
+    setSettingsSection(section)
+    localStorage.setItem('cacd_settings_section', section)
+  }
 
   const openFileDiff = (sessionId: string, file: ChangedFile, worktreePath: string) => {
     setViewingFileDiff({ sessionId, file, worktreePath })
@@ -491,7 +667,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false
       }
       if (data.success) {
-        fetchData()
+        await fetchData()
         return true
       }
       return false
@@ -518,7 +694,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false
       }
       if (data.success) {
-        fetchData()
+        await fetchData()
         return true
       }
       return false
@@ -552,7 +728,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false
       }
       if (data.success) {
-        fetchData()
+        await fetchData()
         return true
       }
       return false
@@ -579,7 +755,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false
       }
       if (data.success) {
-        fetchData()
+        await fetchData()
         return true
       }
       return false
@@ -596,6 +772,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     worktrees,
     sessions,
     currentProject,
+    agents,
+    defaultAgentId,
+    agentsLoading,
     selectedSessions,
     focusedSessionId,
     sidebarOpen,
@@ -607,7 +786,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addSessionModalOpen,
     addSessionWorktreePath,
     addSessionProjectPath,
-    settingsModalOpen,
+    settingsOpen,
+    settingsSection,
     viewingFileDiff,
     config,
     configLoading,
@@ -621,6 +801,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Actions
     fetchData,
+    fetchAgents,
     selectProject,
     selectSession,
     deselectSession,
@@ -639,8 +820,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     closeAddWorktreeModal,
     openAddSessionModal,
     closeAddSessionModal,
-    openSettingsModal,
-    closeSettingsModal,
+    openSettings,
+    closeSettings,
+    navigateSettings,
     openFileDiff,
     closeFileDiff,
     updateConfig,
@@ -648,12 +830,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFont,
     setFontScale,
     createSession,
+    createSessionWithAgent,
     stopSession,
     addProject,
     removeProject,
     createWorktree,
     deleteWorktree,
     clearError,
+    saveAgent,
+    deleteAgent: deleteAgentAction,
+    setDefaultAgentId: setDefaultAgentIdAction,
   }
 
   return <AppContext.Provider value={store}>{children}</AppContext.Provider>

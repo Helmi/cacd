@@ -6,7 +6,7 @@ import { ErrorBanner } from '@/components/ErrorBanner'
 import { AddProjectModal } from '@/components/AddProjectModal'
 import { AddWorktreeModal } from '@/components/AddWorktreeModal'
 import { AddSessionModal } from '@/components/AddSessionModal'
-import { SettingsModal } from '@/components/SettingsModal'
+import { SettingsScreen } from '@/components/SettingsScreen'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Terminal } from 'lucide-react'
 
@@ -38,6 +38,8 @@ function MainContent() {
 }
 
 function AppContent() {
+  const { settingsOpen } = useAppStore()
+
   return (
     <>
       <ErrorBanner />
@@ -48,7 +50,8 @@ function AppContent() {
       <AddProjectModal />
       <AddWorktreeModal />
       <AddSessionModal />
-      <SettingsModal />
+      {/* Settings screen - full-screen overlay */}
+      {settingsOpen && <SettingsScreen />}
     </>
   )
 }
