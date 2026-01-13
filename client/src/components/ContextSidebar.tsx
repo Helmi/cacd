@@ -113,7 +113,8 @@ export function ContextSidebar() {
           <div className="space-y-2">
             <div className="flex items-center gap-2 min-w-0">
               <StatusIndicator status={mapSessionState(session.state)} size="md" />
-              <AgentIcon agent="claude-code" className="h-4 w-4 shrink-0" />
+              {/* TODO: Pass actual agent icon when sessions track their agent */}
+              <AgentIcon icon="claude" className="h-5 w-5 shrink-0" />
               <span className="font-medium text-sm truncate">{session.name || formatName(session.path)}</span>
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -135,7 +136,7 @@ export function ContextSidebar() {
 
           {/* Project Info */}
           <div className="space-y-2 min-w-0">
-            <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Location
             </div>
             {currentProject && (
@@ -171,7 +172,7 @@ export function ContextSidebar() {
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-xs">
                 <p className="font-mono text-xs break-all">{session.path}</p>
-                <p className="text-muted-foreground text-[10px] mt-1">Click to copy</p>
+                <p className="text-muted-foreground text-xs mt-1">Click to copy</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -181,19 +182,19 @@ export function ContextSidebar() {
 
           {/* Session Stats (placeholder for Phase 2) */}
           <div className="space-y-2 min-w-0">
-            <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Activity
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded bg-secondary/50 p-2 min-w-0 overflow-hidden">
-                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Clock className="h-3 w-3 shrink-0" />
                   <span className="truncate">Duration</span>
                 </div>
                 <div className="text-xs font-medium">--:--</div>
               </div>
               <div className="rounded bg-secondary/50 p-2 min-w-0 overflow-hidden">
-                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Activity className="h-3 w-3 shrink-0" />
                   <span className="truncate">Status</span>
                 </div>
@@ -204,7 +205,7 @@ export function ContextSidebar() {
 
           {/* File Changes */}
           <div className="space-y-2 min-w-0">
-            <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               File Changes
             </div>
 
@@ -234,7 +235,7 @@ export function ContextSidebar() {
 
             {/* Parent branch info */}
             {worktree?.gitStatus?.parentBranch && (
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-xs text-muted-foreground">
                 vs {worktree.gitStatus.parentBranch}
               </div>
             )}
@@ -274,7 +275,7 @@ export function ContextSidebar() {
                     </span>
                     {/* Line counts */}
                     {(file.additions > 0 || file.deletions > 0) && (
-                      <span className="flex items-center gap-1 text-[10px] opacity-70 group-hover:opacity-100">
+                      <span className="flex items-center gap-1 text-xs opacity-70 group-hover:opacity-100">
                         {file.additions > 0 && (
                           <span className="text-green-500">+{file.additions}</span>
                         )}

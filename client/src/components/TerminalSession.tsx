@@ -21,6 +21,7 @@ import {
 	Copy,
 	Trash2,
 	Info,
+	GitBranch,
 } from 'lucide-react';
 import {cn} from '@/lib/utils';
 import type {Session} from '@/lib/types';
@@ -314,18 +315,33 @@ export function TerminalSession({
 					isFocused && 'bg-primary/10',
 				)}
 			>
-				<div className="flex items-center gap-2 text-xs">
+				<div className="flex items-center gap-2 text-xs min-w-0">
 					<StatusIndicator status={mapSessionState(session.state)} />
-					<AgentIcon agent="claude-code" className="h-3.5 w-3.5" />
-					<span className="font-medium text-card-foreground">
-						{formatName(session.path)}
+					{/* Session name with agent icon */}
+					{/* TODO: Pass actual agent icon when sessions track their agent */}
+					<AgentIcon icon="claude" className="h-4 w-4 shrink-0" />
+					<span className="font-medium text-card-foreground truncate">
+						{session.name || formatName(session.path)}
 					</span>
-					<span className="text-muted-foreground">({session.state})</span>
+					{/* Branch name with git icon */}
+					{worktree && (
+						<>
+							<span className="text-border shrink-0">•</span>
+							<GitBranch className="h-3 w-3 text-accent shrink-0" />
+							<span className={cn(
+								'text-muted-foreground truncate',
+								worktree.isMainWorktree && 'text-yellow-500'
+							)}>
+								{worktree.branch || formatName(worktree.path)}
+							</span>
+						</>
+					)}
+					<span className="text-muted-foreground shrink-0">({session.state})</span>
 					{/* Git status badge */}
 					{worktree?.gitStatus &&
 						(worktree.gitStatus.filesAdded > 0 ||
 							worktree.gitStatus.filesDeleted > 0) && (
-							<span className="flex items-center gap-1 font-mono text-[11px]">
+							<span className="flex items-center gap-1 font-mono text-[11px] shrink-0">
 								{worktree.gitStatus.filesAdded > 0 && (
 									<span className="text-green-500">
 										+{worktree.gitStatus.filesAdded}
