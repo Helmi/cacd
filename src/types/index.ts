@@ -33,6 +33,7 @@ export interface Session {
 	id: string;
 	name?: string;
 	worktreePath: string;
+	agentId?: string; // ID of the agent/preset used to create this session
 	process: IPty;
 	output: string[]; // Recent output for state detection
 	outputHistory: Buffer[]; // Full output history as buffers
@@ -58,11 +59,13 @@ export interface AutoApprovalResponse {
 }
 
 export interface SessionManager {
-	sessions: Map<string, Session>;
-	getSession(worktreePath: string): Session | undefined;
-	destroySession(worktreePath: string): void;
+	sessions: Map<string, Session>; // Keyed by session ID
+	getSession(sessionId: string): Session | undefined;
+	getSessionByPath(worktreePath: string): Session | undefined; // For backwards compat
+	getSessionsForWorktree(worktreePath: string): Session[]; // Get all sessions for a worktree
+	destroySession(sessionId: string): void;
 	getAllSessions(): Session[];
-	cancelAutoApproval(worktreePath: string, reason?: string): void;
+	cancelAutoApproval(sessionId: string, reason?: string): void;
 }
 
 export interface ShortcutKey {

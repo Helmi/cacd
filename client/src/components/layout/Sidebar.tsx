@@ -39,6 +39,7 @@ export function Sidebar() {
     projects,
     worktrees,
     sessions,
+    agents,
     currentProject,
     selectedSessions,
     sidebarOpen,
@@ -54,6 +55,12 @@ export function Sidebar() {
     deleteWorktree,
     stopSession,
   } = useAppStore()
+
+  // Helper to get agent config by ID
+  const getAgentById = (agentId?: string) => {
+    if (!agentId) return undefined
+    return agents.find(a => a.id === agentId)
+  }
 
   // Separate dialog states for different actions
   const [removeProjectDialog, setRemoveProjectDialog] = useState<{
@@ -438,7 +445,7 @@ export function Sidebar() {
                               <ContextMenuTrigger asChild>
                                 <button
                                   onClick={() => toggleWorktree(worktree.path)}
-                                  className="flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-sm hover:bg-secondary/50 transition-colors"
+                                  className="flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-xs hover:bg-secondary/50 transition-colors"
                                 >
                                   {isWorktreeExpanded ? (
                                     <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -478,13 +485,14 @@ export function Sidebar() {
                               <div className="py-0.5 pl-6 min-w-0">
                                 {worktreeSessions.map((session) => {
                                   const isSelected = selectedSessions.includes(session.id)
+                                  const agent = getAgentById(session.agentId)
 
                                   return (
                                     <ContextMenu key={session.id}>
                                       <ContextMenuTrigger asChild>
                                         <div
                                           className={cn(
-                                            'group relative flex min-w-0 items-center gap-2 pl-2 pr-3 py-1.5 text-sm cursor-pointer rounded-l transition-colors',
+                                            'group relative flex min-w-0 items-center gap-2 pl-2 pr-3 py-1.5 cursor-pointer rounded-l transition-colors',
                                             isSelected
                                               ? 'bg-primary/10'
                                               : 'hover:bg-secondary/50'
@@ -494,13 +502,17 @@ export function Sidebar() {
                                         >
                                           {/* Agent icon with status indicator overlay */}
                                           <div className="relative shrink-0">
-                                            <AgentIcon icon="claude" className="h-4 w-4" />
+                                            <AgentIcon
+                                              icon={agent?.icon}
+                                              iconColor={agent?.iconColor}
+                                              className="h-4 w-4"
+                                            />
                                             <div className="absolute -bottom-0.5 -right-0.5">
                                               <StatusIndicator status={mapSessionState(session.state)} size="sm" />
                                             </div>
                                           </div>
                                           <span className={cn(
-                                            'flex-1 truncate text-xs',
+                                            'flex-1 truncate text-sm',
                                             isSelected ? 'text-primary font-medium' : 'text-foreground'
                                           )}>
                                             {session.name || formatName(session.path)}

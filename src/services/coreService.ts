@@ -164,7 +164,7 @@ export class CoreService extends EventEmitter {
 	public setActiveSession(session: Session | null): void {
 		this.state.activeSession = session;
 		if (session) {
-			this.sessionManager.setSessionActive(session.worktreePath, true);
+			this.sessionManager.setSessionActive(session.id, true);
 		}
 		this.emit('activeSessionChanged', session);
 	}

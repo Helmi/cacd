@@ -403,6 +403,7 @@ export class APIServer {
 				path: s.worktreePath,
 				state: s.stateMutex.getSnapshot().state,
 				isActive: s.isActive,
+				agentId: s.agentId,
 			}));
 		});
 
@@ -417,6 +418,7 @@ export class APIServer {
 				const effect = coreService.sessionManager.createSessionWithPresetEffect(
 					path,
 					presetId,
+					sessionName,
 				);
 				const result = await Effect.runPromise(Effect.either(effect));
 
@@ -427,9 +429,9 @@ export class APIServer {
 				// Session created successfully
 				const session = result.right;
 				// Ensure it's marked active
-				coreService.sessionManager.setSessionActive(path, true);
+				coreService.sessionManager.setSessionActive(session.id, true);
 
-				return {success: true, id: session.id, name: session.name};
+				return {success: true, id: session.id, name: session.name, agentId: session.agentId};
 			},
 		);
 
@@ -439,14 +441,13 @@ export class APIServer {
 				const {id} = request.body;
 				logger.info(`API: Stopping session ${id}`);
 
-				const sessions = coreService.sessionManager.getAllSessions();
-				const session = sessions.find(s => s.id === id);
+				const session = coreService.sessionManager.getSession(id);
 
 				if (!session) {
 					return reply.code(404).send({error: 'Session not found'});
 				}
 
-				coreService.sessionManager.destroySession(session.worktreePath);
+				coreService.sessionManager.destroySession(id);
 				return {success: true};
 			},
 		);
@@ -611,6 +612,7 @@ export class APIServer {
 				args,
 				agent.detectionStrategy,
 				sessionName,
+				agentId,
 			);
 			const result = await Effect.runPromise(Effect.either(effect));
 
@@ -620,9 +622,9 @@ export class APIServer {
 
 			// Session created successfully
 			const session = result.right;
-			coreService.sessionManager.setSessionActive(path, true);
+			coreService.sessionManager.setSessionActive(session.id, true);
 
-			return {success: true, id: session.id, name: session.name};
+			return {success: true, id: session.id, name: session.name, agentId: session.agentId};
 		});
 	}
 

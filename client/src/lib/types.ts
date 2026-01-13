@@ -41,6 +41,7 @@ export interface Session {
   path: string
   state: string
   isActive: boolean
+  agentId?: string
 }
 
 // Git status for a worktree

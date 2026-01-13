@@ -322,6 +322,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			detectionStrategy?: StateDetectionStrategy;
 			devcontainerConfig?: DevcontainerConfig;
 			sessionName?: string;
+			agentId?: string;
 		} = {},
 	): Promise<Session> {
 		const id = this.createSessionId();
@@ -331,6 +332,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			id,
 			name: options.sessionName,
 			worktreePath,
+			agentId: options.agentId,
 			process: ptyProcess,
 			output: [],
 			outputHistory: [],
@@ -348,7 +350,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		// Set up persistent background data handler for state detection
 		this.setupBackgroundHandler(session);
 
-		this.sessions.set(worktreePath, session);
+		// Key by session ID instead of worktreePath to allow multiple sessions per worktree
+		this.sessions.set(session.id, session);
 
 		// Record the timestamp when this worktree was opened
 		configurationManager.setWorktreeLastOpened(worktreePath, Date.now());
@@ -379,15 +382,10 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	createSessionWithPresetEffect(
 		worktreePath: string,
 		presetId?: string,
+		sessionName?: string,
 	): Effect.Effect<Session, ProcessError | ConfigError, never> {
 		return Effect.tryPromise({
 			try: async () => {
-				// Check if session already exists
-				const existing = this.sessions.get(worktreePath);
-				if (existing) {
-					return existing;
-				}
-
 				// Get preset configuration
 				let preset = presetId
 					? configurationManager.getPresetById(presetId)
@@ -425,6 +423,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 					{
 						isPrimaryCommand: true,
 						detectionStrategy: preset.detectionStrategy,
+						sessionName,
+						agentId: preset.id,
 					},
 				);
 			},
@@ -464,15 +464,10 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		args: string[],
 		detectionStrategy?: StateDetectionStrategy,
 		sessionName?: string,
+		agentId?: string,
 	): Effect.Effect<Session, ProcessError, never> {
 		return Effect.tryPromise({
 			try: async () => {
-				// Check if session already exists
-				const existing = this.sessions.get(worktreePath);
-				if (existing) {
-					return existing;
-				}
-
 				// Spawn the process
 				const ptyProcess = await this.spawn(command, args, worktreePath);
 
@@ -485,6 +480,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 						isPrimaryCommand: true,
 						detectionStrategy: detectionStrategy,
 						sessionName: sessionName,
+						agentId: agentId,
 					},
 				);
 
@@ -724,22 +720,40 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		}
 		// Clear any pending state and update state to idle before destroying
 		void this.updateSessionState(session, 'idle');
-		this.destroySession(session.worktreePath);
+		this.destroySession(session.id);
 		this.emit('sessionExit', session);
 	}
 
-	getSession(worktreePath: string): Session | undefined {
-		return this.sessions.get(worktreePath);
+	// Get session by ID (primary lookup method)
+	getSession(sessionId: string): Session | undefined {
+		return this.sessions.get(sessionId);
 	}
 
-	setSessionActive(worktreePath: string, active: boolean): void {
-		const session = this.sessions.get(worktreePath);
+	// Get first session for a worktree path (backwards compatibility)
+	getSessionByPath(worktreePath: string): Session | undefined {
+		for (const session of this.sessions.values()) {
+			if (session.worktreePath === worktreePath) {
+				return session;
+			}
+		}
+		return undefined;
+	}
+
+	// Get all sessions for a worktree path
+	getSessionsForWorktree(worktreePath: string): Session[] {
+		return Array.from(this.sessions.values()).filter(
+			session => session.worktreePath === worktreePath,
+		);
+	}
+
+	setSessionActive(sessionId: string, active: boolean): void {
+		const session = this.sessions.get(sessionId);
 		if (session) {
 			session.isActive = active;
 
 			// If becoming active, record the timestamp when this worktree was opened
 			if (active) {
-				configurationManager.setWorktreeLastOpened(worktreePath, Date.now());
+				configurationManager.setWorktreeLastOpened(session.worktreePath, Date.now());
 
 				// Emit a restore event with the output history if available
 				if (session.outputHistory.length > 0) {
@@ -750,10 +764,10 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	}
 
 	cancelAutoApproval(
-		worktreePath: string,
+		sessionId: string,
 		reason = 'User input received',
 	): void {
-		const session = this.sessions.get(worktreePath);
+		const session = this.sessions.get(sessionId);
 		if (!session) {
 			return;
 		}
@@ -786,8 +800,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		}
 	}
 
-	destroySession(worktreePath: string): void {
-		const session = this.sessions.get(worktreePath);
+	destroySession(sessionId: string): void {
+		const session = this.sessions.get(sessionId);
 		if (session) {
 			const stateData = session.stateMutex.getSnapshot();
 			if (stateData.autoApprovalAbortController) {
@@ -804,13 +818,13 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 				// Process might already be dead
 			}
 			// Clean up any pending timer
-			const timer = this.busyTimers.get(worktreePath);
+			const timer = this.busyTimers.get(session.worktreePath);
 			if (timer) {
 				clearTimeout(timer);
-				this.busyTimers.delete(worktreePath);
+				this.busyTimers.delete(session.worktreePath);
 			}
-			this.sessions.delete(worktreePath);
-			this.waitingWithBottomBorder.delete(session.id);
+			this.sessions.delete(sessionId);
+			this.waitingWithBottomBorder.delete(sessionId);
 			this.emit('sessionDestroyed', session);
 		}
 	}
@@ -818,7 +832,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	/**
 	 * Terminate session and cleanup resources using Effect-based error handling
 	 *
-	 * @param {string} worktreePath - Path to the worktree
+	 * @param {string} sessionId - Session ID to terminate
 	 * @returns {Effect.Effect<void, ProcessError, never>} Effect that may fail with ProcessError if session does not exist or cleanup fails
 	 *
 	 * @example
@@ -833,15 +847,15 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	 * ```
 	 */
 	terminateSessionEffect(
-		worktreePath: string,
+		sessionId: string,
 	): Effect.Effect<void, ProcessError, never> {
 		return Effect.try({
 			try: () => {
-				const session = this.sessions.get(worktreePath);
+				const session = this.sessions.get(sessionId);
 				if (!session) {
 					throw new ProcessError({
 						command: 'terminateSession',
-						message: `Session not found for worktree: ${worktreePath}`,
+						message: `Session not found: ${sessionId}`,
 					});
 				}
 
@@ -858,15 +872,15 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 				}
 
 				// Clean up any pending timer
-				const timer = this.busyTimers.get(worktreePath);
+				const timer = this.busyTimers.get(session.worktreePath);
 				if (timer) {
 					clearTimeout(timer);
-					this.busyTimers.delete(worktreePath);
+					this.busyTimers.delete(session.worktreePath);
 				}
 
 				// Remove from sessions map and cleanup
-				this.sessions.delete(worktreePath);
-				this.waitingWithBottomBorder.delete(session.id);
+				this.sessions.delete(sessionId);
+				this.waitingWithBottomBorder.delete(sessionId);
 				this.emit('sessionDestroyed', session);
 			},
 			catch: (error: unknown) => {
@@ -881,7 +895,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 					message:
 						error instanceof Error
 							? error.message
-							: `Failed to terminate session for ${worktreePath}`,
+							: `Failed to terminate session: ${sessionId}`,
 				});
 			},
 		});
@@ -899,15 +913,10 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		worktreePath: string,
 		devcontainerConfig: DevcontainerConfig,
 		presetId?: string,
+		sessionName?: string,
 	): Effect.Effect<Session, ProcessError | ConfigError, never> {
 		return Effect.tryPromise({
 			try: async () => {
-				// Check if session already exists
-				const existing = this.sessions.get(worktreePath);
-				if (existing) {
-					return existing;
-				}
-
 				// Execute devcontainer up command first
 				try {
 					await execAsync(devcontainerConfig.upCommand, {cwd: worktreePath});
@@ -971,6 +980,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 						isPrimaryCommand: true,
 						detectionStrategy: preset.detectionStrategy,
 						devcontainerConfig,
+						sessionName,
+						agentId: preset.id,
 					},
 				);
 			},
