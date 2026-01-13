@@ -460,13 +460,27 @@ export class APIServer {
 			return configurationManager.getConfiguration();
 		});
 
-		this.app.post<{Body: ConfigurationData}>(
+		this.app.post<{Body: Partial<ConfigurationData>}>(
 			'/api/config',
 			async (request, reply) => {
-				const newConfig = request.body;
+				const partialConfig = request.body;
+
+				// Merge with existing config to preserve fields not sent by frontend
+				// (e.g., agents, commandPresets, shortcuts are managed separately)
+				const existingConfig = configurationManager.getConfiguration();
+				const mergedConfig: ConfigurationData = {
+					...existingConfig,
+					...partialConfig,
+					// Preserve these sections that are managed via separate endpoints
+					agents: existingConfig.agents,
+					commandPresets: existingConfig.commandPresets,
+					shortcuts: existingConfig.shortcuts,
+					command: existingConfig.command,
+					port: existingConfig.port,
+				};
 
 				// Validate
-				const validation = configurationManager.validateConfig(newConfig);
+				const validation = configurationManager.validateConfig(mergedConfig);
 				if (validation._tag === 'Left') {
 					const error = validation.left as ValidationError;
 					return reply
@@ -475,9 +489,7 @@ export class APIServer {
 				}
 
 				// Save
-				const effect = configurationManager.saveConfigEffect(
-					newConfig as ConfigurationData,
-				);
+				const effect = configurationManager.saveConfigEffect(mergedConfig);
 				const result = await Effect.runPromise(Effect.either(effect));
 
 				if (result._tag === 'Left') {
@@ -487,6 +499,131 @@ export class APIServer {
 				return {success: true};
 			},
 		);
+
+		// --- Agents ---
+		this.app.get('/api/agents', async () => {
+			return configurationManager.getAgentsConfig();
+		});
+
+		this.app.get<{Params: {id: string}}>('/api/agents/:id', async (request, reply) => {
+			const agent = configurationManager.getAgentById(request.params.id);
+			if (!agent) {
+				return reply.code(404).send({error: 'Agent not found'});
+			}
+			return agent;
+		});
+
+		this.app.put<{Params: {id: string}; Body: import('../types/index.js').AgentConfig}>(
+			'/api/agents/:id',
+			async (request, reply) => {
+				const {id} = request.params;
+				const agent = request.body;
+
+				// Ensure ID matches
+				if (agent.id !== id) {
+					return reply.code(400).send({error: 'Agent ID mismatch'});
+				}
+
+				configurationManager.saveAgent(agent);
+				logger.info(`API: Saved agent ${id}`);
+				return {success: true, agent};
+			},
+		);
+
+		this.app.post<{Body: import('../types/index.js').AgentConfig}>(
+			'/api/agents',
+			async (request, reply) => {
+				const agent = request.body;
+
+				// Check if agent with this ID already exists
+				if (configurationManager.getAgentById(agent.id)) {
+					return reply.code(409).send({error: 'Agent with this ID already exists'});
+				}
+
+				configurationManager.saveAgent(agent);
+				logger.info(`API: Created agent ${agent.id}`);
+				return {success: true, agent};
+			},
+		);
+
+		this.app.delete<{Params: {id: string}}>('/api/agents/:id', async (request, reply) => {
+			const {id} = request.params;
+			const deleted = configurationManager.deleteAgent(id);
+
+			if (!deleted) {
+				return reply.code(400).send({error: 'Cannot delete agent (last agent or default)'});
+			}
+
+			logger.info(`API: Deleted agent ${id}`);
+			return {success: true};
+		});
+
+		this.app.post<{Body: {id: string}}>('/api/agents/default', async (request, reply) => {
+			const {id} = request.body;
+			const success = configurationManager.setDefaultAgent(id);
+
+			if (!success) {
+				return reply.code(404).send({error: 'Agent not found'});
+			}
+
+			logger.info(`API: Set default agent to ${id}`);
+			return {success: true};
+		});
+
+		// Create session with agent (new endpoint)
+		this.app.post<{
+			Body: {
+				path: string;
+				agentId: string;
+				options?: Record<string, boolean | string>;
+				sessionName?: string;
+			};
+		}>('/api/session/create-with-agent', async (request, reply) => {
+			const {path, agentId, options = {}, sessionName} = request.body;
+			logger.info(
+				`API: Creating session "${sessionName || 'unnamed'}" for ${path} with agent: ${agentId}`,
+			);
+
+			const agent = configurationManager.getAgentById(agentId);
+			if (!agent) {
+				return reply.code(404).send({error: 'Agent not found'});
+			}
+
+			// Validate options
+			const validationErrors = configurationManager.validateAgentOptions(agent, options);
+			if (validationErrors.length > 0) {
+				return reply.code(400).send({error: validationErrors.join('; ')});
+			}
+
+			// Build args
+			const args = configurationManager.buildAgentArgs(agent, options);
+
+			// Resolve command ($SHELL for terminal)
+			let command = agent.command;
+			if (command === '$SHELL') {
+				command = process.env['SHELL'] || '/bin/sh';
+			}
+
+			// Create session with resolved command and args
+			const effect = coreService.sessionManager.createSessionWithAgentEffect(
+				path,
+				command,
+				args,
+				agent.detectionStrategy,
+				sessionName,
+			);
+			const result = await Effect.runPromise(Effect.either(effect));
+
+			if (result._tag === 'Left') {
+				return reply.code(500).send({error: result.left.message});
+			}
+
+			// Session created successfully
+			const session = result.right;
+			coreService.sessionManager.setSessionActive(path, true);
+
+			return {success: true, id: session.id, name: session.name};
+		});
 	}
 
 	private setupSocketHandlers() {
