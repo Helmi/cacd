@@ -478,7 +478,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const selectSession = (sessionId: string) => {
     setSelectedSessions([sessionId])
     setFocusedSessionId(sessionId)
-    setContextSidebarSessionId(sessionId)
+    // Don't auto-open context sidebar - let user toggle it manually
+    // Only update if sidebar is already showing a different session
+    if (contextSidebarSessionId && contextSidebarSessionId !== sessionId) {
+      setContextSidebarSessionId(sessionId)
+    }
   }
 
   const deselectSession = (sessionId: string) => {
@@ -500,21 +504,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toggleSession = (sessionId: string) => {
     setSelectedSessions(prev => {
       if (prev.includes(sessionId)) {
+        // Deselecting a session
         const newSessions = prev.filter(id => id !== sessionId)
         if (focusedSessionId === sessionId && newSessions.length > 0) {
           setFocusedSessionId(newSessions[0])
         }
-        if (newSessions.length === 1) {
-          setContextSidebarSessionId(newSessions[0])
+        // If deselected session had context sidebar open, close it
+        if (contextSidebarSessionId === sessionId) {
+          setContextSidebarSessionId(null)
         }
         return newSessions
       }
+      // Selecting a session
       const newSessions = [...prev, sessionId]
-      // Focus the newly added session
       setFocusedSessionId(sessionId)
-      if (newSessions.length > 2) {
-        setContextSidebarSessionId(null)
-      }
+      // Don't auto-open/close context sidebar - respect user's preference
       return newSessions
     })
   }
@@ -527,6 +531,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const focusSession = (sessionId: string) => {
     setFocusedSessionId(sessionId)
+    // If context sidebar is open for a different session, switch to focused session
+    if (contextSidebarSessionId && contextSidebarSessionId !== sessionId) {
+      setContextSidebarSessionId(sessionId)
+    }
   }
 
   const toggleSidebar = () => setSidebarOpen(prev => !prev)
