@@ -22,6 +22,7 @@ import {
 	Trash2,
 	Info,
 	GitBranch,
+	ArrowDown,
 } from 'lucide-react';
 import {cn} from '@/lib/utils';
 import type {Session} from '@/lib/types';
@@ -135,6 +136,7 @@ export const TerminalSession = memo(function TerminalSession({
 	};
 	const fontFamily = fontFamilyMap[font] || fontFamilyMap.jetbrains;
 	const [isMaximized, setIsMaximized] = useState(false);
+	const [isScrolledUp, setIsScrolledUp] = useState(false);
 	const terminalRef = useRef<HTMLDivElement>(null);
 	const xtermRef = useRef<XTerm | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
@@ -227,6 +229,29 @@ export const TerminalSession = memo(function TerminalSession({
 			currentSocket.emit('input', {sessionId: sessionIdRef.current, data});
 		});
 
+		// Check if terminal is scrolled up from bottom
+		let lastIsAtBottom = true;
+		const checkScrollPosition = () => {
+			const buffer = term.buffer.active;
+			const isAtBottom = buffer.viewportY >= buffer.baseY;
+			if (isAtBottom !== lastIsAtBottom) {
+				lastIsAtBottom = isAtBottom;
+				setIsScrolledUp(!isAtBottom);
+			}
+		};
+
+		// Check position after wheel events (user scrolling)
+		const wheelHandler = () => {
+			// Small delay to let xterm process the wheel event first
+			setTimeout(checkScrollPosition, 10);
+		};
+		terminalRef.current.addEventListener('wheel', wheelHandler, { passive: true });
+
+		// Also check position when new content arrives
+		const onWriteDisposable = term.onWriteParsed(() => {
+			checkScrollPosition();
+		});
+
 		// Debounced resize handler - prevents feedback loop and API storm
 		const handleResize = () => {
 			debouncedFit(
@@ -277,6 +302,10 @@ export const TerminalSession = memo(function TerminalSession({
 			currentSocket.off('terminal_data', handleData);
 			resizeObserver.disconnect();
 			onDataDisposable.dispose();
+			onWriteDisposable.dispose();
+			if (terminalRef.current) {
+				terminalRef.current.removeEventListener('wheel', wheelHandler);
+			}
 			term.dispose();
 			xtermRef.current = null;
 			fitAddonRef.current = null;
@@ -359,6 +388,13 @@ export const TerminalSession = memo(function TerminalSession({
 	const handleDeleteSession = async () => {
 		await stopSession(session.id);
 	};
+
+	const handleScrollToBottom = useCallback(() => {
+		if (xtermRef.current) {
+			xtermRef.current.scrollToBottom();
+			setIsScrolledUp(false);
+		}
+	}, []);
 
 	// Handle clicking the terminal area to focus
 	const handleTerminalClick = useCallback((e: React.MouseEvent) => {
@@ -500,7 +536,20 @@ export const TerminalSession = memo(function TerminalSession({
 			</div>
 
 			{/* Terminal content */}
-			<div ref={terminalRef} className="flex-1 overflow-hidden" />
+			<div className="relative flex-1 overflow-hidden">
+				<div ref={terminalRef} className="h-full w-full" />
+				{/* Jump to bottom button */}
+				{isScrolledUp && (
+					<Button
+						size="icon"
+						className="absolute bottom-3 right-3 h-8 w-8 rounded-full shadow-lg bg-primary text-primary-foreground hover:bg-primary/90"
+						onClick={handleScrollToBottom}
+						title="Jump to bottom"
+					>
+						<ArrowDown className="h-4 w-4" />
+					</Button>
+				)}
+			</div>
 		</div>
 	);
 }, (prevProps, nextProps) => {
