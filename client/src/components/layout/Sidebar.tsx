@@ -134,82 +134,88 @@ export function Sidebar() {
     localStorage.setItem('cacd-expanded-worktrees', JSON.stringify([...expandedWorktrees]))
   }, [expandedWorktrees])
 
-  // Auto-expand newly added projects and handle initial load
+  // Consolidated auto-expansion effect with debouncing
+  // Combines: new projects, new worktrees, and session-based expansion
+  // Uses a single debounced update to prevent cascading re-renders
   useEffect(() => {
-    const currentPaths = new Set(projects.map(p => p.path))
-    const newProjects = projects.filter(p => !knownProjectPaths.has(p.path))
+    const timer = setTimeout(() => {
+      const newExpandedProjects = new Set(expandedProjects)
+      const newExpandedWorktrees = new Set(expandedWorktrees)
+      let projectsChanged = false
+      let worktreesChanged = false
 
-    // On first load when projects arrive and no saved state exists, expand all
-    const hasSavedState = localStorage.getItem('cacd-expanded-projects') !== null
-    if (!hasSavedState && projects.length > 0 && knownProjectPaths.size === 0) {
-      setExpandedProjects(new Set(projects.map(p => p.path)))
-    } else if (newProjects.length > 0) {
-      // Auto-expand newly added projects
-      setExpandedProjects(prev => {
-        const next = new Set(prev)
-        newProjects.forEach(p => next.add(p.path))
-        return next
-      })
-    }
+      // 1. Handle new/initial projects
+      const currentProjectPaths = new Set(projects.map(p => p.path))
+      const newProjects = projects.filter(p => !knownProjectPaths.has(p.path))
+      const hasSavedProjectState = localStorage.getItem('cacd-expanded-projects') !== null
 
-    setKnownProjectPaths(currentPaths)
-  }, [projects, knownProjectPaths])
-
-  // Auto-expand newly added worktrees and handle initial load
-  useEffect(() => {
-    const currentPaths = new Set(worktrees.map(w => w.path))
-    const newWorktrees = worktrees.filter(w => !knownWorktreePaths.has(w.path))
-
-    // On first load when worktrees arrive and no saved state exists, expand all
-    const hasSavedState = localStorage.getItem('cacd-expanded-worktrees') !== null
-    if (!hasSavedState && worktrees.length > 0 && knownWorktreePaths.size === 0) {
-      setExpandedWorktrees(new Set(worktrees.map(w => w.path)))
-    } else if (newWorktrees.length > 0) {
-      // Auto-expand newly added worktrees
-      setExpandedWorktrees(prev => {
-        const next = new Set(prev)
-        newWorktrees.forEach(w => next.add(w.path))
-        return next
-      })
-    }
-
-    setKnownWorktreePaths(currentPaths)
-  }, [worktrees, knownWorktreePaths])
-
-
-  // Auto-expand tree to show sessions
-  useEffect(() => {
-    if (sessions.length === 0) return
-
-    // Find all worktree paths that have sessions
-    const worktreePathsWithSessions = new Set(sessions.map(s => s.path))
-
-    // Auto-expand worktrees with sessions
-    setExpandedWorktrees(prev => {
-      const next = new Set(prev)
-      worktreePathsWithSessions.forEach(path => next.add(path))
-      return next
-    })
-
-    // Find projects containing these worktrees and expand them
-    const projectPathsToExpand = new Set<string>()
-    worktreePathsWithSessions.forEach(wtPath => {
-      // Find matching project
-      for (const project of projects) {
-        const projectName = project.path.split('/').pop() || ''
-        if (wtPath.startsWith(project.path) || wtPath.includes(`/.worktrees/${projectName}/`)) {
-          projectPathsToExpand.add(project.path)
-          break
-        }
+      if (!hasSavedProjectState && projects.length > 0 && knownProjectPaths.size === 0) {
+        // Initial load with no saved state - expand all
+        projects.forEach(p => newExpandedProjects.add(p.path))
+        projectsChanged = true
+      } else if (newProjects.length > 0) {
+        // Auto-expand newly added projects
+        newProjects.forEach(p => newExpandedProjects.add(p.path))
+        projectsChanged = true
       }
-    })
 
-    setExpandedProjects(prev => {
-      const next = new Set(prev)
-      projectPathsToExpand.forEach(path => next.add(path))
-      return next
-    })
-  }, [sessions, projects])
+      // 2. Handle new/initial worktrees
+      const currentWorktreePaths = new Set(worktrees.map(w => w.path))
+      const newWorktrees = worktrees.filter(w => !knownWorktreePaths.has(w.path))
+      const hasSavedWorktreeState = localStorage.getItem('cacd-expanded-worktrees') !== null
+
+      if (!hasSavedWorktreeState && worktrees.length > 0 && knownWorktreePaths.size === 0) {
+        // Initial load with no saved state - expand all
+        worktrees.forEach(w => newExpandedWorktrees.add(w.path))
+        worktreesChanged = true
+      } else if (newWorktrees.length > 0) {
+        // Auto-expand newly added worktrees
+        newWorktrees.forEach(w => newExpandedWorktrees.add(w.path))
+        worktreesChanged = true
+      }
+
+      // 3. Auto-expand tree to show sessions
+      if (sessions.length > 0) {
+        const worktreePathsWithSessions = new Set(sessions.map(s => s.path))
+
+        // Expand worktrees with sessions
+        worktreePathsWithSessions.forEach(path => {
+          if (!newExpandedWorktrees.has(path)) {
+            newExpandedWorktrees.add(path)
+            worktreesChanged = true
+          }
+        })
+
+        // Find and expand projects containing these worktrees
+        worktreePathsWithSessions.forEach(wtPath => {
+          for (const project of projects) {
+            const projectName = project.path.split('/').pop() || ''
+            if (wtPath.startsWith(project.path) || wtPath.includes(`/.worktrees/${projectName}/`)) {
+              if (!newExpandedProjects.has(project.path)) {
+                newExpandedProjects.add(project.path)
+                projectsChanged = true
+              }
+              break
+            }
+          }
+        })
+      }
+
+      // Batch state updates
+      if (projectsChanged) {
+        setExpandedProjects(newExpandedProjects)
+      }
+      if (worktreesChanged) {
+        setExpandedWorktrees(newExpandedWorktrees)
+      }
+
+      // Update known paths
+      setKnownProjectPaths(currentProjectPaths)
+      setKnownWorktreePaths(currentWorktreePaths)
+    }, 50) // Small debounce to batch updates
+
+    return () => clearTimeout(timer)
+  }, [projects, worktrees, sessions, knownProjectPaths, knownWorktreePaths, expandedProjects, expandedWorktrees])
 
   // Toggle project expansion
   const toggleProject = (path: string) => {

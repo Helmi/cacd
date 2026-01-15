@@ -1,7 +1,23 @@
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react'
 import { io, Socket } from 'socket.io-client'
 import type { Session, Worktree, Project, ThemeType, FontType, ConnectionStatus, AppConfig, ChangedFile, AgentConfig, AgentsConfig } from './types'
 import { mapBackendToFrontend, mapFrontendToBackend, getDefaultConfig } from './configMapper'
+
+// Debounce utility
+function debounce<T extends (...args: Parameters<T>) => void>(
+  fn: T,
+  delay: number
+): T & { cancel: () => void } {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+  const debounced = ((...args: Parameters<T>) => {
+    if (timeoutId) clearTimeout(timeoutId)
+    timeoutId = setTimeout(() => fn(...args), delay)
+  }) as T & { cancel: () => void }
+  debounced.cancel = () => {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
+  return debounced
+}
 
 // Get token from URL or localStorage
 const getToken = () => {
@@ -238,57 +254,82 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('cacd_fontScale', String(fontScale))
   }, [fontScale])
 
-  const fetchData = useCallback(async () => {
+  // Fetch session-related data only (frequent updates)
+  const fetchSessionData = useCallback(async () => {
     const headers = { 'x-access-token': token || '' }
 
-    const handleFetchError = (endpoint: string) => (err: Error) => {
-      console.error(`Failed to fetch ${endpoint}:`, err)
-      setError(`Failed to load data from server. Check your connection.`)
-    }
-
     try {
-      // Fetch all data in parallel (including config)
-      const [stateRes, sessionsRes, worktreesRes, projectsRes, configRes] = await Promise.all([
+      const [stateRes, sessionsRes] = await Promise.all([
         fetch('/api/state', { headers }),
         fetch('/api/sessions', { headers }),
-        fetch('/api/worktrees', { headers }),
-        fetch('/api/projects', { headers }),
-        fetch('/api/config', { headers }),
       ])
 
-      // Check for HTTP errors
-      if (!stateRes.ok || !sessionsRes.ok || !worktreesRes.ok || !projectsRes.ok) {
-        setError('Failed to load data from server. Some requests returned errors.')
+      if (!stateRes.ok || !sessionsRes.ok) {
+        console.error('Failed to fetch session data')
         return
       }
 
-      const [state, sessionsData, worktreesData, projectsData] = await Promise.all([
+      const [state, sessionsData] = await Promise.all([
         stateRes.json(),
         sessionsRes.json(),
-        worktreesRes.json(),
-        projectsRes.json(),
       ])
 
       if (state.selectedProject) setCurrentProject(state.selectedProject)
       if (state.isDevMode !== undefined) setIsDevMode(state.isDevMode)
       setSessions(sessionsData)
+      setError(null)
+    } catch (err) {
+      console.error('Failed to fetch session data:', err)
+    }
+  }, [])
+
+  // Debounced version of fetchSessionData for socket events (250ms delay)
+  const debouncedFetchSessionData = useMemo(
+    () => debounce(fetchSessionData, 250),
+    [fetchSessionData]
+  )
+
+  // Fetch reference data (projects, worktrees, config - rarely changes)
+  const fetchReferenceData = useCallback(async () => {
+    const headers = { 'x-access-token': token || '' }
+
+    try {
+      const [worktreesRes, projectsRes, configRes] = await Promise.all([
+        fetch('/api/worktrees', { headers }),
+        fetch('/api/projects', { headers }),
+        fetch('/api/config', { headers }),
+      ])
+
+      if (!worktreesRes.ok || !projectsRes.ok) {
+        setError('Failed to load reference data from server.')
+        return
+      }
+
+      const [worktreesData, projectsData] = await Promise.all([
+        worktreesRes.json(),
+        projectsRes.json(),
+      ])
+
       setWorktrees(worktreesData)
       setProjects(projectsData.projects || [])
 
-      // Load config from backend
       if (configRes.ok) {
         const configData = await configRes.json()
         setConfig(mapBackendToFrontend(configData))
       }
       setConfigLoading(false)
-
-      // Clear any previous error on success
       setError(null)
     } catch (err) {
-      handleFetchError('data')(err as Error)
+      console.error('Failed to fetch reference data:', err)
+      setError('Failed to load data from server. Check your connection.')
       setConfigLoading(false)
     }
   }, [])
+
+  // Full data fetch - used on initial load and after mutations
+  const fetchData = useCallback(async () => {
+    await Promise.all([fetchSessionData(), fetchReferenceData()])
+  }, [fetchSessionData, fetchReferenceData])
 
   // Fetch agents from /api/agents
   const fetchAgents = useCallback(async () => {
@@ -394,8 +435,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     socket.on('connect', () => setConnectionStatus('connected'))
     socket.on('disconnect', () => setConnectionStatus('disconnected'))
     socket.on('connect_error', () => setConnectionStatus('error'))
-    socket.on('session_update', fetchData)
+    // Use debounced session fetch for socket events - prevents API storm
+    // Only fetches sessions/state (2 calls), not full data (5 calls)
+    socket.on('session_update', debouncedFetchSessionData)
 
+    // Initial full fetch on mount
     fetchData()
     fetchAgents()
 
@@ -404,8 +448,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       socket.off('disconnect')
       socket.off('connect_error')
       socket.off('session_update')
+      debouncedFetchSessionData.cancel()
     }
-  }, [fetchData, fetchAgents])
+  }, [fetchData, fetchAgents, debouncedFetchSessionData])
 
   const selectProject = async (path: string) => {
     try {

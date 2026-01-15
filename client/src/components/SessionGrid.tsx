@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react'
 import { useAppStore } from '@/lib/store'
 import { TerminalSession } from '@/components/TerminalSession'
 import { cn } from '@/lib/utils'
@@ -5,10 +6,22 @@ import { cn } from '@/lib/utils'
 export function SessionGrid() {
   const { sessions, selectedSessions, focusedSessionId, deselectSession, focusSession } = useAppStore()
 
-  // Get selected session objects
-  const activeSessions = selectedSessions
-    .map((id) => sessions.find((s) => s.id === id))
-    .filter(Boolean)
+  // Get selected session objects - memoized to prevent unnecessary recalculations
+  const activeSessions = useMemo(() =>
+    selectedSessions
+      .map((id) => sessions.find((s) => s.id === id))
+      .filter(Boolean),
+    [selectedSessions, sessions]
+  )
+
+  // Stable callback references to prevent TerminalSession re-renders
+  const handleFocus = useCallback((sessionId: string) => {
+    focusSession(sessionId)
+  }, [focusSession])
+
+  const handleRemove = useCallback((sessionId: string) => {
+    deselectSession(sessionId)
+  }, [deselectSession])
 
   if (activeSessions.length === 0) {
     return null
@@ -47,8 +60,8 @@ export function SessionGrid() {
           session={session!}
           slotIndex={index}
           isFocused={focusedSessionId === session!.id}
-          onFocus={() => focusSession(session!.id)}
-          onRemove={() => deselectSession(session!.id)}
+          onFocus={handleFocus}
+          onRemove={handleRemove}
         />
       ))}
     </div>

@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useRef, useState} from 'react';
+import React, {useEffect, useLayoutEffect, useRef, useState, useMemo, useCallback, memo} from 'react';
 import {Terminal as XTerm} from 'xterm';
 import {FitAddon} from 'xterm-addon-fit';
 import {WebLinksAddon} from 'xterm-addon-web-links';
@@ -27,12 +27,52 @@ import {cn} from '@/lib/utils';
 import type {Session} from '@/lib/types';
 import {mapSessionState} from '@/lib/types';
 
+// Debounced fit function to prevent layout thrashing
+function createDebouncedFit(delay = 100) {
+	let timeoutId: ReturnType<typeof setTimeout> | null = null;
+	let rafId: number | null = null;
+
+	const debounced = (
+		fitAddon: FitAddon | null,
+		xterm: XTerm | null,
+		socket: ReturnType<typeof useAppStore>['socket'],
+		sessionId: string,
+		lastDims: { cols: number; rows: number }
+	) => {
+		if (timeoutId) clearTimeout(timeoutId);
+		if (rafId) cancelAnimationFrame(rafId);
+
+		timeoutId = setTimeout(() => {
+			rafId = requestAnimationFrame(() => {
+				if (!fitAddon || !xterm) return;
+
+				fitAddon.fit();
+				const { cols, rows } = xterm;
+
+				// Only emit if dimensions actually changed
+				if (cols !== lastDims.cols || rows !== lastDims.rows) {
+					lastDims.cols = cols;
+					lastDims.rows = rows;
+					socket.emit('resize', { sessionId, cols, rows });
+				}
+			});
+		}, delay);
+	};
+
+	debounced.cancel = () => {
+		if (timeoutId) clearTimeout(timeoutId);
+		if (rafId) cancelAnimationFrame(rafId);
+	};
+
+	return debounced;
+}
+
 interface TerminalSessionProps {
 	session: Session;
 	slotIndex?: number;
 	isFocused?: boolean;
-	onFocus?: () => void;
-	onRemove: () => void;
+	onFocus: (sessionId: string) => void;
+	onRemove: (sessionId: string) => void;
 }
 
 // Get theme colors from CSS custom properties
@@ -58,7 +98,8 @@ function getTerminalTheme(): {
 	};
 }
 
-export function TerminalSession({
+// Memoized to prevent re-renders when parent state changes but props are equal
+export const TerminalSession = memo(function TerminalSession({
 	session,
 	slotIndex,
 	isFocused = false,
@@ -109,6 +150,12 @@ export function TerminalSession({
 		sessionIdRef.current = session.id;
 	}, [session.id]);
 
+	// Track last known dimensions to prevent redundant socket emissions
+	const lastDimsRef = useRef({ cols: 0, rows: 0 });
+
+	// Create debounced fit function once per component
+	const debouncedFit = useMemo(() => createDebouncedFit(100), []);
+
 	useLayoutEffect(() => {
 		if (!terminalRef.current) return;
 
@@ -130,6 +177,8 @@ export function TerminalSession({
 
 		term.open(terminalRef.current);
 		fitAddon.fit();
+		// Store initial dimensions
+		lastDimsRef.current = { cols: term.cols, rows: term.rows };
 		// Don't auto-focus on mount - let isFocused prop control this
 		if (isFocused) {
 			term.focus();
@@ -178,27 +227,27 @@ export function TerminalSession({
 			currentSocket.emit('input', {sessionId: sessionIdRef.current, data});
 		});
 
-		// Handle resize
+		// Debounced resize handler - prevents feedback loop and API storm
 		const handleResize = () => {
-			if (fitAddonRef.current && xtermRef.current) {
-				fitAddonRef.current.fit();
-				currentSocket.emit('resize', {
-					sessionId: sessionIdRef.current,
-					cols: xtermRef.current.cols,
-					rows: xtermRef.current.rows,
-				});
-			}
+			debouncedFit(
+				fitAddonRef.current,
+				xtermRef.current,
+				currentSocket,
+				sessionIdRef.current,
+				lastDimsRef.current
+			);
 		};
 
-		window.addEventListener('resize', handleResize);
-		// Initial fit - but don't emit resize to PTY immediately to avoid Claude redrawing
+		// Initial fit after a short delay (no socket emit needed on first render)
 		setTimeout(() => {
-			if (fitAddonRef.current) {
+			if (fitAddonRef.current && xtermRef.current) {
 				fitAddonRef.current.fit();
+				lastDimsRef.current = { cols: xtermRef.current.cols, rows: xtermRef.current.rows };
 			}
 		}, 100);
 
-		// Create resize observer for container
+		// ResizeObserver handles both window and container resizes
+		// No need for separate window.addEventListener('resize')
 		const resizeObserver = new ResizeObserver(() => {
 			handleResize();
 		});
@@ -218,28 +267,33 @@ export function TerminalSession({
 				);
 			}
 
+			// Cancel any pending debounced calls
+			debouncedFit.cancel();
+
 			// Unsubscribe BEFORE removing listeners to ensure proper cleanup
 			currentSocket.emit('unsubscribe_session', currentSessionId);
 
 			// Use captured references for cleanup to ensure correct socket/session
 			currentSocket.off('terminal_data', handleData);
-			window.removeEventListener('resize', handleResize);
 			resizeObserver.disconnect();
 			onDataDisposable.dispose();
 			term.dispose();
 			xtermRef.current = null;
 			fitAddonRef.current = null;
 		};
-	}, [session.id, socket]);
+	}, [session.id, socket, debouncedFit]);
 
 	// Re-fit when maximized state changes
 	useEffect(() => {
-		setTimeout(() => {
-			if (fitAddonRef.current) {
-				fitAddonRef.current.fit();
-			}
-		}, 100);
-	}, [isMaximized]);
+		// Use debounced fit to handle size change after maximize animation
+		debouncedFit(
+			fitAddonRef.current,
+			xtermRef.current,
+			socket,
+			session.id,
+			lastDimsRef.current
+		);
+	}, [isMaximized, debouncedFit, socket, session.id]);
 
 	// Update terminal theme when app theme changes
 	useEffect(() => {
@@ -257,17 +311,31 @@ export function TerminalSession({
 	useEffect(() => {
 		if (xtermRef.current) {
 			xtermRef.current.options.fontSize = Math.round(16 * (fontScale / 100));
-			fitAddonRef.current?.fit();
+			// Use debounced fit for font size changes
+			debouncedFit(
+				fitAddonRef.current,
+				xtermRef.current,
+				socket,
+				session.id,
+				lastDimsRef.current
+			);
 		}
-	}, [fontScale]);
+	}, [fontScale, debouncedFit, socket, session.id]);
 
 	// Update terminal font family when font changes
 	useEffect(() => {
 		if (xtermRef.current) {
 			xtermRef.current.options.fontFamily = fontFamily;
-			fitAddonRef.current?.fit();
+			// Use debounced fit for font family changes
+			debouncedFit(
+				fitAddonRef.current,
+				xtermRef.current,
+				socket,
+				session.id,
+				lastDimsRef.current
+			);
 		}
-	}, [font, fontFamily]);
+	}, [font, fontFamily, debouncedFit, socket, session.id]);
 
 	// Focus terminal when isFocused becomes true
 	useEffect(() => {
@@ -293,14 +361,14 @@ export function TerminalSession({
 	};
 
 	// Handle clicking the terminal area to focus
-	const handleTerminalClick = (e: React.MouseEvent) => {
+	const handleTerminalClick = useCallback((e: React.MouseEvent) => {
 		e.stopPropagation();
-		onFocus?.();
+		onFocus(session.id);
 		// Ensure xterm gets focus
 		requestAnimationFrame(() => {
 			xtermRef.current?.focus();
 		});
-	};
+	}, [onFocus, session.id]);
 
 	return (
 		<div
@@ -424,7 +492,7 @@ export function TerminalSession({
 						variant="ghost"
 						size="icon"
 						className="h-5 w-5 text-muted-foreground hover:text-foreground"
-						onClick={onRemove}
+						onClick={() => onRemove(session.id)}
 					>
 						<X className="h-3 w-3" />
 					</Button>
@@ -435,4 +503,15 @@ export function TerminalSession({
 			<div ref={terminalRef} className="flex-1 overflow-hidden" />
 		</div>
 	);
-}
+}, (prevProps, nextProps) => {
+	// Custom comparison - only re-render if these specific props change
+	return (
+		prevProps.session.id === nextProps.session.id &&
+		prevProps.session.state === nextProps.session.state &&
+		prevProps.session.name === nextProps.session.name &&
+		prevProps.slotIndex === nextProps.slotIndex &&
+		prevProps.isFocused === nextProps.isFocused &&
+		prevProps.onFocus === nextProps.onFocus &&
+		prevProps.onRemove === nextProps.onRemove
+	);
+});
