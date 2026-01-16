@@ -80,6 +80,8 @@ Runs both backend (tsx watch + headless) and frontend (Vite dev server) concurre
 
 **Note:** PTY sessions die when the backend restarts. This is unavoidable without architecture changes. For development, just restart sessions as needed.
 
+**Version Display:** In development mode, the version displays with a `-dev` suffix (e.g., `0.2.0-dev`). This is handled automatically in `client/vite.config.ts` based on Vite's mode. Production builds show the clean version number.
+
 ### Global Install Workflow
 
 Build and install globally for system-wide access:
@@ -107,6 +109,15 @@ The application operates in a **Hybrid Mode**:
     - Explicit types (avoid `any`).
     - Prettier/ESLint rules enforced.
 
+## Security Notes
+
+### shell: true in spawn calls
+The following files intentionally use `shell: true` in spawn calls:
+- `src/services/autoApprovalVerifier.ts` — custom verifier commands
+- `src/utils/hookExecutor.ts` — user-configured hook commands
+
+**This is by design.** These are user-configured shell commands that need shell features (pipes, `&&`, variable expansion). Untrusted data is passed via environment variables, not interpolated into the command string. This follows the standard Unix security model where env vars are safe unless the script explicitly misuses them. Do not flag this as a security issue in reviews.
+
 ## Testing Guidelines
 - **Backend:** Write Vitest unit tests alongside files (`*.test.ts`).
     - Use `vi.mock` for external dependencies (git, fs, child_process).
@@ -120,38 +131,42 @@ The application operates in a **Hybrid Mode**:
 
 ## Release Process
 
-**Versioning:** Semver (major.minor.patch). Current version is in `package.json`.
+**Versioning:** Semver (major.minor.patch). Version in `package.json` reflects the target release version during development.
+
+**Development workflow:**
+1. Set `package.json` version to target (e.g., `0.2.0`) at start of dev cycle
+2. Dev UI shows `0.2.0-dev` (suffix added automatically in dev mode)
+3. When ready to release, run `bun run release`
 
 **Release commands:**
-- `bun run release` — Auto-bump based on commit types (feat→minor, fix→patch)
-- `bun run release:patch` — Force patch bump (0.1.0 → 0.1.1)
-- `bun run release:minor` — Force minor bump (0.1.0 → 0.2.0)
-- `bun run release:major` — Force major bump (0.1.0 → 1.0.0)
+- `bun run release` — Interactive release (prompts for version, suggests based on commits)
+- `bun run release 0.2.0` — Direct release to specified version
+- `bun run release:dry` — Preview without making changes
 
 **What release does:**
-1. Bumps version in `package.json`
-2. Generates/updates `CHANGELOG.md` from Conventional Commits
-3. Creates a git commit and tag (e.g., `v0.2.0`)
+1. Analyzes commits since last tag and suggests bump type
+2. Prompts for target version (or uses provided version)
+3. Runs standard-version to update `package.json`, `CHANGELOG.md`, create commit and tag
 
 **After release:**
 ```bash
 git push --follow-tags    # Push commit + tag to trigger GitHub Actions
 ```
+Then update `package.json` to the next target version for the next dev cycle.
+
 GitHub Actions handles npm publish and GitHub release creation.
 
-**Dry run:** Add `--dry-run` to preview without making changes:
-```bash
-bun run release -- --dry-run
-```
+### Agent Instructions for Builds
+
+**CRITICAL:** Never run `bun run build` or `bun run install:global` without explicit user confirmation. The globally installed build is used productively on this system and must not be overwritten without consent.
 
 ### Agent Instructions for Releases
 
 **IMPORTANT:** Never execute release commands autonomously.
 
 When significant work is completed (features, bug fixes, milestones), proactively suggest a release to the user:
-- Recommend the appropriate bump type based on changes (patch/minor/major)
-- Explain what commits will be included
-- Offer to run a dry-run first
+- Mention the current version and what the next version should be
+- Offer to run `bun run release:dry` first to preview
 
 **Only execute release commands after explicit user confirmation.** Example:
-> "We've completed the versioning feature. This would be a good time for a minor release (0.1.0 → 0.2.0). Want me to run `bun run release:minor`?"
+> "We've completed the versioning feature. Ready to release 0.2.0? Want me to run `bun run release:dry` first?"

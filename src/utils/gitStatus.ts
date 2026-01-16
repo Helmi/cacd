@@ -1,10 +1,12 @@
 import {promisify} from 'util';
 import {execFile, type ExecException} from 'child_process';
+import path from 'path';
 import {Effect, Either} from 'effect';
 import {pipe} from 'effect/Function';
 import {GitError} from '../types/errors.js';
 import {getWorktreeParentBranch} from './worktreeConfig.js';
 import {createEffectConcurrencyLimited} from './concurrencyLimit.js';
+import {validatePathWithinBase} from './pathValidation.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -405,8 +407,10 @@ export const getChangedFiles = (
 				if (!line.trim()) continue;
 				const parts = line.split('\t');
 				if (parts.length >= 3) {
-					const additions = parts[0] === '-' ? 0 : Number.parseInt(parts[0]!, 10) || 0;
-					const deletions = parts[1] === '-' ? 0 : Number.parseInt(parts[1]!, 10) || 0;
+					const additions =
+						parts[0] === '-' ? 0 : Number.parseInt(parts[0]!, 10) || 0;
+					const deletions =
+						parts[1] === '-' ? 0 : Number.parseInt(parts[1]!, 10) || 0;
 					const filePath = parts.slice(2).join('\t'); // Handle filenames with tabs
 
 					const existing = changedFiles.get(filePath);
@@ -498,6 +502,21 @@ export const getFileDiff = (
 	filePath: string,
 ): Effect.Effect<string, GitError> =>
 	Effect.gen(function* () {
+		// Defense-in-depth: validate filePath doesn't escape worktree
+		// (caller should have validated, but check here too)
+		let validatedFullPath: string;
+		try {
+			validatedFullPath = validatePathWithinBase(worktreePath, filePath);
+		} catch (error) {
+			return yield* Effect.fail(
+				new GitError({
+					command: `validate ${filePath}`,
+					exitCode: -1,
+					stderr: 'Path traversal detected',
+				}),
+			);
+		}
+
 		// Check if file is untracked
 		const statusResult = yield* runGit(
 			['status', '--porcelain', '--', filePath],
@@ -514,8 +533,7 @@ export const getFileDiff = (
 					Effect.tryPromise({
 						try: async () => {
 							const fs = await import('fs/promises');
-							const fullPath = `${worktreePath}/${filePath}`;
-							const content = await fs.readFile(fullPath, 'utf8');
+							const content = await fs.readFile(validatedFullPath, 'utf8');
 							return {stdout: content, stderr: ''};
 						},
 						catch: error =>

@@ -20,6 +20,10 @@ import {
 } from '../utils/gitStatus.js';
 import {randomUUID} from 'crypto';
 import {generateRandomPort, isDevMode} from '../constants/env.js';
+import {
+	validateWorktreePath,
+	validatePathWithinBase,
+} from '../utils/pathValidation.js';
 
 // Check if hostname is allowed (localhost or private network IP)
 function isAllowedHost(hostname: string): boolean {
@@ -420,8 +424,17 @@ export class APIServer {
 				return reply.code(400).send({error: 'path query parameter required'});
 			}
 
+			// Validate worktree path is a real git directory
+			let validatedPath: string;
+			try {
+				validatedPath = validateWorktreePath(worktreePath);
+			} catch (_error) {
+				logger.warn(`Invalid worktree path requested: ${worktreePath}`);
+				return reply.code(400).send({error: 'Invalid worktree path'});
+			}
+
 			const result = await Effect.runPromise(
-				Effect.either(getChangedFilesLimited(worktreePath)),
+				Effect.either(getChangedFilesLimited(validatedPath)),
 			);
 
 			if (result._tag === 'Left') {
@@ -443,8 +456,27 @@ export class APIServer {
 					.send({error: 'path and file query parameters required'});
 			}
 
+			// Validate worktree path is a real git directory
+			let validatedWorktreePath: string;
+			try {
+				validatedWorktreePath = validateWorktreePath(worktreePath);
+			} catch (_error) {
+				logger.warn(`Invalid worktree path requested: ${worktreePath}`);
+				return reply.code(400).send({error: 'Invalid worktree path'});
+			}
+
+			// Validate file path doesn't escape worktree (prevents ../../../etc/passwd)
+			try {
+				validatePathWithinBase(validatedWorktreePath, filePath);
+			} catch (_error) {
+				logger.warn(
+					`Path traversal attempt blocked: ${filePath} in ${worktreePath}`,
+				);
+				return reply.code(400).send({error: 'Invalid file path'});
+			}
+
 			const result = await Effect.runPromise(
-				Effect.either(getFileDiff(worktreePath, filePath)),
+				Effect.either(getFileDiff(validatedWorktreePath, filePath)),
 			);
 
 			if (result._tag === 'Left') {
@@ -461,13 +493,22 @@ export class APIServer {
 
 			// If projectPath provided, get branches for that specific project
 			if (projectPath) {
+				// Validate project path is a real git directory
+				let validatedPath: string;
+				try {
+					validatedPath = validateWorktreePath(projectPath);
+				} catch (_error) {
+					logger.warn(`Invalid project path requested: ${projectPath}`);
+					return reply.code(400).send({error: 'Invalid project path'});
+				}
+
 				try {
 					const {execFileSync} = await import('child_process');
 					const output = execFileSync(
 						'git',
 						['branch', '-a', '--format=%(refname:short)'],
 						{
-							cwd: projectPath,
+							cwd: validatedPath,
 							encoding: 'utf8',
 						},
 					);
