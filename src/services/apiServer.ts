@@ -24,11 +24,22 @@ import {
 	validateWorktreePath,
 	validatePathWithinBase,
 } from '../utils/pathValidation.js';
+import {getDefaultShell} from '../utils/platform.js';
 
-// Check if hostname is allowed (localhost or private network IP)
+// Check if hostname is allowed (localhost, private network IP, or local hostname)
 function isAllowedHost(hostname: string): boolean {
 	// Localhost variants
 	if (['localhost', '127.0.0.1', '::1'].includes(hostname)) {
+		return true;
+	}
+
+	// Local network hostnames (mDNS/Bonjour .local domains)
+	if (hostname.endsWith('.local')) {
+		return true;
+	}
+
+	// Single-word hostnames (no dots) are local network names (e.g., "helmibook")
+	if (!hostname.includes('.')) {
 		return true;
 	}
 
@@ -85,7 +96,7 @@ export class APIServer {
 				try {
 					const url = new URL(origin);
 					const allowed = isAllowedHost(url.hostname);
-					if (isDevMode) {
+					if (isDevMode()) {
 						logger.info(`CORS check: origin=${origin} hostname=${url.hostname} allowed=${allowed}`);
 					}
 					if (allowed) {
@@ -120,6 +131,16 @@ export class APIServer {
 				prefix: '/',
 			});
 			logger.info(`Serving static files from ${clientDistPath}`);
+
+			// SPA fallback: serve index.html for non-API routes (React handles routing)
+			this.app.setNotFoundHandler(async (request, reply) => {
+				// Don't intercept API routes - let them 404 normally
+				if (request.url.startsWith('/api/')) {
+					return reply.status(404).send({error: 'Not Found', statusCode: 404});
+				}
+				// Serve index.html for all other routes (SPA client-side routing)
+				return reply.sendFile('index.html');
+			});
 		} catch (_e) {
 			logger.warn(
 				`Failed to register static files from ${clientDistPath}. Client might not be built.`,
@@ -221,7 +242,7 @@ export class APIServer {
 		});
 
 		// Validate access token (for token-based URL access)
-		this.app.get('/api/auth/validate-token', async _request => {
+		this.app.get('/api/auth/validate-token', async request => {
 			const config = configurationManager.getConfiguration();
 			const storedToken = config.accessToken;
 
@@ -230,7 +251,12 @@ export class APIServer {
 				return {valid: false, reason: 'not_configured'};
 			}
 
-			// Token is validated via URL path, this just checks if auth is configured
+			// Get token from query parameter
+			const providedToken = (request.query as {token?: string}).token;
+			if (!providedToken || providedToken !== storedToken) {
+				return {valid: false, reason: 'invalid_token'};
+			}
+
 			return {valid: true, authRequired: !!config.passcodeHash};
 		});
 
@@ -844,8 +870,11 @@ export class APIServer {
 
 			const agent = configurationManager.getAgentById(agentId);
 			if (!agent) {
+				logger.error(`API: Agent not found: ${agentId}`);
 				return reply.code(404).send({error: 'Agent not found'});
 			}
+
+			logger.info(`API: Found agent "${agent.name}" (id=${agent.id}, command=${agent.command})`);
 
 			// Validate options
 			const validationErrors = configurationManager.validateAgentOptions(
@@ -858,12 +887,14 @@ export class APIServer {
 
 			// Build args
 			const args = configurationManager.buildAgentArgs(agent, options);
+			logger.info(`API: Built args for ${agent.id}: [${args.join(', ')}]`);
 
 			// Resolve command ($SHELL for terminal)
 			let command = agent.command;
 			if (command === '$SHELL') {
-				command = process.env['SHELL'] || '/bin/sh';
+				command = getDefaultShell();
 			}
+			logger.info(`API: Spawning command: ${command} ${args.join(' ')}`);
 
 			// Create session with resolved command and args
 			const effect = coreService.sessionManager.createSessionWithAgentEffect(

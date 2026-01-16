@@ -25,11 +25,22 @@ export function supportsUnicode(): boolean {
 
 	// Windows-specific detection
 	if (process.platform === 'win32') {
-		// Windows Terminal supports Unicode
+		// Windows Terminal (modern, full Unicode/ANSI support)
 		if (process.env['WT_SESSION']) {
 			return true;
 		}
-		// Without Windows Terminal or explicit TERM, assume no Unicode
+
+		// VS Code integrated terminal
+		if (process.env['TERM_PROGRAM'] === 'vscode') {
+			return true;
+		}
+
+		// ConEmu/Cmder (popular Windows terminal emulators)
+		if (process.env['ConEmuANSI'] === 'ON') {
+			return true;
+		}
+
+		// Without a modern terminal or explicit TERM, assume no Unicode
 		if (!term) {
 			return false;
 		}

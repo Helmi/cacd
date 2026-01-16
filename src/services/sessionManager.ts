@@ -22,6 +22,7 @@ import {ProcessError, ConfigError} from '../types/errors.js';
 import {autoApprovalVerifier} from './autoApprovalVerifier.js';
 import {logger} from '../utils/logger.js';
 import {Mutex, createInitialSessionStateData} from '../utils/mutex.js';
+import {getPtyEnv} from '../utils/platform.js';
 const {Terminal} = pkg;
 const execAsync = promisify(exec);
 const TERMINAL_CONTENT_MAX_LINES = 300;
@@ -86,14 +87,13 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			cols: process.stdout.columns || 80,
 			rows: process.stdout.rows || 24,
 			cwd: worktreePath,
-			env: {
-				...process.env,
-				COLORTERM: 'truecolor',
-				TERM: 'xterm-256color',
-			},
+			// Use platform-aware env: Unix gets TERM/COLORTERM, Windows preserved as-is
+			env: getPtyEnv(),
 		};
 
-		logger.info(`[SessionManager] Spawning: ${command} ${args.join(' ')} in ${worktreePath}`);
+		logger.info(
+			`[SessionManager] Spawning: ${command} ${args.join(' ')} in ${worktreePath}`,
+		);
 		const pty = spawn(command, args, spawnOptions);
 		logger.info(`[SessionManager] Spawned PID: ${pty.pid}`);
 		return pty;

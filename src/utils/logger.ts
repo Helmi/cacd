@@ -55,8 +55,13 @@ class Logger {
 	}
 
 	/**
-	 * Resolve log file path following XDG Base Directory specification
-	 * and respecting environment overrides for testing
+	 * Resolve log file path following platform conventions
+	 * and respecting environment overrides for testing.
+	 *
+	 * Platform paths:
+	 * - Windows: %LOCALAPPDATA%\cacd\logs\cacd.log
+	 * - macOS: ~/Library/Logs/cacd/cacd.log
+	 * - Linux: XDG_STATE_HOME/cacd/cacd.log or ~/.local/state/cacd/cacd.log
 	 */
 	private resolveLogPath(): string {
 		// Allow environment override for testing
@@ -64,20 +69,27 @@ class Logger {
 			return process.env['CACD_LOG_FILE'];
 		}
 
-		// Use XDG_STATE_HOME if available (Linux/macOS standard)
-		const xdgStateHome = process.env['XDG_STATE_HOME'];
-		if (xdgStateHome) {
-			const logDir = path.join(xdgStateHome, 'cacd');
-			return path.join(logDir, 'cacd.log');
+		const homeDir = os.homedir();
+
+		// Windows: %LOCALAPPDATA%\cacd\logs\cacd.log
+		if (process.platform === 'win32') {
+			const localAppData =
+				process.env['LOCALAPPDATA'] || path.join(homeDir, 'AppData', 'Local');
+			return path.join(localAppData, 'cacd', 'logs', 'cacd.log');
 		}
 
-		// Fallback to ~/.local/state/cacd on Linux, ~/Library/Logs on macOS
-		const homeDir = os.homedir();
+		// macOS: ~/Library/Logs/cacd/cacd.log
 		if (process.platform === 'darwin') {
 			return path.join(homeDir, 'Library', 'Logs', 'cacd', 'cacd.log');
 		}
 
-		// Linux and others
+		// Linux: Use XDG_STATE_HOME if available
+		const xdgStateHome = process.env['XDG_STATE_HOME'];
+		if (xdgStateHome) {
+			return path.join(xdgStateHome, 'cacd', 'cacd.log');
+		}
+
+		// Linux fallback: ~/.local/state/cacd/cacd.log
 		return path.join(homeDir, '.local', 'state', 'cacd', 'cacd.log');
 	}
 
