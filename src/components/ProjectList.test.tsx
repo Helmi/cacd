@@ -59,11 +59,20 @@ vi.mock('../services/projectManager.js', () => ({
 }));
 
 // Mock globalSessionOrchestrator
-vi.mock('../services/globalSessionOrchestrator.js', () => ({
-	globalSessionOrchestrator: {
-		getProjectSessions: vi.fn().mockReturnValue([]),
-	},
-}));
+vi.mock('../services/globalSessionOrchestrator.js', () => {
+	// Create mock SessionManager inside factory to avoid hoisting issues
+	const mockSessionManager = {
+		getSessions: vi.fn().mockReturnValue([]),
+		on: vi.fn(),
+		off: vi.fn(),
+	};
+	return {
+		globalSessionOrchestrator: {
+			getProjectSessions: vi.fn().mockReturnValue([]),
+			getManagerForProject: vi.fn().mockReturnValue(mockSessionManager),
+		},
+	};
+});
 
 // Mock SessionManager
 vi.mock('../services/sessionManager.js', () => ({

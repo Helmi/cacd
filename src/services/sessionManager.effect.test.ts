@@ -159,7 +159,7 @@ describe('SessionManager Effect-based Operations', () => {
 			}
 		});
 
-		it('should return existing session without creating new Effect', async () => {
+		it('should allow multiple sessions for the same worktree', async () => {
 			// Setup mock preset
 			vi.mocked(configurationManager.getDefaultPreset).mockReturnValue({
 				id: '1',
@@ -170,7 +170,7 @@ describe('SessionManager Effect-based Operations', () => {
 			// Setup spawn mock
 			vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
 
-			// Create session twice
+			// Create two sessions for the same worktree
 			const effect1 =
 				sessionManager.createSessionWithPresetEffect('/test/worktree');
 			const session1 = await Effect.runPromise(effect1);
@@ -179,10 +179,12 @@ describe('SessionManager Effect-based Operations', () => {
 				sessionManager.createSessionWithPresetEffect('/test/worktree');
 			const session2 = await Effect.runPromise(effect2);
 
-			// Should return the same session
-			expect(session1).toBe(session2);
-			// Spawn should only be called once
-			expect(spawn).toHaveBeenCalledTimes(1);
+			// Should create different sessions with unique IDs
+			expect(session1.id).not.toBe(session2.id);
+			// Both sessions should have the same worktree path
+			expect(session1.worktreePath).toBe(session2.worktreePath);
+			// Spawn should be called twice
+			expect(spawn).toHaveBeenCalledTimes(2);
 		});
 	});
 
@@ -343,19 +345,19 @@ describe('SessionManager Effect-based Operations', () => {
 
 			vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
 
-			// Create session
-			await Effect.runPromise(
+			// Create session and get the session ID
+			const session = await Effect.runPromise(
 				sessionManager.createSessionWithPresetEffect('/test/worktree'),
 			);
 
-			// Terminate session - should return Effect
-			const effect = sessionManager.terminateSessionEffect('/test/worktree');
+			// Terminate session using session ID - should return Effect
+			const effect = sessionManager.terminateSessionEffect(session.id);
 
 			// Execute the Effect and verify it succeeds
 			await Effect.runPromise(effect);
 
-			// Verify session was destroyed
-			expect(sessionManager.getSession('/test/worktree')).toBeUndefined();
+			// Verify session was destroyed (by ID, not path)
+			expect(sessionManager.getSession(session.id)).toBeUndefined();
 			expect(mockPty.kill).toHaveBeenCalled();
 		});
 
@@ -385,8 +387,8 @@ describe('SessionManager Effect-based Operations', () => {
 
 			vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
 
-			// Create session
-			await Effect.runPromise(
+			// Create session and get the session ID
+			const session = await Effect.runPromise(
 				sessionManager.createSessionWithPresetEffect('/test/worktree'),
 			);
 
@@ -395,14 +397,14 @@ describe('SessionManager Effect-based Operations', () => {
 				throw new Error('Process already terminated');
 			});
 
-			// Terminate session - should still succeed
-			const effect = sessionManager.terminateSessionEffect('/test/worktree');
+			// Terminate session using session ID - should still succeed
+			const effect = sessionManager.terminateSessionEffect(session.id);
 
 			// Should not throw, gracefully handle kill failure
 			await Effect.runPromise(effect);
 
-			// Session should still be removed from map
-			expect(sessionManager.getSession('/test/worktree')).toBeUndefined();
+			// Session should still be removed from map (by ID, not path)
+			expect(sessionManager.getSession(session.id)).toBeUndefined();
 		});
 	});
 });

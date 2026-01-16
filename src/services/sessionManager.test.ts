@@ -198,7 +198,7 @@ describe('SessionManager', () => {
 			);
 		});
 
-		it('should return existing session if already created', async () => {
+		it('should allow multiple sessions for same worktree', async () => {
 			// Setup mock preset
 			vi.mocked(configurationManager.getDefaultPreset).mockReturnValue({
 				id: '1',
@@ -209,7 +209,7 @@ describe('SessionManager', () => {
 			// Setup spawn mock
 			vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
 
-			// Create session twice
+			// Create two sessions for the same worktree
 			const session1 = await Effect.runPromise(
 				sessionManager.createSessionWithPresetEffect('/test/worktree'),
 			);
@@ -217,10 +217,12 @@ describe('SessionManager', () => {
 				sessionManager.createSessionWithPresetEffect('/test/worktree'),
 			);
 
-			// Should return the same session
-			expect(session1).toBe(session2);
-			// Spawn should only be called once
-			expect(spawn).toHaveBeenCalledTimes(1);
+			// Should create different sessions with unique IDs
+			expect(session1.id).not.toBe(session2.id);
+			// Both sessions should have the same worktree path
+			expect(session1.worktreePath).toBe(session2.worktreePath);
+			// Spawn should be called twice
+			expect(spawn).toHaveBeenCalledTimes(2);
 		});
 
 		it('should throw error when spawn fails with fallback args', async () => {
@@ -440,15 +442,17 @@ describe('SessionManager', () => {
 			});
 			vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
 
-			// Create and destroy session
-			await Effect.runPromise(
+			// Create session and get its ID
+			const session = await Effect.runPromise(
 				sessionManager.createSessionWithPresetEffect('/test/worktree'),
 			);
-			sessionManager.destroySession('/test/worktree');
+
+			// Destroy session using session ID
+			sessionManager.destroySession(session.id);
 
 			// Verify cleanup
 			expect(mockPty.kill).toHaveBeenCalled();
-			expect(sessionManager.getSession('/test/worktree')).toBeUndefined();
+			expect(sessionManager.getSession(session.id)).toBeUndefined();
 		});
 
 		it('should handle session exit event', async () => {
@@ -607,7 +611,7 @@ describe('SessionManager', () => {
 			);
 		});
 
-		it('should return existing session if already created', async () => {
+		it('should allow multiple sessions for same worktree with devcontainer', async () => {
 			// Setup mock preset
 			vi.mocked(configurationManager.getDefaultPreset).mockReturnValue({
 				id: '1',
@@ -623,7 +627,7 @@ describe('SessionManager', () => {
 				execCommand: 'devcontainer exec',
 			};
 
-			// Create session twice
+			// Create two sessions for the same worktree
 			const session1 = await Effect.runPromise(
 				sessionManager.createSessionWithDevcontainerEffect(
 					'/test/worktree',
@@ -637,10 +641,12 @@ describe('SessionManager', () => {
 				),
 			);
 
-			// Should return the same session
-			expect(session1).toBe(session2);
-			// spawn should only be called once
-			expect(spawn).toHaveBeenCalledTimes(1);
+			// Should create different sessions with unique IDs
+			expect(session1.id).not.toBe(session2.id);
+			// Both sessions should have the same worktree path
+			expect(session1.worktreePath).toBe(session2.worktreePath);
+			// spawn should be called twice
+			expect(spawn).toHaveBeenCalledTimes(2);
 		});
 
 		it('should handle complex exec commands with multiple arguments', async () => {
@@ -758,7 +764,7 @@ describe('SessionManager', () => {
 				},
 			);
 
-			await Effect.runPromise(
+			const session = await Effect.runPromise(
 				sessionManager.createSessionWithDevcontainerEffect(
 					'/test/worktree',
 					{
@@ -769,10 +775,9 @@ describe('SessionManager', () => {
 				),
 			);
 
-			// Should call createSessionWithPreset internally
-			const session = sessionManager.getSession('/test/worktree');
+			// Verify session was created with correct devcontainer config
 			expect(session).toBeDefined();
-			expect(session?.devcontainerConfig).toEqual({
+			expect(session.devcontainerConfig).toEqual({
 				upCommand: 'devcontainer up --workspace-folder .',
 				execCommand: 'devcontainer exec --workspace-folder .',
 			});

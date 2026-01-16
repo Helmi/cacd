@@ -134,13 +134,26 @@ describe('SessionManager - Auto Approval Recovery', () => {
 		);
 
 		// Detection sequence: first prompt (no auto-approval), back to busy, second prompt (should auto-approve)
+		// Each phase needs at least 6 detections to persist (500ms / 100ms + 1)
 		const detectionStates = [
+			// First waiting_input phase (6 detections to persist)
 			'waiting_input',
 			'waiting_input',
 			'waiting_input',
+			'waiting_input',
+			'waiting_input',
+			'waiting_input',
+			// Busy phase (6 detections to persist)
 			'busy',
 			'busy',
 			'busy',
+			'busy',
+			'busy',
+			'busy',
+			// Second waiting_input phase (auto-approval should trigger)
+			'waiting_input',
+			'waiting_input',
+			'waiting_input',
 			'waiting_input',
 			'waiting_input',
 			'waiting_input',
@@ -175,19 +188,26 @@ describe('SessionManager - Auto Approval Recovery', () => {
 			autoApprovalFailed: true,
 		}));
 
-		// First waiting_input cycle (auto-approval suppressed) (use async to process mutex updates)
-		await vi.advanceTimersByTimeAsync(STATE_CHECK_INTERVAL_MS * 3);
+		// First waiting_input cycle - need to wait for state persistence duration
+		// (STATE_CHECK_INTERVAL_MS * N where N intervals cover STATE_PERSISTENCE_DURATION_MS)
+		await vi.advanceTimersByTimeAsync(
+			STATE_CHECK_INTERVAL_MS + STATE_PERSISTENCE_DURATION_MS,
+		);
 		expect(session.stateMutex.getSnapshot().state).toBe('waiting_input');
 		expect(session.stateMutex.getSnapshot().autoApprovalFailed).toBe(true);
 
-		// Transition back to busy should reset the failure flag (use async to process mutex updates)
-		await vi.advanceTimersByTimeAsync(STATE_CHECK_INTERVAL_MS * 3);
+		// Transition back to busy should reset the failure flag
+		// Need to advance enough time for busy state to persist
+		await vi.advanceTimersByTimeAsync(
+			STATE_CHECK_INTERVAL_MS + STATE_PERSISTENCE_DURATION_MS,
+		);
 		expect(session.stateMutex.getSnapshot().state).toBe('busy');
 		expect(session.stateMutex.getSnapshot().autoApprovalFailed).toBe(false);
 
-		// Next waiting_input should trigger pending_auto_approval (use async to process mutex updates)
+		// Next waiting_input should trigger pending_auto_approval
+		// Add extra interval time for the async mutex update and handleAutoApproval trigger
 		await vi.advanceTimersByTimeAsync(
-			STATE_CHECK_INTERVAL_MS * 3 + STATE_PERSISTENCE_DURATION_MS,
+			STATE_CHECK_INTERVAL_MS * 2 + STATE_PERSISTENCE_DURATION_MS,
 		);
 		// State should now be pending_auto_approval (waiting for verification)
 		expect(session.stateMutex.getSnapshot().state).toBe(
@@ -218,10 +238,8 @@ describe('SessionManager - Auto Approval Recovery', () => {
 		const handler = vi.fn();
 		sessionManager.on('sessionStateChanged', handler);
 
-		sessionManager.cancelAutoApproval(
-			session.worktreePath,
-			'User pressed a key',
-		);
+		// Use session.id instead of session.worktreePath
+		sessionManager.cancelAutoApproval(session.id, 'User pressed a key');
 
 		// Wait for async mutex update to complete (use vi.waitFor for proper async handling)
 		await vi.waitFor(() => {
@@ -251,9 +269,10 @@ describe('SessionManager - Auto Approval Recovery', () => {
 		const handler = vi.fn();
 		sessionManager.on('sessionStateChanged', handler);
 
-		// Advance to pending_auto_approval state (use async to process mutex updates)
+		// Advance to pending_auto_approval state - need enough time for state persistence
+		// Add extra interval time for the async mutex update and handleAutoApproval trigger
 		await vi.advanceTimersByTimeAsync(
-			STATE_CHECK_INTERVAL_MS * 3 + STATE_PERSISTENCE_DURATION_MS,
+			STATE_CHECK_INTERVAL_MS * 2 + STATE_PERSISTENCE_DURATION_MS,
 		);
 		// State should be pending_auto_approval (waiting for verification)
 		expect(session.stateMutex.getSnapshot().state).toBe(
