@@ -57,8 +57,14 @@ export const TerminalView = ({ sessionId, socket }: TerminalViewProps) => {
         socket.on('terminal_data', handleData);
 
         // Handle outgoing data
+        // Filter out terminal-to-host response sequences that xterm.js generates
+        // These should not be sent back to the PTY as they can cause ghost keypresses
+        const terminalResponsePattern = /\x1b\[\d+;\d+R|\x1b\[\??>\d+[;0-9]*c|\x1b\[[03]n/g;
         term.onData((data) => {
-            socket.emit('input', { sessionId, data });
+            const filteredData = data.replace(terminalResponsePattern, '');
+            if (filteredData.length > 0) {
+                socket.emit('input', { sessionId, data: filteredData });
+            }
         });
 
         // Handle resize

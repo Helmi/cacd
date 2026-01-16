@@ -225,8 +225,20 @@ export const TerminalSession = memo(function TerminalSession({
 		currentSocket.on('terminal_data', handleData);
 
 		// Handle outgoing data - uses ref for current session.id
+		// Filter out terminal-to-host response sequences that xterm.js generates
+		// These should not be sent back to the PTY as they can cause ghost keypresses
+		// Common responses:
+		// - CPR (Cursor Position Report): \x1b[row;colR (e.g., \x1b[24;80R)
+		// - DA (Device Attributes): \x1b[?...c or \x1b[>...c
+		// - DSR (Device Status Report): \x1b[0n (OK) or \x1b[3n (malfunction)
+		const terminalResponsePattern = /\x1b\[\d+;\d+R|\x1b\[\??>\d+[;0-9]*c|\x1b\[[03]n/g;
 		const onDataDisposable = term.onData(data => {
-			currentSocket.emit('input', {sessionId: sessionIdRef.current, data});
+			// Filter out terminal response sequences
+			const filteredData = data.replace(terminalResponsePattern, '');
+			// Only emit if there's actual user input left
+			if (filteredData.length > 0) {
+				currentSocket.emit('input', {sessionId: sessionIdRef.current, data: filteredData});
+			}
 		});
 
 		// Check if terminal is scrolled up from bottom
