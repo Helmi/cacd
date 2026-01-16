@@ -179,8 +179,7 @@ export const TerminalSession = memo(function TerminalSession({
 
 		term.open(terminalRef.current);
 		fitAddon.fit();
-		// Store initial dimensions
-		lastDimsRef.current = { cols: term.cols, rows: term.rows };
+		// Don't store dimensions yet - let the delayed handleResize() emit them to backend
 		// Don't auto-focus on mount - let isFocused prop control this
 		if (isFocused) {
 			term.focus();
@@ -225,24 +224,53 @@ export const TerminalSession = memo(function TerminalSession({
 		currentSocket.on('terminal_data', handleData);
 
 		// Handle outgoing data - uses ref for current session.id
-		// Filter out terminal-to-host response sequences that xterm.js generates
-		// These should not be sent back to the PTY as they can cause ghost keypresses
-		// NOTE: Only filter for Claude Code sessions - other CLIs (Codex, Gemini) need
-		// CPR (Cursor Position Report) responses for cursor position queries to work
-		// Common responses:
-		// - CPR (Cursor Position Report): \x1b[row;colR (e.g., \x1b[24;80R)
-		// - DA (Device Attributes): \x1b[?...c or \x1b[>...c
-		// - DSR (Device Status Report): \x1b[0n (OK) or \x1b[3n (malfunction)
-		const shouldFilterResponses = session.agentId === 'claude';
-		const terminalResponsePattern = /\x1b\[\d+;\d+R|\x1b\[\??>\d+[;0-9]*c|\x1b\[[03]n/g;
+		// Filter terminal-to-host response sequences that xterm.js generates.
+		// These should not be sent to the PTY as they appear as ghost input.
+		// Terminal responses filtered for ALL sessions:
+		// - DA (Device Attributes): \x1b[?...c or \x1b[>...c (e.g., \x1b[?1;2c)
+		// - DECRPM (Mode Status): \x1b[?...;...$y (e.g., \x1b[?2004;2$y)
+		// - DSR (Device Status Report): \x1b[0n or \x1b[3n
+		// CPR (Cursor Position Report) handling varies by agent:
+		// - Claude: debounced (rapid updates cause ghost keypresses)
+		// - Others (Codex, Gemini): passed through (needed for cursor queries)
+		const isClaudeSession = session.agentId === 'claude';
+		// CPR pattern: \x1b[row;colR
+		const cprPattern = /\x1b\[\d+;\d+R/g;
+		// Other terminal responses to always filter (not needed by any CLI)
+		const otherResponsePattern = /\x1b\[\?[0-9;]*\$y|\x1b\[\??>[0-9;]*c|\x1b\[\?[0-9;]*c|\x1b\[[03]n/g;
+		let pendingCpr: string | null = null;
+		let cprTimeout: ReturnType<typeof setTimeout> | null = null;
+		const CPR_DEBOUNCE_MS = 100;
+
 		const onDataDisposable = term.onData(data => {
-			// Filter out terminal response sequences only for Claude Code sessions
-			const dataToSend = shouldFilterResponses
-				? data.replace(terminalResponsePattern, '')
-				: data;
-			// Only emit if there's data to send
-			if (dataToSend.length > 0) {
-				currentSocket.emit('input', {sessionId: sessionIdRef.current, data: dataToSend});
+			// Always filter DA, DECRPM, DSR for all sessions
+			let filtered = data.replace(otherResponsePattern, '');
+
+			// Handle CPR based on session type
+			const cprMatches = filtered.match(cprPattern);
+			filtered = filtered.replace(cprPattern, '');
+
+			// Send non-response data immediately
+			if (filtered.length > 0) {
+				currentSocket.emit('input', {sessionId: sessionIdRef.current, data: filtered});
+			}
+
+			// Handle CPR responses
+			if (cprMatches && cprMatches.length > 0) {
+				if (isClaudeSession) {
+					// Claude: debounce CPR to prevent ghost keypresses during rapid updates
+					pendingCpr = cprMatches[cprMatches.length - 1];
+					if (cprTimeout) clearTimeout(cprTimeout);
+					cprTimeout = setTimeout(() => {
+						if (pendingCpr) {
+							currentSocket.emit('input', {sessionId: sessionIdRef.current, data: pendingCpr});
+							pendingCpr = null;
+						}
+					}, CPR_DEBOUNCE_MS);
+				} else {
+					// Non-Claude: send CPR immediately (needed for cursor position queries)
+					currentSocket.emit('input', {sessionId: sessionIdRef.current, data: cprMatches.join('')});
+				}
 			}
 		});
 
@@ -280,12 +308,9 @@ export const TerminalSession = memo(function TerminalSession({
 			);
 		};
 
-		// Initial fit after a short delay (no socket emit needed on first render)
+		// Initial fit after a short delay - emit resize so PTY knows the terminal size
 		setTimeout(() => {
-			if (fitAddonRef.current && xtermRef.current) {
-				fitAddonRef.current.fit();
-				lastDimsRef.current = { cols: xtermRef.current.cols, rows: xtermRef.current.rows };
-			}
+			handleResize();
 		}, 100);
 
 		// ResizeObserver handles both window and container resizes
@@ -311,6 +336,11 @@ export const TerminalSession = memo(function TerminalSession({
 
 			// Cancel any pending debounced calls
 			debouncedFit.cancel();
+
+			// Clear any pending CPR timeout
+			if (cprTimeout) {
+				clearTimeout(cprTimeout);
+			}
 
 			// Unsubscribe BEFORE removing listeners to ensure proper cleanup
 			currentSocket.emit('unsubscribe_session', currentSessionId);
