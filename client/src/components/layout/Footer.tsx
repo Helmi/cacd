@@ -1,9 +1,29 @@
+import { useMemo } from 'react'
 import { useAppStore } from '@/lib/store'
-import { Circle, Wifi, Cpu, Command } from 'lucide-react'
+import { Circle, Wifi, Cpu, Command, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+// Detect Apple platforms (Mac, iPhone, iPad)
+function useIsApplePlatform() {
+  return useMemo(() => {
+    if (typeof navigator === 'undefined') return false
+    // Check userAgentData first (modern browsers)
+    const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData
+    if (uaData?.platform) {
+      return /mac|ios/i.test(uaData.platform)
+    }
+    // Fallback to userAgent
+    return /mac|iphone|ipad|ipod/i.test(navigator.userAgent)
+  }, [])
+}
 
 export function Footer() {
   const { selectedSessions, theme, font, fontScale, connectionStatus } = useAppStore()
+  const isApple = useIsApplePlatform()
+
+  const handleLock = () => {
+    window.dispatchEvent(new CustomEvent('cacd-lock'))
+  }
 
   const statusColors = {
     connected: 'fill-status-active text-status-active',
@@ -20,7 +40,7 @@ export function Footer() {
   }
 
   return (
-    <footer className="flex h-7 items-center justify-between border-t border-border bg-sidebar px-3 text-xs text-muted-foreground">
+    <footer className="flex h-7 shrink-0 items-center justify-between border-t border-border bg-sidebar px-3 text-xs text-muted-foreground">
       <div className="flex items-center gap-3">
         {/* Connection status */}
         <div className="flex items-center gap-1">
@@ -35,9 +55,24 @@ export function Footer() {
       </div>
 
       <div className="flex items-center gap-3">
+        {/* Lock button */}
+        <button
+          onClick={handleLock}
+          className="flex items-center gap-1 text-muted-foreground/70 hover:text-foreground transition-colors"
+          title={`Lock screen (${isApple ? '⌘' : 'Ctrl'}+L)`}
+        >
+          <Lock className="h-3 w-3" />
+          <span className="hidden sm:inline text-xs">{isApple ? '⌘' : '⌃'}+L</span>
+        </button>
+        <span className="text-border">│</span>
+
         {/* Keyboard hints */}
         <div className="hidden md:flex items-center gap-1 text-muted-foreground/70">
-          <Command className="h-2.5 w-2.5" />
+          {isApple ? (
+            <span className="text-sm">⌘</span>
+          ) : (
+            <Command className="h-2.5 w-2.5" />
+          )}
           <span>+click for split • click pane to select slot</span>
         </div>
         <span className="hidden md:block text-border">│</span>

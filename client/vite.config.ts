@@ -29,7 +29,7 @@ const apiPort = getApiPort()
 const version = getVersion()
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   resolve: {
     alias: {
@@ -38,15 +38,34 @@ export default defineConfig({
   },
   define: {
     // Inject version at build time - accessible as import.meta.env.VITE_APP_VERSION
-    'import.meta.env.VITE_APP_VERSION': JSON.stringify(version),
+    // Append -dev suffix in development mode
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(
+      mode === 'development' ? `${version}-dev` : version
+    ),
   },
   server: {
+    host: true, // Listen on all interfaces (0.0.0.0) for LAN access
+    allowedHosts: true, // Allow all hosts (localhost, IPs, custom domains)
     proxy: {
-      '/api': `http://localhost:${apiPort}`,
+      '/api': {
+        target: `http://localhost:${apiPort}`,
+        changeOrigin: true,
+        cookieDomainRewrite: '',
+        secure: false,
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            console.log('Proxy error:', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req) => {
+            console.log('Proxying:', req.method, req.url, '→', `localhost:${apiPort}`);
+          });
+        },
+      },
       '/socket.io': {
         target: `ws://localhost:${apiPort}`,
-        ws: true
+        ws: true,
+        changeOrigin: true,
       }
     }
   }
-})
+}))

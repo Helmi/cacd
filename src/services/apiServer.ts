@@ -1,19 +1,49 @@
 import Fastify, {FastifyInstance} from 'fastify';
 import fastifyStatic from '@fastify/static';
+import fastifyCookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import {Server} from 'socket.io';
 import {coreService} from './coreService.js';
 import {logger} from '../utils/logger.js';
 import {configurationManager} from './configurationManager.js';
 import {projectManager} from './projectManager.js';
+import {authService} from './authService.js';
 import {ConfigurationData} from '../types/index.js';
 import {ValidationError} from '../types/errors.js';
 import {Effect} from 'effect';
 import path from 'path';
-import {fileURLToPath} from 'url';
-import {getGitStatusLimited, getChangedFilesLimited, getFileDiff} from '../utils/gitStatus.js';
+import {fileURLToPath, URL} from 'url';
+import {
+	getGitStatusLimited,
+	getChangedFilesLimited,
+	getFileDiff,
+} from '../utils/gitStatus.js';
 import {randomUUID} from 'crypto';
 import {generateRandomPort, isDevMode} from '../constants/env.js';
+
+// Check if hostname is allowed (localhost or private network IP)
+function isAllowedHost(hostname: string): boolean {
+	// Localhost variants
+	if (['localhost', '127.0.0.1', '::1'].includes(hostname)) {
+		return true;
+	}
+
+	// Check for private network IPs (RFC 1918)
+	// 10.0.0.0/8
+	if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+		return true;
+	}
+	// 172.16.0.0/12 (172.16.x.x - 172.31.x.x)
+	if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+		return true;
+	}
+	// 192.168.0.0/16
+	if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+		return true;
+	}
+
+	return false;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,9 +64,47 @@ export class APIServer {
 	}
 
 	private async setup(): Promise<void> {
-		// Register CORS
+		// Register cookie plugin for session management
+		await this.app.register(fastifyCookie, {
+			secret: randomUUID(), // Used for signing cookies
+		});
+
+		// Register CORS - allow localhost and private network origins
 		await this.app.register(cors, {
-			origin: true, // Allow all origins for now (dev mode)
+			origin: (origin, cb) => {
+				// Allow requests with no origin (like curl, mobile apps)
+				if (!origin) {
+					cb(null, true);
+					return;
+				}
+				// Allow localhost and private network origins
+				try {
+					const url = new URL(origin);
+					const allowed = isAllowedHost(url.hostname);
+					if (isDevMode) {
+						logger.info(`CORS check: origin=${origin} hostname=${url.hostname} allowed=${allowed}`);
+					}
+					if (allowed) {
+						cb(null, true);
+					} else {
+						logger.warn(`CORS rejected origin: ${origin}`);
+						cb(new Error('Not allowed by CORS'), false);
+					}
+				} catch (e) {
+					logger.warn(`CORS invalid origin: ${origin}`);
+					cb(new Error('Invalid origin'), false);
+				}
+			},
+			credentials: true, // Allow cookies
+		});
+
+		// Host header validation middleware (DNS rebinding protection)
+		this.app.addHook('preHandler', async (request, reply) => {
+			const host = request.headers.host?.split(':')[0];
+			if (host && !isAllowedHost(host)) {
+				logger.warn(`Blocked request with invalid Host header: ${host}`);
+				return reply.status(403).send({error: 'Invalid host'});
+			}
 		});
 
 		// Register Static Files (Serve the React App)
@@ -60,6 +128,136 @@ export class APIServer {
 	}
 
 	private setupRoutes() {
+		// --- Authentication Routes (public) ---
+
+		// Check auth status - returns whether user has valid session
+		this.app.get('/api/auth/status', async request => {
+			const sessionId = request.cookies['cacd_session'];
+			if (!sessionId) {
+				return {authenticated: false};
+			}
+
+			const session = authService.validateSession(sessionId);
+			return {
+				authenticated: !!session,
+				expiresAt: session?.expiresAt,
+			};
+		});
+
+		// Verify passcode and create session
+		this.app.post<{Body: {passcode: string}}>(
+			'/api/auth/passcode',
+			async (request, reply) => {
+				const ip = request.ip || 'unknown';
+
+				// Check rate limiting
+				const rateLimit = authService.checkRateLimit(ip);
+				if (!rateLimit.allowed) {
+					reply.status(429);
+					return {
+						success: false,
+						error: 'Too many attempts',
+						retryAfter: rateLimit.retryAfter,
+					};
+				}
+
+				const {passcode} = request.body;
+				if (!passcode) {
+					reply.status(400);
+					return {success: false, error: 'Passcode required'};
+				}
+
+				// Get stored passcode hash from config
+				const config = configurationManager.getConfiguration();
+				const passcodeHash = config.passcodeHash;
+
+				if (!passcodeHash) {
+					// No passcode set - this shouldn't happen if onboarding completed
+					reply.status(500);
+					return {success: false, error: 'Authentication not configured'};
+				}
+
+				// Verify passcode
+				const valid = await authService.verifyPasscode(passcode, passcodeHash);
+				authService.recordAttempt(ip, valid);
+
+				if (!valid) {
+					const updatedRateLimit = authService.checkRateLimit(ip);
+					reply.status(401);
+					return {
+						success: false,
+						error: 'Invalid passcode',
+						attemptsRemaining: updatedRateLimit.attemptsRemaining,
+					};
+				}
+
+				// Create session and set cookie
+				const session = authService.createSession();
+				reply.setCookie('cacd_session', session.id, {
+					path: '/',
+					httpOnly: true,
+					sameSite: 'strict',
+					maxAge: 7 * 24 * 60 * 60, // 7 days
+				});
+
+				logger.info('User authenticated successfully');
+				return {success: true};
+			},
+		);
+
+		// Logout - invalidate session
+		this.app.post('/api/auth/logout', async (request, reply) => {
+			const sessionId = request.cookies['cacd_session'];
+			if (sessionId) {
+				authService.invalidateSession(sessionId);
+			}
+
+			reply.clearCookie('cacd_session', {path: '/'});
+			return {success: true};
+		});
+
+		// Validate access token (for token-based URL access)
+		this.app.get('/api/auth/validate-token', async _request => {
+			const config = configurationManager.getConfiguration();
+			const storedToken = config.accessToken;
+
+			// If no token is configured, auth is not set up
+			if (!storedToken) {
+				return {valid: false, reason: 'not_configured'};
+			}
+
+			// Token is validated via URL path, this just checks if auth is configured
+			return {valid: true, authRequired: !!config.passcodeHash};
+		});
+
+		// --- Session Middleware for Protected Routes ---
+		// All /api/* routes (except auth) require valid session
+		this.app.addHook('preHandler', async (request, reply) => {
+			// Skip auth routes
+			if (request.url.startsWith('/api/auth/')) {
+				return;
+			}
+
+			// Skip non-API routes
+			if (!request.url.startsWith('/api/')) {
+				return;
+			}
+
+			// Check for valid session
+			const sessionId = request.cookies['cacd_session'];
+			if (!sessionId) {
+				return reply.status(401).send({error: 'Authentication required'});
+			}
+
+			const session = authService.validateSession(sessionId);
+			if (!session) {
+				reply.clearCookie('cacd_session', {path: '/'});
+				return reply.status(401).send({error: 'Session expired'});
+			}
+
+			// Session is valid, continue
+		});
+
 		// --- State ---
 		this.app.get('/api/state', async () => {
 			return {
@@ -93,6 +291,7 @@ export class APIServer {
 
 				if (result) {
 					logger.info(`API: Added project ${result.name}`);
+					coreService.emitProjectAdded(result.path);
 					return {success: true, project: result};
 				} else {
 					logger.error(`API: Failed to add project: ${path}`);
@@ -110,6 +309,7 @@ export class APIServer {
 
 				if (removed) {
 					logger.info(`API: Removed project: ${path}`);
+					coreService.emitProjectRemoved(path);
 					return {success: true};
 				} else {
 					logger.error(`API: Failed to remove project (not found): ${path}`);
@@ -344,32 +544,31 @@ export class APIServer {
 			return {success: true, worktree: result.right};
 		});
 
-		this.app.post<{Body: {path: string; deleteBranch: boolean; projectPath?: string}}>(
-			'/api/worktree/delete',
-			async (request, reply) => {
-				const {path, deleteBranch, projectPath} = request.body;
-				logger.info(
-					`API: Deleting worktree ${path} (deleteBranch: ${deleteBranch}) in project ${projectPath || 'default'}`,
-				);
+		this.app.post<{
+			Body: {path: string; deleteBranch: boolean; projectPath?: string};
+		}>('/api/worktree/delete', async (request, reply) => {
+			const {path, deleteBranch, projectPath} = request.body;
+			logger.info(
+				`API: Deleting worktree ${path} (deleteBranch: ${deleteBranch}) in project ${projectPath || 'default'}`,
+			);
 
-				// Get worktree service for the specified project, or fall back to default
-				const worktreeService = projectPath
-					? projectManager.instance.getWorktreeService(projectPath)
-					: coreService.worktreeService;
+			// Get worktree service for the specified project, or fall back to default
+			const worktreeService = projectPath
+				? projectManager.instance.getWorktreeService(projectPath)
+				: coreService.worktreeService;
 
-				const effect = worktreeService.deleteWorktreeEffect(path, {
-					deleteBranch,
-				});
-				const result = await Effect.runPromise(Effect.either(effect));
+			const effect = worktreeService.deleteWorktreeEffect(path, {
+				deleteBranch,
+			});
+			const result = await Effect.runPromise(Effect.either(effect));
 
-				if (result._tag === 'Left') {
-					return reply.code(500).send({error: result.left.message});
-				}
+			if (result._tag === 'Left') {
+				return reply.code(500).send({error: result.left.message});
+			}
 
-				await coreService.refreshWorktrees();
-				return {success: true};
-			},
-		);
+			await coreService.refreshWorktrees();
+			return {success: true};
+		});
 
 		this.app.post<{
 			Body: {sourceBranch: string; targetBranch: string; useRebase: boolean};
@@ -407,33 +606,37 @@ export class APIServer {
 			}));
 		});
 
-		this.app.post<{Body: {path: string; presetId?: string; sessionName?: string}}>(
-			'/api/session/create',
-			async (request, reply) => {
-				const {path, presetId, sessionName} = request.body;
-				logger.info(
-					`API: Creating session "${sessionName || 'unnamed'}" for ${path} with preset: ${presetId || 'default'}`,
-				);
+		this.app.post<{
+			Body: {path: string; presetId?: string; sessionName?: string};
+		}>('/api/session/create', async (request, reply) => {
+			const {path, presetId, sessionName} = request.body;
+			logger.info(
+				`API: Creating session "${sessionName || 'unnamed'}" for ${path} with preset: ${presetId || 'default'}`,
+			);
 
-				const effect = coreService.sessionManager.createSessionWithPresetEffect(
-					path,
-					presetId,
-					sessionName,
-				);
-				const result = await Effect.runPromise(Effect.either(effect));
+			const effect = coreService.sessionManager.createSessionWithPresetEffect(
+				path,
+				presetId,
+				sessionName,
+			);
+			const result = await Effect.runPromise(Effect.either(effect));
 
-				if (result._tag === 'Left') {
-					return reply.code(500).send({error: result.left.message});
-				}
+			if (result._tag === 'Left') {
+				return reply.code(500).send({error: result.left.message});
+			}
 
-				// Session created successfully
-				const session = result.right;
-				// Ensure it's marked active
-				coreService.sessionManager.setSessionActive(session.id, true);
+			// Session created successfully
+			const session = result.right;
+			// Ensure it's marked active
+			coreService.sessionManager.setSessionActive(session.id, true);
 
-				return {success: true, id: session.id, name: session.name, agentId: session.agentId};
-			},
-		);
+			return {
+				success: true,
+				id: session.id,
+				name: session.name,
+				agentId: session.agentId,
+			};
+		});
 
 		this.app.post<{Body: {id: string}}>(
 			'/api/session/stop',
@@ -506,30 +709,33 @@ export class APIServer {
 			return configurationManager.getAgentsConfig();
 		});
 
-		this.app.get<{Params: {id: string}}>('/api/agents/:id', async (request, reply) => {
-			const agent = configurationManager.getAgentById(request.params.id);
-			if (!agent) {
-				return reply.code(404).send({error: 'Agent not found'});
-			}
-			return agent;
-		});
-
-		this.app.put<{Params: {id: string}; Body: import('../types/index.js').AgentConfig}>(
+		this.app.get<{Params: {id: string}}>(
 			'/api/agents/:id',
 			async (request, reply) => {
-				const {id} = request.params;
-				const agent = request.body;
-
-				// Ensure ID matches
-				if (agent.id !== id) {
-					return reply.code(400).send({error: 'Agent ID mismatch'});
+				const agent = configurationManager.getAgentById(request.params.id);
+				if (!agent) {
+					return reply.code(404).send({error: 'Agent not found'});
 				}
-
-				configurationManager.saveAgent(agent);
-				logger.info(`API: Saved agent ${id}`);
-				return {success: true, agent};
+				return agent;
 			},
 		);
+
+		this.app.put<{
+			Params: {id: string};
+			Body: import('../types/index.js').AgentConfig;
+		}>('/api/agents/:id', async (request, reply) => {
+			const {id} = request.params;
+			const agent = request.body;
+
+			// Ensure ID matches
+			if (agent.id !== id) {
+				return reply.code(400).send({error: 'Agent ID mismatch'});
+			}
+
+			configurationManager.saveAgent(agent);
+			logger.info(`API: Saved agent ${id}`);
+			return {success: true, agent};
+		});
 
 		this.app.post<{Body: import('../types/index.js').AgentConfig}>(
 			'/api/agents',
@@ -538,7 +744,9 @@ export class APIServer {
 
 				// Check if agent with this ID already exists
 				if (configurationManager.getAgentById(agent.id)) {
-					return reply.code(409).send({error: 'Agent with this ID already exists'});
+					return reply
+						.code(409)
+						.send({error: 'Agent with this ID already exists'});
 				}
 
 				configurationManager.saveAgent(agent);
@@ -547,29 +755,37 @@ export class APIServer {
 			},
 		);
 
-		this.app.delete<{Params: {id: string}}>('/api/agents/:id', async (request, reply) => {
-			const {id} = request.params;
-			const deleted = configurationManager.deleteAgent(id);
+		this.app.delete<{Params: {id: string}}>(
+			'/api/agents/:id',
+			async (request, reply) => {
+				const {id} = request.params;
+				const deleted = configurationManager.deleteAgent(id);
 
-			if (!deleted) {
-				return reply.code(400).send({error: 'Cannot delete agent (last agent or default)'});
-			}
+				if (!deleted) {
+					return reply
+						.code(400)
+						.send({error: 'Cannot delete agent (last agent or default)'});
+				}
 
-			logger.info(`API: Deleted agent ${id}`);
-			return {success: true};
-		});
+				logger.info(`API: Deleted agent ${id}`);
+				return {success: true};
+			},
+		);
 
-		this.app.post<{Body: {id: string}}>('/api/agents/default', async (request, reply) => {
-			const {id} = request.body;
-			const success = configurationManager.setDefaultAgent(id);
+		this.app.post<{Body: {id: string}}>(
+			'/api/agents/default',
+			async (request, reply) => {
+				const {id} = request.body;
+				const success = configurationManager.setDefaultAgent(id);
 
-			if (!success) {
-				return reply.code(404).send({error: 'Agent not found'});
-			}
+				if (!success) {
+					return reply.code(404).send({error: 'Agent not found'});
+				}
 
-			logger.info(`API: Set default agent to ${id}`);
-			return {success: true};
-		});
+				logger.info(`API: Set default agent to ${id}`);
+				return {success: true};
+			},
+		);
 
 		// Create session with agent (new endpoint)
 		this.app.post<{
@@ -591,7 +807,10 @@ export class APIServer {
 			}
 
 			// Validate options
-			const validationErrors = configurationManager.validateAgentOptions(agent, options);
+			const validationErrors = configurationManager.validateAgentOptions(
+				agent,
+				options,
+			);
 			if (validationErrors.length > 0) {
 				return reply.code(400).send({error: validationErrors.join('; ')});
 			}
@@ -624,7 +843,12 @@ export class APIServer {
 			const session = result.right;
 			coreService.sessionManager.setSessionActive(session.id, true);
 
-			return {success: true, id: session.id, name: session.name, agentId: session.agentId};
+			return {
+				success: true,
+				id: session.id,
+				name: session.name,
+				agentId: session.agentId,
+			};
 		});
 	}
 
@@ -632,9 +856,60 @@ export class APIServer {
 		this.app.ready().then(() => {
 			this.io = new Server(this.app.server, {
 				cors: {
-					origin: '*',
+					origin: (origin, cb) => {
+						// Allow requests with no origin
+						if (!origin) {
+							cb(null, true);
+							return;
+						}
+						// Allow localhost and private network origins
+						try {
+							const url = new URL(origin);
+							if (isAllowedHost(url.hostname)) {
+								cb(null, true);
+							} else {
+								cb(new Error('Not allowed by CORS'));
+							}
+						} catch {
+							cb(new Error('Invalid origin'));
+						}
+					},
 					methods: ['GET', 'POST'],
+					credentials: true, // Allow cookies
 				},
+			});
+
+			// Socket.IO authentication middleware
+			this.io.use((socket, next) => {
+				// Parse cookies from handshake
+				const cookieHeader = socket.handshake.headers.cookie;
+				if (!cookieHeader) {
+					return next(new Error('Authentication required'));
+				}
+
+				// Simple cookie parsing
+				const cookies: Record<string, string> = {};
+				cookieHeader.split(';').forEach(cookie => {
+					const [name, value] = cookie.trim().split('=');
+					if (name && value) {
+						cookies[name] = value;
+					}
+				});
+
+				const sessionId = cookies['cacd_session'];
+				if (!sessionId) {
+					return next(new Error('Authentication required'));
+				}
+
+				const session = authService.validateSession(sessionId);
+				if (!session) {
+					return next(new Error('Session expired'));
+				}
+
+				// Store session info on socket for later use
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				(socket as any).authSession = session;
+				next();
 			});
 
 			this.io.on('connection', socket => {
@@ -687,7 +962,9 @@ export class APIServer {
 
 				socket.on('unsubscribe_session', (sessionId: string) => {
 					const socketId = socket.id;
-					logger.info(`Client ${socketId} unsubscribed from session ${sessionId}`);
+					logger.info(
+						`Client ${socketId} unsubscribed from session ${sessionId}`,
+					);
 
 					// Clear from tracking if this was the tracked session
 					if (this.socketSubscriptions.get(socketId) === sessionId) {
@@ -760,8 +1037,20 @@ export class APIServer {
 		coreService.on('sessionDestroyed', notifyUpdate);
 	}
 
-	public getToken(): string {
-		return '';
+	/**
+	 * Get the access token for WebUI URL
+	 */
+	public getAccessToken(): string {
+		const config = configurationManager.getConfiguration();
+		return config.accessToken || '';
+	}
+
+	/**
+	 * Check if authentication is configured
+	 */
+	public isAuthConfigured(): boolean {
+		const config = configurationManager.getConfiguration();
+		return !!(config.accessToken && config.passcodeHash);
 	}
 
 	/**
@@ -773,7 +1062,7 @@ export class APIServer {
 	 */
 	public async start(
 		port: number = 3000,
-		host: string = '0.0.0.0',
+		host: string = '127.0.0.1', // Bind to localhost only for security
 		devMode: boolean = false,
 	): Promise<{address: string; port: number}> {
 		// Wait for setup to complete before starting
@@ -786,9 +1075,18 @@ export class APIServer {
 			try {
 				const address = await this.app.listen({port: currentPort, host});
 				logger.info(`API Server running at ${address}`);
-				logger.info(
-					`Open in browser: http://${host === '0.0.0.0' ? 'localhost' : host}:${currentPort}`,
-				);
+
+				// Display access URL with auth token if configured
+				const accessToken = configurationManager.getAccessToken();
+				const baseUrl = `http://${host === '0.0.0.0' ? 'localhost' : host}:${currentPort}`;
+				if (accessToken) {
+					logger.info(`WebUI: ${baseUrl}/${accessToken}`);
+					if (devMode) {
+						logger.info(`Dev passcode: devdev`);
+					}
+				} else {
+					logger.info(`Open in browser: ${baseUrl}`);
+				}
 				return {address, port: currentPort};
 			} catch (err: unknown) {
 				const isAddressInUse =

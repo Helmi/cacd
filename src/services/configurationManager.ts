@@ -505,7 +505,10 @@ export class ConfigurationManager {
 		}
 
 		// No agents config yet - check if we should migrate from presets
-		if (this.config.commandPresets && this.config.commandPresets.presets.length > 0) {
+		if (
+			this.config.commandPresets &&
+			this.config.commandPresets.presets.length > 0
+		) {
 			// Migrate existing presets to agents
 			const migratedAgents = this.migratePresetsToAgents(
 				this.config.commandPresets.presets,
@@ -600,7 +603,9 @@ export class ConfigurationManager {
 	 */
 	getDefaultAgent(): AgentConfig {
 		const config = this.getAgentsConfig();
-		const defaultAgent = config.agents.find(a => a.id === config.defaultAgentId);
+		const defaultAgent = config.agents.find(
+			a => a.id === config.defaultAgentId,
+		);
 		return defaultAgent || config.agents[0]!;
 	}
 
@@ -697,7 +702,11 @@ export class ConfigurationManager {
 				if (option.flag) {
 					args.push(option.flag);
 				}
-			} else if (option.type === 'string' && typeof value === 'string' && value) {
+			} else if (
+				option.type === 'string' &&
+				typeof value === 'string' &&
+				value
+			) {
 				// String option - add flag and value
 				if (option.flag) {
 					args.push(option.flag, value);
@@ -722,7 +731,10 @@ export class ConfigurationManager {
 		const errors: string[] = [];
 
 		// Group options by their group field
-		const groups = new Map<string, {option: typeof agent.options[0]; value: boolean | string}[]>();
+		const groups = new Map<
+			string,
+			{option: (typeof agent.options)[0]; value: boolean | string}[]
+		>();
 
 		for (const option of agent.options) {
 			if (!option.group) continue;
@@ -1120,6 +1132,44 @@ export class ConfigurationManager {
 	setPort(port: number): void {
 		this.config.port = port;
 		this.saveConfig();
+	}
+
+	/**
+	 * Update authentication credentials (access token and/or passcode hash).
+	 * Used by CLI auth commands.
+	 */
+	updateAuthCredentials(credentials: {
+		accessToken?: string;
+		passcodeHash?: string;
+	}): void {
+		if (credentials.accessToken !== undefined) {
+			this.config.accessToken = credentials.accessToken;
+		}
+		if (credentials.passcodeHash !== undefined) {
+			this.config.passcodeHash = credentials.passcodeHash;
+		}
+		this.saveConfig();
+	}
+
+	/**
+	 * Get access token for auth validation.
+	 */
+	getAccessToken(): string | undefined {
+		return this.config.accessToken;
+	}
+
+	/**
+	 * Get passcode hash for auth validation.
+	 */
+	getPasscodeHash(): string | undefined {
+		return this.config.passcodeHash;
+	}
+
+	/**
+	 * Check if auth is fully configured (both token and passcode).
+	 */
+	isAuthConfigured(): boolean {
+		return !!this.config.accessToken && !!this.config.passcodeHash;
 	}
 }
 

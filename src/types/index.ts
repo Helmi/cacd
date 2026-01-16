@@ -207,6 +207,12 @@ export interface ConfigurationData {
 		timeout?: number; // Timeout in seconds for auto-approval verification (default: 30)
 	};
 	port?: number; // Port for web interface (generated randomly on first run if not set)
+	webEnabled?: boolean; // Whether web interface is enabled
+	// Authentication (new two-tier system)
+	accessToken?: string; // 3-word token used as URL path (e.g., "apple-desk-river")
+	passcodeHash?: string; // bcrypt hash of the user's passcode
+	// Legacy field - kept for migration
+	webAuthToken?: string; // Old token format (deprecated, will be migrated)
 }
 
 // Project interfaces

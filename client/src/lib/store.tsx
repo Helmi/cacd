@@ -19,24 +19,10 @@ function debounce<T extends (...args: Parameters<T>) => void>(
   return debounced
 }
 
-// Get token from URL or localStorage
-const getToken = () => {
-  const params = new URLSearchParams(window.location.search)
-  const token = params.get('token')
-  if (token) {
-    localStorage.setItem('cacd_token', token)
-    window.history.replaceState({}, '', '/')
-    return token
-  }
-  return localStorage.getItem('cacd_token')
-}
-
-const token = getToken()
-
-// Initialize socket with token
+// Initialize socket - don't auto-connect, we'll connect after auth
 const socket: Socket = io({
-  auth: { token },
-  query: { token }
+  withCredentials: true, // Send cookies with socket requests
+  autoConnect: false, // Don't connect until AppProvider mounts (after auth)
 })
 
 interface AppState {
@@ -256,12 +242,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Fetch session-related data only (frequent updates)
   const fetchSessionData = useCallback(async () => {
-    const headers = { 'x-access-token': token || '' }
-
     try {
       const [stateRes, sessionsRes] = await Promise.all([
-        fetch('/api/state', { headers }),
-        fetch('/api/sessions', { headers }),
+        fetch('/api/state', { credentials: 'include' }),
+        fetch('/api/sessions', { credentials: 'include' }),
       ])
 
       if (!stateRes.ok || !sessionsRes.ok) {
@@ -291,13 +275,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Fetch reference data (projects, worktrees, config - rarely changes)
   const fetchReferenceData = useCallback(async () => {
-    const headers = { 'x-access-token': token || '' }
-
     try {
       const [worktreesRes, projectsRes, configRes] = await Promise.all([
-        fetch('/api/worktrees', { headers }),
-        fetch('/api/projects', { headers }),
-        fetch('/api/config', { headers }),
+        fetch('/api/worktrees', { credentials: 'include' }),
+        fetch('/api/projects', { credentials: 'include' }),
+        fetch('/api/config', { credentials: 'include' }),
       ])
 
       if (!worktreesRes.ok || !projectsRes.ok) {
@@ -333,10 +315,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Fetch agents from /api/agents
   const fetchAgents = useCallback(async () => {
-    const headers = { 'x-access-token': token || '' }
     try {
       setAgentsLoading(true)
-      const res = await fetch('/api/agents', { headers })
+      const res = await fetch('/api/agents', { credentials: 'include' })
       if (res.ok) {
         const data: AgentsConfig = await res.json()
         setAgents(data.agents)
@@ -358,10 +339,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const res = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': token || ''
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(agent)
       })
 
@@ -385,7 +364,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch(`/api/agents/${agentId}`, {
         method: 'DELETE',
-        headers: { 'x-access-token': token || '' }
+        credentials: 'include',
       })
 
       if (!res.ok) {
@@ -408,10 +387,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch('/api/agents/default', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': token || ''
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: agentId })
       })
 
@@ -439,6 +416,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Only fetches sessions/state (2 calls), not full data (5 calls)
     socket.on('session_update', debouncedFetchSessionData)
 
+    // Connect socket now that auth is complete (AppProvider only mounts after auth)
+    socket.connect()
+
     // Initial full fetch on mount
     fetchData()
     fetchAgents()
@@ -456,10 +436,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch('/api/project/select', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': token || ''
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path })
       })
       if (!res.ok) {
@@ -555,10 +533,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch('/api/session/create', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': token || ''
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, presetId, sessionName })
       })
       const data = await res.json()
@@ -591,10 +567,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch('/api/session/create-with-agent', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': token || ''
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, agentId, options: options || {}, sessionName })
       })
       const data = await res.json()
@@ -621,10 +595,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch('/api/session/stop', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': token || ''
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: sessionId })
       })
       if (!res.ok) {
@@ -684,10 +656,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch('/api/config', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': token || ''
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(mapFrontendToBackend(newConfig))
       })
       if (!res.ok) {
@@ -708,10 +678,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch('/api/project/add', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': token || ''
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, description })
       })
       const data = await res.json()
@@ -735,10 +703,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch('/api/project/remove', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': token || ''
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path })
       })
       const data = await res.json()
@@ -769,10 +735,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch('/api/worktree/create', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': token || ''
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, branch, baseBranch, copySessionData, copyClaudeDirectory, projectPath })
       })
       const data = await res.json()
@@ -796,10 +760,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch('/api/worktree/delete', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-access-token': token || ''
-        },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, deleteBranch, projectPath })
       })
       const data = await res.json()
@@ -906,4 +868,4 @@ export function useAppStore() {
   return context
 }
 
-export { socket, token }
+export { socket }
