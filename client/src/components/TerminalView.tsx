@@ -8,9 +8,10 @@ import { Socket } from 'socket.io-client';
 interface TerminalViewProps {
     sessionId: string;
     socket: Socket;
+    agentId?: string;
 }
 
-export const TerminalView = ({ sessionId, socket }: TerminalViewProps) => {
+export const TerminalView = ({ sessionId, socket, agentId }: TerminalViewProps) => {
     const terminalRef = useRef<HTMLDivElement>(null);
     const xtermRef = useRef<Terminal | null>(null);
 
@@ -57,13 +58,16 @@ export const TerminalView = ({ sessionId, socket }: TerminalViewProps) => {
         socket.on('terminal_data', handleData);
 
         // Handle outgoing data
-        // Filter out terminal-to-host response sequences that xterm.js generates
-        // These should not be sent back to the PTY as they can cause ghost keypresses
+        // Filter out terminal-to-host response sequences only for Claude Code sessions
+        // Other CLIs (Codex, Gemini) need CPR responses for cursor position queries
+        const shouldFilterResponses = agentId === 'claude';
         const terminalResponsePattern = /\x1b\[\d+;\d+R|\x1b\[\??>\d+[;0-9]*c|\x1b\[[03]n/g;
         term.onData((data) => {
-            const filteredData = data.replace(terminalResponsePattern, '');
-            if (filteredData.length > 0) {
-                socket.emit('input', { sessionId, data: filteredData });
+            const dataToSend = shouldFilterResponses
+                ? data.replace(terminalResponsePattern, '')
+                : data;
+            if (dataToSend.length > 0) {
+                socket.emit('input', { sessionId, data: dataToSend });
             }
         });
 

@@ -55,13 +55,15 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		for (const [sessionId, interval] of this.activeIntervals) {
 			clearInterval(interval);
 			if (this.isDevMode) {
-				logger.info(`[SessionManager] Cleared interval for session ${sessionId}`);
+				logger.info(
+					`[SessionManager] Cleared interval for session ${sessionId}`,
+				);
 			}
 		}
 		this.activeIntervals.clear();
 
 		// Clear busy timers
-		for (const [sessionId, timer] of this.busyTimers) {
+		for (const timer of this.busyTimers.values()) {
 			clearTimeout(timer);
 		}
 		this.busyTimers.clear();
@@ -91,7 +93,10 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			},
 		};
 
-		return spawn(command, args, spawnOptions);
+		logger.info(`[SessionManager] Spawning: ${command} ${args.join(' ')} in ${worktreePath}`);
+		const pty = spawn(command, args, spawnOptions);
+		logger.info(`[SessionManager] Spawned PID: ${pty.pid}`);
+		return pty;
 	}
 
 	detectTerminalState(session: Session): SessionState {
@@ -312,11 +317,13 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	private async createSessionInternal(
 		worktreePath: string,
 		ptyProcess: IPty,
-		commandConfig: {
-			command: string;
-			args?: string[];
-			fallbackArgs?: string[];
-		} | undefined,
+		commandConfig:
+			| {
+					command: string;
+					args?: string[];
+					fallbackArgs?: string[];
+			  }
+			| undefined,
 		options: {
 			isPrimaryCommand?: boolean;
 			detectionStrategy?: StateDetectionStrategy;
@@ -540,7 +547,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	private setupExitHandler(session: Session): void {
 		session.process.onExit(async (e: {exitCode: number; signal?: number}) => {
 			// Check if we should attempt fallback
-			if (e.exitCode === 1 && !e.signal && session.isPrimaryCommand) {
+			// Only attempt fallback for preset sessions (commandConfig exists), not agent sessions
+			if (e.exitCode === 1 && !e.signal && session.isPrimaryCommand && session.commandConfig) {
 				try {
 					let fallbackProcess: IPty;
 					// Use fallback args if available, otherwise use empty args
@@ -604,7 +612,9 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		// Hot reload protection: Clear existing interval if any
 		if (session.stateCheckInterval) {
 			if (this.isDevMode) {
-				logger.warn(`[SessionManager] Session ${session.id} already has state check interval - cleaning up previous`);
+				logger.warn(
+					`[SessionManager] Session ${session.id} already has state check interval - cleaning up previous`,
+				);
 			}
 			clearInterval(session.stateCheckInterval);
 			this.activeIntervals.delete(session.id);
@@ -753,7 +763,10 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 
 			// If becoming active, record the timestamp when this worktree was opened
 			if (active) {
-				configurationManager.setWorktreeLastOpened(session.worktreePath, Date.now());
+				configurationManager.setWorktreeLastOpened(
+					session.worktreePath,
+					Date.now(),
+				);
 
 				// Emit a restore event with the output history if available
 				if (session.outputHistory.length > 0) {
@@ -763,10 +776,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		}
 	}
 
-	cancelAutoApproval(
-		sessionId: string,
-		reason = 'User input received',
-	): void {
+	cancelAutoApproval(sessionId: string, reason = 'User input received'): void {
 		const session = this.sessions.get(sessionId);
 		if (!session) {
 			return;

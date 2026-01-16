@@ -227,17 +227,22 @@ export const TerminalSession = memo(function TerminalSession({
 		// Handle outgoing data - uses ref for current session.id
 		// Filter out terminal-to-host response sequences that xterm.js generates
 		// These should not be sent back to the PTY as they can cause ghost keypresses
+		// NOTE: Only filter for Claude Code sessions - other CLIs (Codex, Gemini) need
+		// CPR (Cursor Position Report) responses for cursor position queries to work
 		// Common responses:
 		// - CPR (Cursor Position Report): \x1b[row;colR (e.g., \x1b[24;80R)
 		// - DA (Device Attributes): \x1b[?...c or \x1b[>...c
 		// - DSR (Device Status Report): \x1b[0n (OK) or \x1b[3n (malfunction)
+		const shouldFilterResponses = session.agentId === 'claude';
 		const terminalResponsePattern = /\x1b\[\d+;\d+R|\x1b\[\??>\d+[;0-9]*c|\x1b\[[03]n/g;
 		const onDataDisposable = term.onData(data => {
-			// Filter out terminal response sequences
-			const filteredData = data.replace(terminalResponsePattern, '');
-			// Only emit if there's actual user input left
-			if (filteredData.length > 0) {
-				currentSocket.emit('input', {sessionId: sessionIdRef.current, data: filteredData});
+			// Filter out terminal response sequences only for Claude Code sessions
+			const dataToSend = shouldFilterResponses
+				? data.replace(terminalResponsePattern, '')
+				: data;
+			// Only emit if there's data to send
+			if (dataToSend.length > 0) {
+				currentSocket.emit('input', {sessionId: sessionIdRef.current, data: dataToSend});
 			}
 		});
 
