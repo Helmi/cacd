@@ -1,4 +1,4 @@
-import {execSync} from 'child_process';
+import {execSync, execFileSync} from 'child_process';
 import {existsSync, statSync, cpSync} from 'fs';
 import path from 'path';
 import {Effect, Either} from 'effect';
@@ -121,7 +121,7 @@ export class WorktreeService {
 		try {
 			// First check if local branch exists (highest priority)
 			try {
-				execSync(`git show-ref --verify --quiet refs/heads/${branchName}`, {
+				execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branchName}`], {
 					cwd: this.rootPath,
 					encoding: 'utf8',
 				});
@@ -138,13 +138,10 @@ export class WorktreeService {
 			// Check each remote for the branch
 			for (const remote of remotes) {
 				try {
-					execSync(
-						`git show-ref --verify --quiet refs/remotes/${remote}/${branchName}`,
-						{
-							cwd: this.rootPath,
-							encoding: 'utf8',
-						},
-					);
+					execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/remotes/${remote}/${branchName}`], {
+						cwd: this.rootPath,
+						encoding: 'utf8',
+					});
 					// Remote branch exists
 					remoteBranchMatches.push({
 						remote,
@@ -460,14 +457,12 @@ export class WorktreeService {
 			Effect.try({
 				try: () => {
 					// Try to get the default branch from origin
-					const defaultBranch = execSync(
-						"git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'",
-						{
-							cwd: self.rootPath,
-							encoding: 'utf8',
-							shell: '/bin/bash',
-						},
-					).trim();
+					const output = execFileSync('git', ['symbolic-ref', 'refs/remotes/origin/HEAD'], {
+						cwd: self.rootPath,
+						encoding: 'utf8',
+					}).trim();
+					// Replace refs/remotes/origin/ prefix (equivalent to sed)
+					const defaultBranch = output.replace(/^refs\/remotes\/origin\//, '');
 					if (!defaultBranch) {
 						throw new Error('No default branch from symbolic-ref');
 					}
@@ -549,25 +544,27 @@ export class WorktreeService {
 		return Effect.catchAll(
 			Effect.try({
 				try: () => {
-					const output = execSync(
-						"git branch -a --format='%(refname:short)' | grep -v HEAD | sort -u",
-						{
-							cwd: self.rootPath,
-							encoding: 'utf8',
-							shell: '/bin/bash',
-						},
-					);
+					const output = execFileSync('git', ['branch', '-a', '--format=%(refname:short)'], {
+						cwd: self.rootPath,
+						encoding: 'utf8',
+					});
 
-					const branches = output
+					// Filter out HEAD and sort (equivalent to grep -v HEAD | sort -u)
+					const lines = output
 						.trim()
 						.split('\n')
+						.filter(branch => branch && !branch.includes('HEAD'))
+						.sort();
+
+					// Deduplicate (equivalent to sort -u)
+					const uniqueLines = lines.filter((v, i, a) => i === 0 || a[i - 1] !== v);
+
+					const branches = uniqueLines
 						.filter(branch => branch && !branch.startsWith('origin/'))
 						.map(branch => branch.trim());
 
 					// Also include remote branches without origin/ prefix
-					const remoteBranches = output
-						.trim()
-						.split('\n')
+					const remoteBranches = uniqueLines
 						.filter(branch => branch.startsWith('origin/'))
 						.map(branch => branch.replace('origin/', ''));
 
@@ -881,7 +878,7 @@ export class WorktreeService {
 			const branchExists = yield* Effect.catchAll(
 				Effect.try({
 					try: () => {
-						execSync(`git rev-parse --verify ${branch}`, {
+						execFileSync('git', ['rev-parse', '--verify', '--', branch], {
 							cwd: self.rootPath,
 							encoding: 'utf8',
 						});
@@ -892,20 +889,16 @@ export class WorktreeService {
 				() => Effect.succeed(false),
 			);
 
-			// Create the worktree command
-			let command: string;
-			if (branchExists) {
-				command = `git worktree add "${resolvedPath}" "${branch}"`;
-			} else {
-				// Resolve the base branch to its proper git reference
-				const resolvedBaseBranch = self.resolveBranchReference(baseBranch);
-				command = `git worktree add -b "${branch}" "${resolvedPath}" "${resolvedBaseBranch}"`;
-			}
-
 			// Execute the worktree creation command
+			const worktreeArgs: string[] = branchExists
+				? ['worktree', 'add', '--', resolvedPath, branch]
+				: ['worktree', 'add', '-b', branch, '--', resolvedPath, self.resolveBranchReference(baseBranch)];
+
+			const commandStr = `git ${worktreeArgs.join(' ')}`; // For error reporting only
+
 			yield* Effect.try({
 				try: () => {
-					execSync(command, {
+					execFileSync('git', worktreeArgs, {
 						cwd: absoluteGitRoot,
 						encoding: 'utf8',
 					});
@@ -917,7 +910,7 @@ export class WorktreeService {
 						stdout?: string;
 					};
 					return new GitError({
-						command,
+						command: commandStr,
 						exitCode: execError.status || 1,
 						stderr: execError.stderr || String(error),
 						stdout: execError.stdout,
@@ -1102,7 +1095,7 @@ export class WorktreeService {
 			// Remove the worktree
 			yield* Effect.try({
 				try: () => {
-					execSync(`git worktree remove "${worktreePath}" --force`, {
+					execFileSync('git', ['worktree', 'remove', '--force', '--', worktreePath], {
 						cwd: self.rootPath,
 						encoding: 'utf8',
 					});
@@ -1114,7 +1107,7 @@ export class WorktreeService {
 						stdout?: string;
 					};
 					return new GitError({
-						command: `git worktree remove "${worktreePath}" --force`,
+						command: `git worktree remove --force -- ${worktreePath}`,
 						exitCode: execError.status || 1,
 						stderr: execError.stderr || String(error),
 						stdout: execError.stdout,
@@ -1129,7 +1122,7 @@ export class WorktreeService {
 				yield* Effect.catchAll(
 					Effect.try({
 						try: () => {
-							execSync(`git branch -D "${branchName}"`, {
+							execFileSync('git', ['branch', '-D', '--', branchName], {
 								cwd: self.rootPath,
 								encoding: 'utf8',
 							});
@@ -1227,7 +1220,7 @@ export class WorktreeService {
 				// Rebase source branch onto target branch
 				yield* Effect.try({
 					try: () => {
-						execSync(`git rebase "${targetBranch}"`, {
+						execFileSync('git', ['rebase', '--', targetBranch], {
 							cwd: sourceWorktree.path,
 							encoding: 'utf8',
 						});
@@ -1239,7 +1232,7 @@ export class WorktreeService {
 							stdout?: string;
 						};
 						return new GitError({
-							command: `git rebase "${targetBranch}"`,
+							command: `git rebase -- ${targetBranch}`,
 							exitCode: execError.status || 1,
 							stderr: execError.stderr || String(error),
 							stdout: execError.stdout,
@@ -1250,7 +1243,7 @@ export class WorktreeService {
 				// After rebase, merge the rebased source branch into target branch
 				yield* Effect.try({
 					try: () => {
-						execSync(`git merge --ff-only "${sourceBranch}"`, {
+						execFileSync('git', ['merge', '--ff-only', '--', sourceBranch], {
 							cwd: targetWorktree.path,
 							encoding: 'utf8',
 						});
@@ -1262,7 +1255,7 @@ export class WorktreeService {
 							stdout?: string;
 						};
 						return new GitError({
-							command: `git merge --ff-only "${sourceBranch}"`,
+							command: `git merge --ff-only -- ${sourceBranch}`,
 							exitCode: execError.status || 1,
 							stderr: execError.stderr || String(error),
 							stdout: execError.stdout,
@@ -1273,7 +1266,7 @@ export class WorktreeService {
 				// Regular merge
 				yield* Effect.try({
 					try: () => {
-						execSync(`git merge --no-ff "${sourceBranch}"`, {
+						execFileSync('git', ['merge', '--no-ff', '--', sourceBranch], {
 							cwd: targetWorktree.path,
 							encoding: 'utf8',
 						});
@@ -1285,7 +1278,7 @@ export class WorktreeService {
 							stdout?: string;
 						};
 						return new GitError({
-							command: `git merge --no-ff "${sourceBranch}"`,
+							command: `git merge --no-ff -- ${sourceBranch}`,
 							exitCode: execError.status || 1,
 							stderr: execError.stderr || String(error),
 							stdout: execError.stdout,
