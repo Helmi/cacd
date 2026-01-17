@@ -3,6 +3,7 @@ import { AppProvider, useAppStore } from '@/lib/store'
 import { Layout } from '@/components/layout'
 import { SessionGrid } from '@/components/SessionGrid'
 import { InlineDiffViewer } from '@/components/InlineDiffViewer'
+import { FileViewer } from '@/components/FileViewer'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { AddProjectModal } from '@/components/AddProjectModal'
 import { AddWorktreeModal } from '@/components/AddWorktreeModal'
@@ -23,11 +24,16 @@ function getAccessToken(): string | null {
 }
 
 function MainContent() {
-  const { selectedSessions, viewingFileDiff } = useAppStore()
+  const { selectedSessions, viewingFileDiff, viewingFile } = useAppStore()
 
   // Show diff viewer when viewing a file diff
   if (viewingFileDiff) {
     return <InlineDiffViewer />
+  }
+
+  // Show file viewer when viewing a file from file browser
+  if (viewingFile) {
+    return <FileViewer />
   }
 
   if (selectedSessions.length === 0) {
@@ -160,10 +166,6 @@ function NoTokenView() {
                 </code>
               </div>
 
-              <p className="text-[10px] text-[#3a6a3a] font-mono">
-                The access URL looks like:{' '}
-                <span className="text-[#00ff41]/70">localhost:3000/word-word-word</span>
-              </p>
             </div>
           </div>
         </div>

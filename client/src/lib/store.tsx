@@ -59,6 +59,9 @@ interface AppState {
   // File Diff Viewing State
   viewingFileDiff: { sessionId: string; file: ChangedFile; worktreePath: string } | null
 
+  // File Viewing State (from file browser)
+  viewingFile: { worktreePath: string; filePath: string } | null
+
   // Config
   config: AppConfig
   configLoading: boolean
@@ -146,6 +149,10 @@ interface AppActions {
   openFileDiff: (sessionId: string, file: ChangedFile, worktreePath: string) => void
   closeFileDiff: () => void
 
+  // File viewing (from file browser)
+  openFile: (worktreePath: string, filePath: string) => void
+  closeFile: () => void
+
   // Error handling
   clearError: () => void
 }
@@ -181,6 +188,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [addSessionWorktreePath, setAddSessionWorktreePath] = useState<string | null>(null)
   const [addSessionProjectPath, setAddSessionProjectPath] = useState<string | null>(null)
   const [viewingFileDiff, setViewingFileDiff] = useState<{ sessionId: string; file: ChangedFile; worktreePath: string } | null>(null)
+  const [viewingFile, setViewingFile] = useState<{ worktreePath: string; filePath: string } | null>(null)
 
   // Settings screen state - load section from localStorage
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -652,6 +660,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
   const closeFileDiff = () => setViewingFileDiff(null)
 
+  const openFile = (worktreePath: string, filePath: string) => {
+    setViewingFile({ worktreePath, filePath })
+  }
+  const closeFile = () => setViewingFile(null)
+
   const updateConfig = async (newConfig: AppConfig): Promise<boolean> => {
     try {
       const res = await fetch('/api/config', {
@@ -804,6 +817,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     settingsOpen,
     settingsSection,
     viewingFileDiff,
+    viewingFile,
     config,
     configLoading,
     theme,
@@ -840,6 +854,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     navigateSettings,
     openFileDiff,
     closeFileDiff,
+    openFile,
+    closeFile,
     updateConfig,
     setTheme,
     setFont,

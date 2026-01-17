@@ -61,6 +61,14 @@ export interface ChangedFile {
   deletions: number
 }
 
+// Directory entry for file browser
+export interface DirectoryEntry {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  size?: number
+}
+
 // Worktree from the backend API
 export interface Worktree {
   path: string

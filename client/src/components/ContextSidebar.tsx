@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { StatusIndicator, statusLabels } from '@/components/StatusIndicator'
 import { AgentIcon } from '@/components/AgentIcon'
+import { FileBrowser } from '@/components/FileBrowser'
 import { mapSessionState, ChangedFile } from '@/lib/types'
-import { X, GitBranch, Folder, Clock, Activity, Copy, Check, FileText, FilePlus, FileX, FileEdit, FileQuestion } from 'lucide-react'
+import { X, GitBranch, Folder, Copy, Check, FileText, FilePlus, FileX, FileEdit, FileQuestion, GitCommit, FolderTree } from 'lucide-react'
 import { cn, formatPath, copyToClipboard } from '@/lib/utils'
 
 export function ContextSidebar() {
@@ -102,7 +104,7 @@ export function ContextSidebar() {
   return (
     <aside className="flex w-64 flex-col border-l border-border bg-sidebar lg:w-72 xl:w-80 overflow-hidden">
       {/* Header */}
-      <div className="flex h-7 items-center justify-between border-b border-border px-2">
+      <div className="flex h-7 items-center justify-between border-b border-border px-2 shrink-0">
         <span className="text-xs font-medium text-muted-foreground">Session Details</span>
         <Button
           variant="ghost"
@@ -120,7 +122,6 @@ export function ContextSidebar() {
           <div className="space-y-2">
             <div className="flex items-center gap-2 min-w-0">
               <StatusIndicator status={mapSessionState(session.state)} size="md" />
-              {/* TODO: Pass actual agent icon when sessions track their agent */}
               <AgentIcon icon="claude" className="h-5 w-5 shrink-0" />
               <span className="font-medium text-sm truncate">{session.name || formatName(session.path)}</span>
             </div>
@@ -187,123 +188,135 @@ export function ContextSidebar() {
           {/* Divider */}
           <div className="border-t border-border" />
 
-          {/* Session Stats (placeholder for Phase 2) */}
-          <div className="space-y-2 min-w-0">
-            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Activity
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded bg-secondary/50 p-2 min-w-0 overflow-hidden">
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Clock className="h-3 w-3 shrink-0" />
-                  <span className="truncate">Duration</span>
-                </div>
-                <div className="text-xs font-medium">--:--</div>
-              </div>
-              <div className="rounded bg-secondary/50 p-2 min-w-0 overflow-hidden">
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Activity className="h-3 w-3 shrink-0" />
-                  <span className="truncate">Status</span>
-                </div>
-                <div className="text-xs font-medium capitalize truncate">{session.state}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* File Changes */}
-          <div className="space-y-2 min-w-0">
-            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              File Changes
-            </div>
-
-            {/* Git status summary - computed from changed files */}
-            {changedFiles.length > 0 && (
-              <div className="flex items-center gap-3 text-sm">
-                <span className="text-green-500 font-mono">
-                  +{changedFiles.reduce((sum, f) => sum + f.additions, 0)}
-                </span>
-                <span className="text-red-500 font-mono">
-                  -{changedFiles.reduce((sum, f) => sum + f.deletions, 0)}
-                </span>
-                {/* Ahead/Behind from worktree gitStatus */}
-                {worktree?.gitStatus && (worktree.gitStatus.aheadCount > 0 || worktree.gitStatus.behindCount > 0) && (
-                  <>
-                    <span className="text-border">|</span>
-                    {worktree.gitStatus.aheadCount > 0 && (
-                      <span className="text-cyan-500 text-xs">↑{worktree.gitStatus.aheadCount}</span>
-                    )}
-                    {worktree.gitStatus.behindCount > 0 && (
-                      <span className="text-purple-500 text-xs">↓{worktree.gitStatus.behindCount}</span>
-                    )}
-                  </>
+          {/* Tabbed Section: Changes / Files */}
+          <Tabs defaultValue="changes" className="space-y-3">
+            {/* Custom styled tabs - segmented control look */}
+            <TabsList className="grid w-full grid-cols-2 h-6 p-0 bg-transparent gap-2">
+              <TabsTrigger
+                value="changes"
+                className={cn(
+                  'h-6 px-2 text-[11px] font-medium rounded transition-all duration-150',
+                  'flex items-center justify-center gap-1.5',
+                  'text-muted-foreground/50 bg-transparent',
+                  'hover:text-muted-foreground hover:bg-muted/30',
+                  'data-[state=active]:bg-muted data-[state=active]:text-foreground'
                 )}
-              </div>
-            )}
+              >
+                <GitCommit className="h-3 w-3" />
+                <span>Changes</span>
+                {changedFiles.length > 0 && (
+                  <span className="ml-0.5 px-1 py-0 text-[9px] rounded-full bg-current/20 min-w-[14px] text-center">
+                    {changedFiles.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger
+                value="files"
+                className={cn(
+                  'h-6 px-2 text-[11px] font-medium rounded transition-all duration-150',
+                  'flex items-center justify-center gap-1.5',
+                  'text-muted-foreground/50 bg-transparent',
+                  'hover:text-muted-foreground hover:bg-muted/30',
+                  'data-[state=active]:bg-muted data-[state=active]:text-foreground'
+                )}
+              >
+                <FolderTree className="h-3 w-3" />
+                <span>Files</span>
+              </TabsTrigger>
+            </TabsList>
 
-            {/* Parent branch info */}
-            {worktree?.gitStatus?.parentBranch && (
-              <div className="text-xs text-muted-foreground">
-                vs {worktree.gitStatus.parentBranch}
-              </div>
-            )}
+            {/* Changes tab content */}
+            <TabsContent value="changes" className="mt-0 space-y-2">
+              {/* Git status summary */}
+              {changedFiles.length > 0 && (
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-green-500 font-mono">
+                    +{changedFiles.reduce((sum, f) => sum + f.additions, 0)}
+                  </span>
+                  <span className="text-red-500 font-mono">
+                    -{changedFiles.reduce((sum, f) => sum + f.deletions, 0)}
+                  </span>
+                  {worktree?.gitStatus && (worktree.gitStatus.aheadCount > 0 || worktree.gitStatus.behindCount > 0) && (
+                    <>
+                      <span className="text-border">|</span>
+                      {worktree.gitStatus.aheadCount > 0 && (
+                        <span className="text-cyan-500 text-xs">↑{worktree.gitStatus.aheadCount}</span>
+                      )}
+                      {worktree.gitStatus.behindCount > 0 && (
+                        <span className="text-purple-500 text-xs">↓{worktree.gitStatus.behindCount}</span>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
 
-            {/* Changed files list */}
-            {filesLoading ? (
-              <div className="text-xs text-muted-foreground animate-pulse">
-                Loading files...
-              </div>
-            ) : filesError ? (
-              <div className="text-xs text-destructive">
-                {filesError}
-              </div>
-            ) : changedFiles.length > 0 ? (
-              <div className="space-y-1 max-h-48 overflow-y-auto">
-                {changedFiles.map((file) => (
-                  <button
-                    key={file.path}
-                    className="flex items-center gap-2 w-full text-left text-xs hover:bg-secondary/50 rounded px-1.5 py-1 transition-colors group"
-                    onClick={() => openFileDiff(session.id, file, session.path)}
-                  >
-                    {/* File status icon */}
-                    {file.status === 'added' || file.status === 'untracked' ? (
-                      <FilePlus className="h-3 w-3 shrink-0 text-green-500" />
-                    ) : file.status === 'deleted' ? (
-                      <FileX className="h-3 w-3 shrink-0 text-red-500" />
-                    ) : file.status === 'modified' ? (
-                      <FileEdit className="h-3 w-3 shrink-0 text-yellow-500" />
-                    ) : file.status === 'renamed' ? (
-                      <FileText className="h-3 w-3 shrink-0 text-blue-500" />
-                    ) : (
-                      <FileQuestion className="h-3 w-3 shrink-0 text-muted-foreground" />
-                    )}
-                    {/* File path */}
-                    <span className="truncate flex-1 font-mono text-[11px]">
-                      {file.path.split('/').pop()}
-                    </span>
-                    {/* Line counts */}
-                    {(file.additions > 0 || file.deletions > 0) && (
-                      <span className="flex items-center gap-1 text-xs opacity-70 group-hover:opacity-100">
-                        {file.additions > 0 && (
-                          <span className="text-green-500">+{file.additions}</span>
-                        )}
-                        {file.deletions > 0 && (
-                          <span className="text-red-500">-{file.deletions}</span>
-                        )}
+              {/* Parent branch info */}
+              {worktree?.gitStatus?.parentBranch && (
+                <div className="text-xs text-muted-foreground">
+                  vs {worktree.gitStatus.parentBranch}
+                </div>
+              )}
+
+              {/* Changed files list */}
+              {filesLoading ? (
+                <div className="text-xs text-muted-foreground animate-pulse">
+                  Loading files...
+                </div>
+              ) : filesError ? (
+                <div className="text-xs text-destructive">
+                  {filesError}
+                </div>
+              ) : changedFiles.length > 0 ? (
+                <div className="space-y-1">
+                  {changedFiles.map((file) => (
+                    <button
+                      key={file.path}
+                      className="flex items-center gap-2 w-full text-left text-xs hover:bg-secondary/50 rounded px-1.5 py-1 transition-colors group"
+                      onClick={() => openFileDiff(session.id, file, session.path)}
+                    >
+                      {file.status === 'added' || file.status === 'untracked' ? (
+                        <FilePlus className="h-3 w-3 shrink-0 text-green-500" />
+                      ) : file.status === 'deleted' ? (
+                        <FileX className="h-3 w-3 shrink-0 text-red-500" />
+                      ) : file.status === 'modified' ? (
+                        <FileEdit className="h-3 w-3 shrink-0 text-yellow-500" />
+                      ) : file.status === 'renamed' ? (
+                        <FileText className="h-3 w-3 shrink-0 text-blue-500" />
+                      ) : (
+                        <FileQuestion className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="truncate flex-1 font-mono text-[11px]">
+                        {file.path.split('/').pop()}
                       </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            ) : worktree?.gitStatusError ? (
-              <div className="text-xs text-destructive">
-                {worktree.gitStatusError}
-              </div>
-            ) : (
-              <div className="text-xs text-muted-foreground">
-                No uncommitted changes
-              </div>
-            )}
-          </div>
+                      {(file.additions > 0 || file.deletions > 0) && (
+                        <span className="flex items-center gap-1 text-xs opacity-70 group-hover:opacity-100">
+                          {file.additions > 0 && (
+                            <span className="text-green-500">+{file.additions}</span>
+                          )}
+                          {file.deletions > 0 && (
+                            <span className="text-red-500">-{file.deletions}</span>
+                          )}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : worktree?.gitStatusError ? (
+                <div className="text-xs text-destructive">
+                  {worktree.gitStatusError}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground">
+                  No uncommitted changes
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Files tab content */}
+            <TabsContent value="files" className="mt-0 -mx-3 -mb-3">
+              <FileBrowser worktreePath={session.path} />
+            </TabsContent>
+          </Tabs>
         </div>
       </ScrollArea>
     </aside>

@@ -1,6 +1,6 @@
 {
 	"name": "coding-agent-control-desk",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "CA⚡CD - Web-based control desk for managing multiple AI coding agent sessions (Claude, Gemini, Codex, Cursor)",
 	"license": "MIT",
 	"author": "Helmi",
@@ -43,19 +43,21 @@
 		"typecheck": "tsc --noEmit",
 		"prepublishOnly": "npm run lint && npm run typecheck && npm run test && npm run build",
 		"prepare": "npm run build",
-		"release": "npx standard-version",
-		"release:minor": "npx standard-version --release-as minor",
-		"release:major": "npx standard-version --release-as major",
-		"release:patch": "npx standard-version --release-as patch"
+		"release": "bun scripts/release.ts",
+		"release:dry": "bun scripts/release.ts --dry-run"
 	},
 	"files": [
 		"dist"
 	],
 	"dependencies": {
-		"ansi-styles": "^6.2.1",
+		"@fastify/cookie": "^11.0.2",
 		"@fastify/cors": "^11.2.0",
+		"@fastify/rate-limit": "^10.3.0",
 		"@fastify/static": "^8.3.0",
+		"@types/react-syntax-highlighter": "^15.5.13",
 		"@xterm/headless": "^5.5.0",
+		"ansi-styles": "^6.2.1",
+		"bcrypt": "^6.0.0",
 		"effect": "^3.18.2",
 		"fastify": "^5.6.2",
 		"ink": "^4.1.0",
@@ -64,12 +66,14 @@
 		"meow": "^11.0.0",
 		"node-pty": "^1.0.0",
 		"react": "^18.2.0",
+		"react-syntax-highlighter": "^16.1.0",
 		"socket.io": "^4.8.1",
 		"strip-ansi": "^7.1.0"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.28.0",
 		"@sindresorhus/tsconfig": "^3.0.1",
+		"@types/bcrypt": "^6.0.0",
 		"@types/node": "^20.0.0",
 		"@types/react": "^18.0.32",
 		"@typescript-eslint/eslint-plugin": "^8.33.1",
@@ -84,6 +88,7 @@
 		"eslint-plugin-react-hooks": "^5.2.0",
 		"ink-testing-library": "^3.0.0",
 		"prettier": "3.6.2",
+		"sharp": "^0.34.5",
 		"standard-version": "^9.5.0",
 		"ts-node": "^10.9.1",
 		"tsx": "^4.19.4",

@@ -512,6 +512,177 @@ export class APIServer {
 			return {diff: result.right};
 		});
 
+		// Get directory listing for file browser
+		this.app.get<{
+			Querystring: {path: string; dir?: string};
+		}>('/api/worktree/tree', async (request, reply) => {
+			const {path: worktreePath, dir: subDir} = request.query;
+
+			if (!worktreePath) {
+				return reply.code(400).send({error: 'path query parameter required'});
+			}
+
+			// Validate worktree path is a real git directory
+			let validatedWorktreePath: string;
+			try {
+				validatedWorktreePath = validateWorktreePath(worktreePath);
+			} catch (_error) {
+				logger.warn(`Invalid worktree path requested: ${worktreePath}`);
+				return reply.code(400).send({error: 'Invalid worktree path'});
+			}
+
+			// Validate subdir if provided
+			let targetDir = validatedWorktreePath;
+			if (subDir) {
+				try {
+					targetDir = validatePathWithinBase(validatedWorktreePath, subDir);
+				} catch (_error) {
+					logger.warn(
+						`Path traversal attempt blocked: ${subDir} in ${worktreePath}`,
+					);
+					return reply.code(400).send({error: 'Invalid directory path'});
+				}
+			}
+
+			try {
+				const fs = await import('fs/promises');
+				const entries = await fs.readdir(targetDir, {withFileTypes: true});
+
+				interface DirectoryEntry {
+					name: string;
+					path: string;
+					type: 'file' | 'directory';
+					size?: number;
+				}
+
+				const result: DirectoryEntry[] = [];
+
+				for (const entry of entries) {
+					// Skip .git directory
+					if (entry.name === '.git') continue;
+
+					const relativePath = subDir
+						? `${subDir}/${entry.name}`
+						: entry.name;
+
+					if (entry.isDirectory()) {
+						result.push({
+							name: entry.name,
+							path: relativePath,
+							type: 'directory',
+						});
+					} else if (entry.isFile()) {
+						// Get file size
+						const fullPath = path.join(targetDir, entry.name);
+						try {
+							const stat = await fs.stat(fullPath);
+							result.push({
+								name: entry.name,
+								path: relativePath,
+								type: 'file',
+								size: stat.size,
+							});
+						} catch {
+							// Skip files we can't stat
+							continue;
+						}
+					}
+				}
+
+				// Sort: directories first, then alphabetically
+				result.sort((a, b) => {
+					if (a.type !== b.type) {
+						return a.type === 'directory' ? -1 : 1;
+					}
+					return a.name.localeCompare(b.name);
+				});
+
+				return {entries: result};
+			} catch (error) {
+				logger.error(`Failed to read directory: ${targetDir}`, error);
+				return reply.code(500).send({error: 'Failed to read directory'});
+			}
+		});
+
+		// Get file content for file viewer
+		this.app.get<{
+			Querystring: {path: string; file: string};
+		}>('/api/worktree/file', async (request, reply) => {
+			const {path: worktreePath, file: filePath} = request.query;
+
+			if (!worktreePath || !filePath) {
+				return reply
+					.code(400)
+					.send({error: 'path and file query parameters required'});
+			}
+
+			// Validate worktree path
+			let validatedWorktreePath: string;
+			try {
+				validatedWorktreePath = validateWorktreePath(worktreePath);
+			} catch (_error) {
+				logger.warn(`Invalid worktree path requested: ${worktreePath}`);
+				return reply.code(400).send({error: 'Invalid worktree path'});
+			}
+
+			// Validate file path doesn't escape worktree
+			let fullPath: string;
+			try {
+				fullPath = validatePathWithinBase(validatedWorktreePath, filePath);
+			} catch (_error) {
+				logger.warn(
+					`Path traversal attempt blocked: ${filePath} in ${worktreePath}`,
+				);
+				return reply.code(400).send({error: 'Invalid file path'});
+			}
+
+			try {
+				const fs = await import('fs/promises');
+				const stat = await fs.stat(fullPath);
+
+				// Max 1MB file size
+				const MAX_SIZE = 1024 * 1024;
+				if (stat.size > MAX_SIZE) {
+					return {
+						content: '',
+						size: stat.size,
+						isBinary: false,
+						tooLarge: true,
+					};
+				}
+
+				// Read file content
+				const buffer = await fs.readFile(fullPath);
+
+				// Simple binary detection: check for null bytes in first 8KB
+				const sampleSize = Math.min(8192, buffer.length);
+				let isBinary = false;
+				for (let i = 0; i < sampleSize; i++) {
+					if (buffer[i] === 0) {
+						isBinary = true;
+						break;
+					}
+				}
+
+				if (isBinary) {
+					return {
+						content: '',
+						size: stat.size,
+						isBinary: true,
+					};
+				}
+
+				return {
+					content: buffer.toString('utf8'),
+					size: stat.size,
+					isBinary: false,
+				};
+			} catch (error) {
+				logger.error(`Failed to read file: ${fullPath}`, error);
+				return reply.code(500).send({error: 'Failed to read file'});
+			}
+		});
+
 		this.app.get<{
 			Querystring: {projectPath?: string};
 		}>('/api/branches', async (request, reply) => {
