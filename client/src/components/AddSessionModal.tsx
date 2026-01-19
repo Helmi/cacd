@@ -27,6 +27,7 @@ export function AddSessionModal() {
     config,
     agents,
     defaultAgentId,
+    openAddProjectModal,
   } = useAppStore()
 
   const [selectedProjectPath, setSelectedProjectPath] = useState<string>('')
@@ -282,7 +283,7 @@ export function AddSessionModal() {
 
   return (
     <Dialog open={addSessionModalOpen} onOpenChange={closeAddSessionModal}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="h-4 w-4" />
@@ -295,28 +296,47 @@ export function AddSessionModal() {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {/* Project selection - show if not pre-selected from worktree or project context menu */}
-          {!hasPreselectedWorktree && !hasPreselectedProject && (
-            <div className="space-y-2">
-              <Label>Project</Label>
-              <Select value={selectedProjectPath} onValueChange={setSelectedProjectPath}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((project) => (
-                    <SelectItem key={project.path} value={project.path}>
-                      <div className="flex items-center gap-2">
-                        <Folder className="h-3 w-3" />
-                        {project.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <div className="space-y-4 py-4 overflow-y-auto flex-1">
+          {/* Empty state - no projects exist */}
+          {projects.length === 0 && !hasPreselectedWorktree && !hasPreselectedProject ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Folder className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <p className="text-muted-foreground mb-4">
+                You need a project before creating a session.
+              </p>
+              <Button
+                onClick={() => {
+                  closeAddSessionModal()
+                  openAddProjectModal()
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create New Project
+              </Button>
             </div>
-          )}
+          ) : (
+            <>
+              {/* Project selection - show if not pre-selected from worktree or project context menu */}
+              {!hasPreselectedWorktree && !hasPreselectedProject && (
+                <div className="space-y-2">
+                  <Label>Project</Label>
+                  <Select value={selectedProjectPath} onValueChange={setSelectedProjectPath}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects.map((project) => (
+                        <SelectItem key={project.path} value={project.path}>
+                          <div className="flex items-center gap-2">
+                            <Folder className="h-3 w-3" />
+                            {project.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
           {/* Only show rest of form if project is selected */}
           {selectedProjectPath && (
@@ -481,6 +501,8 @@ export function AddSessionModal() {
 
           {error && (
             <div className="text-sm text-destructive">{error}</div>
+          )}
+          </>
           )}
         </div>
 

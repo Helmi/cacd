@@ -77,7 +77,7 @@ export function AddProjectModal() {
 
   return (
     <Dialog open={addProjectModalOpen} onOpenChange={closeAddProjectModal}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <GitBranch className="h-4 w-4" />
@@ -85,7 +85,7 @@ export function AddProjectModal() {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 overflow-y-auto flex-1">
           <div className="space-y-2">
             <Label htmlFor="path">Project Path</Label>
             <div className="relative">
