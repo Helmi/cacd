@@ -1,5 +1,10 @@
 import React from 'react';
 import {Box, Text} from 'ink';
+import {createRequire} from 'module';
+
+// Read version from package.json at runtime
+const require = createRequire(import.meta.url);
+const {version} = require('../../package.json');
 
 interface WebConfig {
 	url: string;
@@ -22,17 +27,17 @@ const Header: React.FC<HeaderProps> = ({subtitle, webConfig}) => {
 
 	return (
 		<Box marginBottom={1} flexDirection="column">
-			<Text color="cyan">                                       ░▒▓░</Text>
-			<Text color="cyan"> ░▒▓███████▓▒░  ░▒▓███████▓▒░        ░▒▓▓▒    ░▒▓███████▓▒░ ░▒▓████████▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓█▓▒░    ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓██▓▒░     ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░  ░▒▓██▓▒░      ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░        ░▒▓█████████▓▒░ ░▒▓███████▓▒░  ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓██▓▒░   ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░    ░▒▓██▓▒░    ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan">░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░</Text>
-			<Text color="cyan"> ░▒▓███████▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓▓▒░       ░▒▓███████▓▒░ ░▒▓████████▓▒░</Text>
-			<Text color="cyan">                                 ░▓▒░</Text>
+			<Text color="cyan">{"                                       ░▒▓░"}</Text>
+			<Text color="cyan">{" ░▒▓███████▓▒░  ░▒▓███████▓▒░        ░▒▓▓▒    ░▒▓███████▓▒░ ░▒▓████████▓▒░"}</Text>
+			<Text color="cyan">{"░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓█▓▒░    ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░"}</Text>
+			<Text color="cyan">{"░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓██▓▒░     ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░"}</Text>
+			<Text color="cyan">{"░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░  ░▒▓██▓▒░      ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░"}</Text>
+			<Text color="cyan">{"░▒▓█▓▒░        ░▒▓█████████▓▒░ ░▒▓███████▓▒░  ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░"}</Text>
+			<Text color="cyan">{"░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓██▓▒░   ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░"}</Text>
+			<Text color="cyan">{"░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░    ░▒▓██▓▒░    ░▒▓█▓▒░        ░▒▓█▓▒░ ░▒▓█▓▒░"}</Text>
+			<Text color="cyan">{"░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░"}</Text>
+			<Text color="cyan">{" ░▒▓███████▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓▓▒░       ░▒▓███████▓▒░ ░▒▓████████▓▒░"}</Text>
+			<Text color="cyan">{"                                 ░▓▒░"}</Text>
 			<Text> </Text>
 			<Box>
 				{webConfig?.isDevMode && (
@@ -45,11 +50,13 @@ const Header: React.FC<HeaderProps> = ({subtitle, webConfig}) => {
 				)}
 				{networkUrl ? (
 					<Text color="yellow">
-						Coding Agent Control Desk — Web:{' '}
+						Coding Agent Control Desk <Text dimColor>v{version}</Text> — Web:{' '}
 						<Text color="greenBright">{networkUrl}</Text>
 					</Text>
 				) : (
-					<Text color="yellow">Coding Agent Control Desk</Text>
+					<Text color="yellow">
+						Coding Agent Control Desk <Text dimColor>v{version}</Text>
+					</Text>
 				)}
 			</Box>
 			{subtitle && (
@@ -57,7 +64,9 @@ const Header: React.FC<HeaderProps> = ({subtitle, webConfig}) => {
 					{subtitle}
 				</Text>
 			)}
-			<Text color="gray">────────────────────────────────────────────────────────────────────────────</Text>
+			<Text color="gray">
+				────────────────────────────────────────────────────────────────────────────
+			</Text>
 		</Box>
 	);
 };
