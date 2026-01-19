@@ -11,3 +11,9 @@ ui-reference/
 
 # Dev test projects
 .dev-projects/
+
+# Local audit/task tracking
+TODO.md
+
+# Local dev config
+temp/
