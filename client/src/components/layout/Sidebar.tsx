@@ -49,7 +49,6 @@ export function Sidebar() {
     expandSidebar,
     toggleSidebar,
     selectSession,
-    toggleSession,
     openAddProjectModal,
     openAddWorktreeModal,
     openAddSessionModal,
@@ -290,12 +289,8 @@ export function Sidebar() {
   }
 
   // Handle session click
-  const handleSessionClick = (sessionId: string, e: React.MouseEvent) => {
-    if (e.metaKey || e.ctrlKey) {
-      toggleSession(sessionId)
-    } else {
-      selectSession(sessionId)
-    }
+  const handleSessionClick = (sessionId: string) => {
+    selectSession(sessionId)
     // Auto-close sidebar on mobile after session selection
     if (isMobile) {
       toggleSidebar()
@@ -570,8 +565,7 @@ export function Sidebar() {
                                               : 'hover:bg-secondary/50',
                                             isMobile && 'min-h-[44px]'
                                           )}
-                                          onClick={(e) => handleSessionClick(session.id, e)}
-                                          title="Click to view, Cmd/Ctrl+click for split view"
+                                          onClick={() => handleSessionClick(session.id)}
                                         >
                                           {/* Status indicator and agent icon */}
                                           <StatusIndicator status={mapSessionState(session.state)} size="sm" />

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useAppStore } from '@/lib/store'
-import { Circle, Wifi, Cpu, Command, Lock } from 'lucide-react'
+import { Circle, Wifi, Cpu, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // Detect Apple platforms (Mac, iPhone, iPad)
@@ -65,17 +65,6 @@ export function Footer() {
           <span className="hidden md:inline text-xs">{isApple ? '⌘' : '⌃'}+L</span>
         </button>
         <span className="hidden md:block text-border">│</span>
-
-        {/* Keyboard hints - desktop only */}
-        <div className="hidden lg:flex items-center gap-1 text-muted-foreground/70">
-          {isApple ? (
-            <span className="text-sm">⌘</span>
-          ) : (
-            <Command className="h-2.5 w-2.5" />
-          )}
-          <span>+click for split</span>
-        </div>
-        <span className="hidden lg:block text-border">│</span>
 
         {/* Session count */}
         <span>

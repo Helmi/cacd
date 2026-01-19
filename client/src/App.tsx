@@ -43,10 +43,6 @@ function MainContent() {
         <div className="text-center text-sm">
           <p>No sessions selected</p>
           <p className="text-xs">Click a session in the sidebar to view it</p>
-          <p className="mt-1 text-xs opacity-70">
-            Hold <kbd className="rounded bg-secondary px-1">Cmd</kbd> or{' '}
-            <kbd className="rounded bg-secondary px-1">Ctrl</kbd> to select multiple
-          </p>
         </div>
       </div>
     )
