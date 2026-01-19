@@ -1,6 +1,6 @@
 {
 	"name": "coding-agent-control-desk",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "CA⚡CD - Web-based control desk for managing multiple AI coding agent sessions (Claude, Gemini, Codex, Cursor)",
 	"license": "MIT",
 	"author": "Helmi",

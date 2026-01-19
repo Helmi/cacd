@@ -296,6 +296,73 @@ export const TerminalSession = memo(function TerminalSession({
 		};
 		terminalRef.current.addEventListener('wheel', wheelHandler, { passive: true });
 
+		// Clipboard image paste handler
+		const pasteHandler = async (e: ClipboardEvent) => {
+			const items = e.clipboardData?.items;
+			if (!items) return;
+
+			// Check for image items first
+			let imageItem: DataTransferItem | null = null;
+			for (const item of items) {
+				if (item.type.startsWith('image/')) {
+					imageItem = item;
+					break;
+				}
+			}
+
+			// Only handle images - let text paste through to xterm.js
+			if (!imageItem) return;
+
+			e.preventDefault();
+
+			const blob = imageItem.getAsFile();
+			if (!blob) return;
+
+			// Show feedback in terminal
+			term.write('\r\n[Uploading image...]\r\n');
+
+			// Convert to base64
+			const reader = new FileReader();
+			reader.onload = () => {
+				const base64 = reader.result as string;
+				currentSocket.emit('paste_image', {
+					sessionId: sessionIdRef.current,
+					imageData: base64,
+					mimeType: imageItem!.type,
+				});
+			};
+			reader.onerror = () => {
+				term.write('\r\n[Image upload failed]\r\n');
+			};
+			reader.readAsDataURL(blob);
+		};
+		terminalRef.current.addEventListener('paste', pasteHandler);
+
+		// Handle image path response from server
+		const handleImagePath = ({
+			sessionId,
+			filePath,
+			error,
+		}: {
+			sessionId: string;
+			filePath?: string;
+			error?: string;
+		}) => {
+			if (sessionId !== sessionIdRef.current) return;
+
+			if (error) {
+				term.write(`\r\n[Error: ${error}]\r\n`);
+				return;
+			}
+
+			// Write the file path to terminal (quoted, with trailing space for UX)
+			currentSocket.emit('input', {
+				sessionId: sessionIdRef.current,
+				data: `'${filePath}' `,
+			});
+		};
+		currentSocket.on('image_path', handleImagePath);
+
 		// Custom touch scroll handling for mobile
 		// xterm.js has poor native touch support, so we implement manual scrolling
 		// Use pointer events with capture to intercept before xterm's handlers
@@ -399,11 +466,13 @@ export const TerminalSession = memo(function TerminalSession({
 
 			// Use captured references for cleanup to ensure correct socket/session
 			currentSocket.off('terminal_data', handleData);
+			currentSocket.off('image_path', handleImagePath);
 			resizeObserver.disconnect();
 			onDataDisposable.dispose();
 			onWriteDisposable.dispose();
 			if (terminalRef.current) {
 				terminalRef.current.removeEventListener('wheel', wheelHandler);
+				terminalRef.current.removeEventListener('paste', pasteHandler);
 				terminalRef.current.removeEventListener('pointerdown', pointerDownHandler, { capture: true });
 				terminalRef.current.removeEventListener('pointermove', pointerMoveHandler, { capture: true });
 				terminalRef.current.removeEventListener('pointerup', pointerUpHandler, { capture: true });

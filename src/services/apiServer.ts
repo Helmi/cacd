@@ -18,13 +18,55 @@ import {
 	getChangedFilesLimited,
 	getFileDiff,
 } from '../utils/gitStatus.js';
-import {randomUUID} from 'crypto';
+import {randomUUID, randomBytes} from 'crypto';
+import {writeFile, mkdir, readdir, unlink, stat} from 'fs/promises';
+import {tmpdir} from 'os';
 import {generateRandomPort, isDevMode} from '../constants/env.js';
 import {
 	validateWorktreePath,
 	validatePathWithinBase,
 } from '../utils/pathValidation.js';
 import {getDefaultShell} from '../utils/platform.js';
+
+// --- Clipboard Image Paste Constants ---
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_MIME_TYPES = [
+	'image/png',
+	'image/jpeg',
+	'image/webp',
+	'image/gif',
+];
+const TEMP_IMAGE_DIR = path.join(tmpdir(), 'cacd-images');
+
+// Create temp directory on module load (async, fire-and-forget)
+mkdir(TEMP_IMAGE_DIR, {recursive: true, mode: 0o700}).catch(() => {});
+
+// Cleanup old temp images (older than 1 hour)
+async function cleanupTempImages() {
+	try {
+		const files = await readdir(TEMP_IMAGE_DIR);
+		const oneHourAgo = Date.now() - 60 * 60 * 1000;
+
+		for (const file of files) {
+			const filePath = path.join(TEMP_IMAGE_DIR, file);
+			try {
+				const stats = await stat(filePath);
+				if (stats.mtimeMs < oneHourAgo) {
+					await unlink(filePath).catch(() => {});
+					logger.info(`Cleaned up old temp image: ${file}`);
+				}
+			} catch {
+				// File might have been deleted already
+			}
+		}
+	} catch {
+		// Directory might not exist yet
+	}
+}
+
+// Run cleanup on startup and every hour
+cleanupTempImages();
+setInterval(cleanupTempImages, 60 * 60 * 1000);
 
 // Check if hostname is allowed (localhost, private network IP, or local hostname)
 function isAllowedHost(hostname: string): boolean {
@@ -97,7 +139,9 @@ export class APIServer {
 					const url = new URL(origin);
 					const allowed = isAllowedHost(url.hostname);
 					if (isDevMode()) {
-						logger.info(`CORS check: origin=${origin} hostname=${url.hostname} allowed=${allowed}`);
+						logger.info(
+							`CORS check: origin=${origin} hostname=${url.hostname} allowed=${allowed}`,
+						);
 					}
 					if (allowed) {
 						cb(null, true);
@@ -561,9 +605,7 @@ export class APIServer {
 					// Skip .git directory
 					if (entry.name === '.git') continue;
 
-					const relativePath = subDir
-						? `${subDir}/${entry.name}`
-						: entry.name;
+					const relativePath = subDir ? `${subDir}/${entry.name}` : entry.name;
 
 					if (entry.isDirectory()) {
 						result.push({
@@ -1045,7 +1087,9 @@ export class APIServer {
 				return reply.code(404).send({error: 'Agent not found'});
 			}
 
-			logger.info(`API: Found agent "${agent.name}" (id=${agent.id}, command=${agent.command})`);
+			logger.info(
+				`API: Found agent "${agent.name}" (id=${agent.id}, command=${agent.command})`,
+			);
 
 			// Validate options
 			const validationErrors = configurationManager.validateAgentOptions(
@@ -1243,6 +1287,77 @@ export class APIServer {
 						const session = sessions.find(s => s.id === sessionId);
 						if (session) {
 							session.process.resize(cols, rows);
+						}
+					},
+				);
+
+				// Handle clipboard image paste
+				socket.on(
+					'paste_image',
+					async ({
+						sessionId,
+						imageData,
+						mimeType,
+					}: {
+						sessionId: string;
+						imageData: string; // base64 data URL
+						mimeType: string;
+					}) => {
+						try {
+							// Validate MIME type
+							if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
+								socket.emit('image_path', {
+									sessionId,
+									error: 'Invalid image type',
+								});
+								return;
+							}
+
+							// Parse and validate data URL format
+							const match = imageData.match(/^data:(image\/\w+);base64,(.+)$/);
+							if (!match || !match[2]) {
+								socket.emit('image_path', {
+									sessionId,
+									error: 'Invalid image data',
+								});
+								return;
+							}
+
+							const base64Data = match[2];
+
+							// Check size before decoding (base64 is ~33% larger than binary)
+							const estimatedSize = (base64Data.length * 3) / 4;
+							if (estimatedSize > MAX_IMAGE_SIZE) {
+								socket.emit('image_path', {
+									sessionId,
+									error: 'Image too large (max 10MB)',
+								});
+								return;
+							}
+
+							const buffer = Buffer.from(base64Data, 'base64');
+
+							// Determine extension from mime type
+							const ext = mimeType.split('/')[1] || 'png';
+
+							// Generate secure random filename
+							const randomName = randomBytes(16).toString('hex');
+							const filename = `${randomName}.${ext}`;
+							const filePath = path.join(TEMP_IMAGE_DIR, filename);
+
+							// Write file with restrictive permissions
+							await writeFile(filePath, buffer, {mode: 0o600});
+
+							// Send path back to client
+							socket.emit('image_path', {sessionId, filePath});
+
+							logger.info(`Saved clipboard image to ${filePath}`);
+						} catch (error) {
+							logger.error('Failed to save clipboard image:', error);
+							socket.emit('image_path', {
+								sessionId,
+								error: 'Failed to save image',
+							});
 						}
 					},
 				);
