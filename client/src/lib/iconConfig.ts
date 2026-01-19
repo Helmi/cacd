@@ -6,8 +6,9 @@ export const BRAND_ICONS = {
   claude: { svg: 'claude-code', light: '#D97757', dark: '#D97757', match: ['claude'] },
   gemini: { svg: 'google-gemini', light: '#0066CC', dark: '#078EFA', match: ['gemini'] },
   openai: { svg: 'openai-codex', light: '#000000', dark: '#FFFFFF', match: ['codex', 'openai'] },
+  cursor: { svg: 'cursor', light: '#000000', dark: '#FFFFFF', match: ['cursor'] },
   droid: { svg: 'factory-droid', light: '#D15010', dark: '#EF6F2E', match: ['droid'] },
-  kilo: { svg: 'kilocode', light: '#8B7A00', dark: '#F8F676', match: ['kilo'] },
+  kilo: { svg: 'kilocode', light: '#8B7A00', dark: '#F8F676', match: ['kilo', 'kilocode'] },
   opencode: { svg: 'opencode', light: '#211E1E', dark: '#E5E5E5', match: ['opencode'] },
 } as const
 
