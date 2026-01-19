@@ -27,6 +27,7 @@ import {
 import {cn} from '@/lib/utils';
 import type {Session} from '@/lib/types';
 import {mapSessionState} from '@/lib/types';
+import {useIsMobile} from '@/hooks/useIsMobile';
 
 // Debounced fit function to prevent layout thrashing
 function createDebouncedFit(delay = 100) {
@@ -38,7 +39,8 @@ function createDebouncedFit(delay = 100) {
 		xterm: XTerm | null,
 		socket: ReturnType<typeof useAppStore>['socket'],
 		sessionId: string,
-		lastDims: { cols: number; rows: number }
+		lastDims: { cols: number; rows: number },
+		onColsChange?: (cols: number) => void
 	) => {
 		if (timeoutId) clearTimeout(timeoutId);
 		if (rafId) cancelAnimationFrame(rafId);
@@ -55,6 +57,7 @@ function createDebouncedFit(delay = 100) {
 					lastDims.cols = cols;
 					lastDims.rows = rows;
 					socket.emit('resize', { sessionId, cols, rows });
+					onColsChange?.(cols);
 				}
 			});
 		}, delay);
@@ -119,6 +122,7 @@ export const TerminalSession = memo(function TerminalSession({
 		worktrees,
 		agents,
 	} = useAppStore();
+	const isMobile = useIsMobile();
 	const hasMultipleSessions = selectedSessions.length > 1;
 
 	// Find worktree for this session to get git status
@@ -292,6 +296,54 @@ export const TerminalSession = memo(function TerminalSession({
 		};
 		terminalRef.current.addEventListener('wheel', wheelHandler, { passive: true });
 
+		// Custom touch scroll handling for mobile
+		// xterm.js has poor native touch support, so we implement manual scrolling
+		// Use pointer events with capture to intercept before xterm's handlers
+		let pointerLastY = 0;
+		let accumulatedDelta = 0;
+		let activePointerId: number | null = null;
+		const PIXELS_PER_LINE = 10; // Scroll 1 line per 10px of movement
+
+		const pointerDownHandler = (e: PointerEvent) => {
+			// Only handle touch, not mouse (mouse scrolling works fine)
+			if (e.pointerType !== 'touch') return;
+			activePointerId = e.pointerId;
+			pointerLastY = e.clientY;
+			accumulatedDelta = 0;
+		};
+
+		const pointerMoveHandler = (e: PointerEvent) => {
+			if (e.pointerType !== 'touch' || e.pointerId !== activePointerId) return;
+
+			const deltaY = pointerLastY - e.clientY;
+			pointerLastY = e.clientY;
+
+			accumulatedDelta += deltaY;
+
+			// Scroll when we've accumulated enough movement
+			const linesToScroll = Math.trunc(accumulatedDelta / PIXELS_PER_LINE);
+			if (linesToScroll !== 0) {
+				term.scrollLines(linesToScroll);
+				accumulatedDelta -= linesToScroll * PIXELS_PER_LINE;
+				checkScrollPosition();
+			}
+		};
+
+		const pointerUpHandler = (e: PointerEvent) => {
+			if (e.pointerId === activePointerId) {
+				activePointerId = null;
+				accumulatedDelta = 0;
+				checkScrollPosition();
+			}
+		};
+
+		// Use capture phase to get events before xterm's handlers
+		const termEl = terminalRef.current;
+		termEl.addEventListener('pointerdown', pointerDownHandler, { capture: true });
+		termEl.addEventListener('pointermove', pointerMoveHandler, { capture: true });
+		termEl.addEventListener('pointerup', pointerUpHandler, { capture: true });
+		termEl.addEventListener('pointercancel', pointerUpHandler, { capture: true });
+
 		// Also check position when new content arrives
 		const onWriteDisposable = term.onWriteParsed(() => {
 			checkScrollPosition();
@@ -352,6 +404,10 @@ export const TerminalSession = memo(function TerminalSession({
 			onWriteDisposable.dispose();
 			if (terminalRef.current) {
 				terminalRef.current.removeEventListener('wheel', wheelHandler);
+				terminalRef.current.removeEventListener('pointerdown', pointerDownHandler, { capture: true });
+				terminalRef.current.removeEventListener('pointermove', pointerMoveHandler, { capture: true });
+				terminalRef.current.removeEventListener('pointerup', pointerUpHandler, { capture: true });
+				terminalRef.current.removeEventListener('pointercancel', pointerUpHandler, { capture: true });
 			}
 			term.dispose();
 			xtermRef.current = null;
@@ -413,12 +469,14 @@ export const TerminalSession = memo(function TerminalSession({
 		}
 	}, [font, fontFamily, debouncedFit, socket, session.id]);
 
-	// Focus terminal when isFocused becomes true
+	// Focus terminal and scroll to bottom when isFocused becomes true
 	useEffect(() => {
 		if (isFocused && xtermRef.current) {
 			// Small delay to ensure DOM is ready after state updates
 			requestAnimationFrame(() => {
 				xtermRef.current?.focus();
+				xtermRef.current?.scrollToBottom();
+				setIsScrolledUp(false);
 			});
 		}
 	}, [isFocused]);
@@ -480,8 +538,8 @@ export const TerminalSession = memo(function TerminalSession({
 					<span className="font-medium text-card-foreground truncate">
 						{session.name || formatName(session.path)}
 					</span>
-					{/* Branch name with git icon */}
-					{worktree && (
+					{/* Branch name with git icon - hidden on mobile */}
+					{!isMobile && worktree && (
 						<>
 							<span className="text-border shrink-0">•</span>
 							<GitBranch className="h-3 w-3 text-accent shrink-0" />
@@ -493,9 +551,10 @@ export const TerminalSession = memo(function TerminalSession({
 							</span>
 						</>
 					)}
-					<span className="text-muted-foreground shrink-0">({session.state})</span>
-					{/* Git status badge */}
-					{worktree?.gitStatus &&
+					{/* Status text - hidden on mobile */}
+					{!isMobile && <span className="text-muted-foreground shrink-0">({session.state})</span>}
+					{/* Git status badge - hidden on mobile */}
+					{!isMobile && worktree?.gitStatus &&
 						(worktree.gitStatus.filesAdded > 0 ||
 							worktree.gitStatus.filesDeleted > 0) && (
 							<span className="flex items-center gap-1 font-mono text-[11px] shrink-0">
@@ -530,19 +589,21 @@ export const TerminalSession = memo(function TerminalSession({
 						<Info className="h-3 w-3" />
 					</Button>
 
-					{/* Maximize/Minimize */}
-					<Button
-						variant="ghost"
-						size="icon"
-						className="h-5 w-5 text-muted-foreground hover:text-foreground"
-						onClick={() => setIsMaximized(!isMaximized)}
-					>
-						{isMaximized ? (
-							<Minimize2 className="h-3 w-3" />
-						) : (
-							<Maximize2 className="h-3 w-3" />
-						)}
-					</Button>
+					{/* Maximize/Minimize - hidden on mobile */}
+					{!isMobile && (
+						<Button
+							variant="ghost"
+							size="icon"
+							className="h-5 w-5 text-muted-foreground hover:text-foreground"
+							onClick={() => setIsMaximized(!isMaximized)}
+						>
+							{isMaximized ? (
+								<Minimize2 className="h-3 w-3" />
+							) : (
+								<Maximize2 className="h-3 w-3" />
+							)}
+						</Button>
+					)}
 
 					{/* More menu */}
 					<DropdownMenu>

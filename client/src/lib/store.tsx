@@ -43,6 +43,7 @@ interface AppState {
   sidebarOpen: boolean
   sidebarCollapsed: boolean
   contextSidebarSessionId: string | null
+  sessionContextTabs: Record<string, 'changes' | 'files'>
 
   // Modal State
   addProjectModalOpen: boolean
@@ -111,6 +112,7 @@ interface AppActions {
   openContextSidebar: (sessionId: string) => void
   closeContextSidebar: () => void
   toggleContextSidebar: (sessionId: string) => void
+  setSessionContextTab: (sessionId: string, tab: 'changes' | 'files') => void
 
   // Theme
   setTheme: (theme: ThemeType) => void
@@ -176,9 +178,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // UI state
   const [selectedSessions, setSelectedSessions] = useState<string[]>([])
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Sidebar closed by default on mobile (< 768px)
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return window.innerWidth >= 768
+  })
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [contextSidebarSessionId, setContextSidebarSessionId] = useState<string | null>(null)
+
+  // Track which sessions have sidebar open (per-session preference)
+  const [sessionsWithSidebarOpen, setSessionsWithSidebarOpenState] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('cacd_sessionsWithSidebarOpen')
+      return saved ? new Set(JSON.parse(saved)) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
+
+  // Wrapper to persist sessionsWithSidebarOpen to localStorage
+  const setSessionsWithSidebarOpen = useCallback((value: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    setSessionsWithSidebarOpenState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value
+      localStorage.setItem('cacd_sessionsWithSidebarOpen', JSON.stringify([...newValue]))
+      return newValue
+    })
+  }, [])
+
+  // Track which tab (changes/files) each session has selected
+  const [sessionContextTabs, setSessionContextTabsState] = useState<Record<string, 'changes' | 'files'>>(() => {
+    try {
+      const saved = localStorage.getItem('cacd_sessionContextTabs')
+      return saved ? JSON.parse(saved) : {}
+    } catch {
+      return {}
+    }
+  })
+
+  const setSessionContextTab = useCallback((sessionId: string, tab: 'changes' | 'files') => {
+    setSessionContextTabsState(prev => {
+      const next = { ...prev, [sessionId]: tab }
+      localStorage.setItem('cacd_sessionContextTabs', JSON.stringify(next))
+      return next
+    })
+  }, [])
 
   // Modal state
   const [addProjectModalOpen, setAddProjectModalOpen] = useState(false)
@@ -440,6 +483,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [fetchData, fetchAgents, debouncedFetchSessionData])
 
+  // Clean up stale sessions from sidebar preferences and tab state
+  useEffect(() => {
+    if (sessions.length > 0) {
+      const sessionIds = new Set(sessions.map(s => s.id))
+
+      // Clear current sidebar if session no longer exists
+      if (contextSidebarSessionId && !sessionIds.has(contextSidebarSessionId)) {
+        setContextSidebarSessionId(null)
+      }
+
+      // Remove stale sessions from sidebar preferences
+      const staleSidebarIds = [...sessionsWithSidebarOpen].filter(id => !sessionIds.has(id))
+      if (staleSidebarIds.length > 0) {
+        setSessionsWithSidebarOpen(prev => {
+          const next = new Set(prev)
+          staleSidebarIds.forEach(id => next.delete(id))
+          return next
+        })
+      }
+
+      // Remove stale sessions from tab preferences
+      const staleTabIds = Object.keys(sessionContextTabs).filter(id => !sessionIds.has(id))
+      if (staleTabIds.length > 0) {
+        setSessionContextTabsState(prev => {
+          const next = { ...prev }
+          staleTabIds.forEach(id => delete next[id])
+          localStorage.setItem('cacd_sessionContextTabs', JSON.stringify(next))
+          return next
+        })
+      }
+    }
+  }, [sessions, contextSidebarSessionId, sessionsWithSidebarOpen, setSessionsWithSidebarOpen, sessionContextTabs])
+
   const selectProject = async (path: string) => {
     try {
       const res = await fetch('/api/project/select', {
@@ -464,10 +540,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const selectSession = (sessionId: string) => {
     setSelectedSessions([sessionId])
     setFocusedSessionId(sessionId)
-    // Don't auto-open context sidebar - let user toggle it manually
-    // Only update if sidebar is already showing a different session
-    if (contextSidebarSessionId && contextSidebarSessionId !== sessionId) {
+    // Restore per-session sidebar preference
+    if (sessionsWithSidebarOpen.has(sessionId)) {
       setContextSidebarSessionId(sessionId)
+    } else {
+      setContextSidebarSessionId(null)
     }
   }
 
@@ -517,9 +594,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const focusSession = (sessionId: string) => {
     setFocusedSessionId(sessionId)
-    // If context sidebar is open for a different session, switch to focused session
-    if (contextSidebarSessionId && contextSidebarSessionId !== sessionId) {
+    // Restore per-session sidebar preference
+    if (sessionsWithSidebarOpen.has(sessionId)) {
       setContextSidebarSessionId(sessionId)
+    } else {
+      setContextSidebarSessionId(null)
     }
   }
 
@@ -527,10 +606,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const collapseSidebar = () => setSidebarCollapsed(true)
   const expandSidebar = () => setSidebarCollapsed(false)
 
-  const openContextSidebar = (sessionId: string) => setContextSidebarSessionId(sessionId)
-  const closeContextSidebar = () => setContextSidebarSessionId(null)
+  const openContextSidebar = (sessionId: string) => {
+    setContextSidebarSessionId(sessionId)
+    setSessionsWithSidebarOpen(prev => new Set([...prev, sessionId]))
+  }
+  const closeContextSidebar = () => {
+    // Remove current session from sidebar preferences
+    if (contextSidebarSessionId) {
+      setSessionsWithSidebarOpen(prev => {
+        const next = new Set(prev)
+        next.delete(contextSidebarSessionId)
+        return next
+      })
+    }
+    setContextSidebarSessionId(null)
+  }
   const toggleContextSidebar = (sessionId: string) => {
-    setContextSidebarSessionId(prev => prev === sessionId ? null : sessionId)
+    if (contextSidebarSessionId === sessionId) {
+      // Closing - remove from preferences
+      setSessionsWithSidebarOpen(prev => {
+        const next = new Set(prev)
+        next.delete(sessionId)
+        return next
+      })
+      setContextSidebarSessionId(null)
+    } else {
+      // Opening - add to preferences
+      setSessionsWithSidebarOpen(prev => new Set([...prev, sessionId]))
+      setContextSidebarSessionId(sessionId)
+    }
   }
 
   const setTheme = (t: ThemeType) => setThemeState(t)
@@ -554,7 +658,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await fetchData()
         setSelectedSessions([data.id])
         setFocusedSessionId(data.id)
-        setContextSidebarSessionId(data.id) // Auto-open context sidebar for new sessions
+        // Auto-open context sidebar for new sessions - but not on mobile
+        const isMobileView = typeof window !== 'undefined' && window.innerWidth < 768
+        if (!isMobileView) {
+          setContextSidebarSessionId(data.id)
+          setSessionsWithSidebarOpen(prev => new Set([...prev, data.id]))
+        }
+        // Close left sidebar on mobile after creating session
+        if (isMobileView) {
+          setSidebarOpen(false)
+        }
         return true
       }
       return false
@@ -588,7 +701,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await fetchData()
         setSelectedSessions([data.id])
         setFocusedSessionId(data.id)
-        setContextSidebarSessionId(data.id)
+        // Auto-open context sidebar for new sessions - but not on mobile
+        const isMobileView = typeof window !== 'undefined' && window.innerWidth < 768
+        if (!isMobileView) {
+          setContextSidebarSessionId(data.id)
+          setSessionsWithSidebarOpen(prev => new Set([...prev, data.id]))
+        }
+        // Close left sidebar on mobile after creating session
+        if (isMobileView) {
+          setSidebarOpen(false)
+        }
         return true
       }
       return false
@@ -808,6 +930,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sidebarOpen,
     sidebarCollapsed,
     contextSidebarSessionId,
+    sessionContextTabs,
     addProjectModalOpen,
     addWorktreeModalOpen,
     addWorktreeProjectPath,
@@ -843,6 +966,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     openContextSidebar,
     closeContextSidebar,
     toggleContextSidebar,
+    setSessionContextTab,
     openAddProjectModal,
     closeAddProjectModal,
     openAddWorktreeModal,

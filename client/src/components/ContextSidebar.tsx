@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '@/lib/store'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -19,8 +20,11 @@ export function ContextSidebar() {
     contextSidebarSessionId,
     closeContextSidebar,
     openFileDiff,
+    sessionContextTabs,
+    setSessionContextTab,
   } = useAppStore()
 
+  const isMobile = useIsMobile()
   const [copied, setCopied] = useState(false)
   const [changedFiles, setChangedFiles] = useState<ChangedFile[]>([])
   const [filesLoading, setFilesLoading] = useState(false)
@@ -101,24 +105,10 @@ export function ContextSidebar() {
     }
   }
 
-  return (
-    <aside className="flex w-64 flex-col border-l border-border bg-sidebar lg:w-72 xl:w-80 overflow-hidden">
-      {/* Header */}
-      <div className="flex h-7 items-center justify-between border-b border-border px-2 shrink-0">
-        <span className="text-xs font-medium text-muted-foreground">Session Details</span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-5 w-5"
-          onClick={closeContextSidebar}
-        >
-          <X className="h-3 w-3" />
-        </Button>
-      </div>
-
-      <ScrollArea className="flex-1 w-full">
-        <div className="space-y-4 p-3 w-full max-w-full box-border">
-          {/* Session Info */}
+  // Content shared between mobile and desktop
+  const mainContent = (
+    <>
+      {/* Session Info */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 min-w-0">
               <StatusIndicator status={mapSessionState(session.state)} size="md" />
@@ -189,7 +179,11 @@ export function ContextSidebar() {
           <div className="border-t border-border" />
 
           {/* Tabbed Section: Changes / Files */}
-          <Tabs defaultValue="changes" className="space-y-3">
+          <Tabs
+            value={sessionContextTabs[session.id] || 'changes'}
+            onValueChange={(value) => setSessionContextTab(session.id, value as 'changes' | 'files')}
+            className="space-y-3"
+          >
             {/* Custom styled tabs - segmented control look */}
             <TabsList className="grid w-full grid-cols-2 h-6 p-0 bg-transparent gap-2">
               <TabsTrigger
@@ -317,6 +311,66 @@ export function ContextSidebar() {
               <FileBrowser worktreePath={session.path} />
             </TabsContent>
           </Tabs>
+    </>
+  )
+
+  // Mobile: full-width overlay with backdrop
+  if (isMobile) {
+    return (
+      <>
+        {/* Backdrop */}
+        <div
+          className="fixed inset-0 top-9 bottom-7 z-40 bg-black/50 animate-in fade-in-0 duration-200"
+          onClick={closeContextSidebar}
+          aria-hidden="true"
+        />
+        {/* Panel */}
+        <aside
+          className="fixed right-0 top-9 bottom-7 z-50 flex w-full max-w-sm flex-col border-l border-border bg-sidebar overflow-hidden animate-in slide-in-from-right duration-200"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Session details"
+        >
+          {/* Header */}
+          <div className="flex h-11 items-center justify-between border-b border-border px-2 shrink-0">
+            <span className="text-sm font-medium text-muted-foreground">Session Details</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={closeContextSidebar}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <ScrollArea className="flex-1 w-full">
+            <div className="space-y-4 p-3 w-full max-w-full box-border">
+              {mainContent}
+            </div>
+          </ScrollArea>
+        </aside>
+      </>
+    )
+  }
+
+  // Desktop: static sidebar
+  return (
+    <aside className="flex w-64 flex-col border-l border-border bg-sidebar lg:w-72 xl:w-80 overflow-hidden">
+      {/* Header */}
+      <div className="flex h-7 items-center justify-between border-b border-border px-2 shrink-0">
+        <span className="text-xs font-medium text-muted-foreground">Session Details</span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-5 w-5"
+          onClick={closeContextSidebar}
+        >
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+      <ScrollArea className="flex-1 w-full">
+        <div className="space-y-4 p-3 w-full max-w-full box-border">
+          {mainContent}
         </div>
       </ScrollArea>
     </aside>

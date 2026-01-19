@@ -29,10 +29,12 @@ import {
   FolderGit2,
   FolderPlus,
   GitBranch,
+  MoreVertical,
   PanelLeftClose,
   Plus,
   X,
 } from 'lucide-react'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 export function Sidebar() {
   const {
@@ -55,6 +57,8 @@ export function Sidebar() {
     deleteWorktree,
     stopSession,
   } = useAppStore()
+
+  const isMobile = useIsMobile()
 
   // Helper to get agent config by ID
   const getAgentById = (agentId?: string) => {
@@ -292,6 +296,10 @@ export function Sidebar() {
     } else {
       selectSession(sessionId)
     }
+    // Auto-close sidebar on mobile after session selection
+    if (isMobile) {
+      toggleSidebar()
+    }
   }
 
   // Extract name from path
@@ -302,7 +310,7 @@ export function Sidebar() {
   // Collapsed sidebar (icon-only mode)
   if (sidebarCollapsed) {
     return (
-      <aside className="flex w-10 flex-col border-r border-border bg-sidebar">
+      <aside className="flex h-full w-10 flex-col border-r border-border bg-sidebar">
         <Button
           variant="ghost"
           size="icon"
@@ -332,7 +340,7 @@ export function Sidebar() {
 
   // Expanded sidebar
   return (
-    <aside className="flex w-56 flex-col border-r border-border bg-sidebar lg:w-64 overflow-hidden">
+    <aside className="flex h-full w-56 flex-col border-r border-border bg-sidebar lg:w-64 overflow-hidden">
       {/* Pattern separator bar with actions */}
       <div className="flex items-center gap-1 px-2 py-1.5 pattern-dots border-b border-border">
         <DropdownMenu>
@@ -390,7 +398,8 @@ export function Sidebar() {
                       className={cn(
                         'group flex w-full min-w-0 items-center gap-2 px-2 py-2 text-sm',
                         'bg-muted/50 hover:bg-muted transition-colors',
-                        isCurrentProject && 'bg-muted'
+                        isCurrentProject && 'bg-muted',
+                        isMobile && 'min-h-[44px]'
                       )}
                     >
                       <FolderGit2 className={cn(
@@ -398,6 +407,39 @@ export function Sidebar() {
                         isExpanded ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
                       )} />
                       <span className="truncate font-medium flex-1 text-left">{project.name}</span>
+                      {/* Visible menu button - always on mobile, hover on desktop */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <div
+                            role="button"
+                            className={cn(
+                              'p-1 -m-1 rounded hover:bg-secondary/80 transition-colors',
+                              isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                            )}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreVertical className="h-3.5 w-3.5 text-muted-foreground" />
+                          </div>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="text-xs">
+                          <DropdownMenuItem onClick={() => openAddWorktreeModal(project.path)}>
+                            <GitBranch className="h-3.5 w-3.5 mr-2" />
+                            New Worktree
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openAddSessionModal(undefined, project.path)}>
+                            <Plus className="h-3.5 w-3.5 mr-2" />
+                            New Session
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => confirmRemoveProject(project)}
+                          >
+                            <X className="h-3.5 w-3.5 mr-2" />
+                            Remove Project
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       {isExpanded ? (
                         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       ) : (
@@ -444,7 +486,10 @@ export function Sidebar() {
                               <ContextMenuTrigger asChild>
                                 <button
                                   onClick={() => toggleWorktree(worktree.path)}
-                                  className="flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-xs hover:bg-secondary/50 transition-colors"
+                                  className={cn(
+                                    'group flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-xs hover:bg-secondary/50 transition-colors',
+                                    isMobile && 'min-h-[44px]'
+                                  )}
                                 >
                                   {isWorktreeExpanded ? (
                                     <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -458,6 +503,36 @@ export function Sidebar() {
                                   <span className="truncate flex-1 text-left text-muted-foreground">
                                     {worktree.branch || formatName(worktree.path)}
                                   </span>
+                                  {/* Visible menu button */}
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <div
+                                        role="button"
+                                        className={cn(
+                                          'p-1 -m-1 rounded hover:bg-secondary/80 transition-colors',
+                                          isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                                        )}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <MoreVertical className="h-3 w-3 text-muted-foreground" />
+                                      </div>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="text-xs">
+                                      <DropdownMenuItem onClick={() => openAddSessionModal(worktree.path)}>
+                                        <Plus className="h-3.5 w-3.5 mr-2" />
+                                        New Session
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="text-destructive focus:text-destructive"
+                                        onClick={() => confirmDeleteWorktree(worktree, project.path)}
+                                        disabled={worktree.isMainWorktree}
+                                      >
+                                        <X className="h-3.5 w-3.5 mr-2" />
+                                        Delete Worktree
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </button>
                               </ContextMenuTrigger>
                               <ContextMenuContent>
@@ -492,7 +567,8 @@ export function Sidebar() {
                                             'group relative flex min-w-0 items-center gap-2 pl-2 pr-3 py-1.5 cursor-pointer rounded-l transition-colors',
                                             isSelected
                                               ? 'bg-primary/10'
-                                              : 'hover:bg-secondary/50'
+                                              : 'hover:bg-secondary/50',
+                                            isMobile && 'min-h-[44px]'
                                           )}
                                           onClick={(e) => handleSessionClick(session.id, e)}
                                           title="Click to view, Cmd/Ctrl+click for split view"
@@ -510,6 +586,34 @@ export function Sidebar() {
                                           )}>
                                             {session.name || formatName(session.path)}
                                           </span>
+                                          {/* Visible menu button */}
+                                          <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                              <div
+                                                role="button"
+                                                className={cn(
+                                                  'p-1 -m-1 rounded hover:bg-secondary/80 transition-colors z-10',
+                                                  isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                                                )}
+                                                onClick={(e) => e.stopPropagation()}
+                                              >
+                                                <MoreVertical className="h-3 w-3 text-muted-foreground" />
+                                              </div>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="text-xs">
+                                              <DropdownMenuItem onClick={() => selectSession(session.id)}>
+                                                View Terminal
+                                              </DropdownMenuItem>
+                                              <DropdownMenuSeparator />
+                                              <DropdownMenuItem
+                                                className="text-destructive focus:text-destructive"
+                                                onClick={() => confirmStopSession(session)}
+                                              >
+                                                <X className="h-3.5 w-3.5 mr-2" />
+                                                Stop Session
+                                              </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                          </DropdownMenu>
                                           {/* Selection indicator - subtle bar on right */}
                                           <div className={cn(
                                             'absolute right-0 top-1 bottom-1 w-[3px] rounded-full transition-all duration-150',

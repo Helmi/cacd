@@ -45,55 +45,55 @@ export function Footer() {
         {/* Connection status */}
         <div className="flex items-center gap-1">
           <Circle className={cn('h-2 w-2', statusColors[connectionStatus])} />
-          <span>{statusLabels[connectionStatus]}</span>
+          <span className="hidden sm:inline">{statusLabels[connectionStatus]}</span>
         </div>
-        <span className="text-border">│</span>
-        <div className="flex items-center gap-1">
+        <span className="hidden sm:block text-border">│</span>
+        <div className="hidden sm:flex items-center gap-1">
           <Wifi className="h-3 w-3" />
           <span>Local</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        {/* Lock button */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Lock button - icon only on mobile */}
         <button
           onClick={handleLock}
           className="flex items-center gap-1 text-muted-foreground/70 hover:text-foreground transition-colors"
           title={`Lock screen (${isApple ? '⌘' : 'Ctrl'}+L)`}
         >
           <Lock className="h-3 w-3" />
-          <span className="hidden sm:inline text-xs">{isApple ? '⌘' : '⌃'}+L</span>
+          <span className="hidden md:inline text-xs">{isApple ? '⌘' : '⌃'}+L</span>
         </button>
-        <span className="text-border">│</span>
+        <span className="hidden md:block text-border">│</span>
 
-        {/* Keyboard hints */}
-        <div className="hidden md:flex items-center gap-1 text-muted-foreground/70">
+        {/* Keyboard hints - desktop only */}
+        <div className="hidden lg:flex items-center gap-1 text-muted-foreground/70">
           {isApple ? (
             <span className="text-sm">⌘</span>
           ) : (
             <Command className="h-2.5 w-2.5" />
           )}
-          <span>+click for split • click pane to select slot</span>
+          <span>+click for split</span>
         </div>
-        <span className="hidden md:block text-border">│</span>
+        <span className="hidden lg:block text-border">│</span>
 
         {/* Session count */}
         <span>
-          {selectedSessions.length} session{selectedSessions.length !== 1 ? 's' : ''}
+          {selectedSessions.length} <span className="hidden sm:inline">session{selectedSessions.length !== 1 ? 's' : ''}</span>
         </span>
-        <span className="text-border">│</span>
-
-        {/* Theme */}
-        <span className="capitalize">{theme}</span>
         <span className="hidden sm:block text-border">│</span>
 
-        {/* Font */}
-        <span className="hidden sm:block capitalize">{font}</span>
-        <span className="hidden sm:block text-border">│</span>
+        {/* Theme - hidden on mobile */}
+        <span className="hidden md:block capitalize">{theme}</span>
+        <span className="hidden md:block text-border">│</span>
 
-        {/* Font scale */}
-        <span className="hidden sm:block">{fontScale}%</span>
-        <span className="text-border">│</span>
+        {/* Font - hidden on smaller screens */}
+        <span className="hidden lg:block capitalize">{font}</span>
+        <span className="hidden lg:block text-border">│</span>
+
+        {/* Font scale - hidden on smaller screens */}
+        <span className="hidden lg:block">{fontScale}%</span>
+        <span className="hidden lg:block text-border">│</span>
 
         {/* Version */}
         <div className="flex items-center gap-1">

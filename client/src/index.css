@@ -341,7 +341,17 @@
 
   html, body, #root {
     height: 100%;
+    width: 100%;
     margin: 0;
+    padding: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Force Radix portal containers to not affect document flow */
+  body > *:not(#root) {
+    position: fixed !important;
   }
 
   body {
@@ -418,4 +428,39 @@
 /* xterm.js terminal padding - FitAddon reads padding from .xterm element */
 .xterm {
   padding: 8px 12px;
+}
+
+@media (max-width: 767px) {
+  .xterm {
+    padding: 4px 8px;
+  }
+}
+
+/* Enable touch scrolling in xterm viewport */
+.xterm-viewport {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: scroll !important;
+}
+
+/* Allow touch scrolling to pass through to viewport */
+.xterm-screen {
+  touch-action: pan-y;
+}
+
+/* Touch target utility - 44px minimum per WCAG/Apple HIG */
+@layer utilities {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Disable hover effects on touch devices for better UX */
+@media (hover: none) {
+  .hover\:bg-secondary\/50:hover {
+    background-color: transparent;
+  }
+  .group:hover .group-hover\:opacity-100 {
+    /* Keep opacity transitions working on touch via explicit clicks */
+  }
 }

@@ -46,10 +46,12 @@ export function Header() {
           <Settings className="h-3.5 w-3.5" />
         </Button>
 
-        {/* Theme/font controls */}
-        <ThemeSelector />
-        <FontSelector />
-        <FontScaleControl />
+        {/* Theme/font controls - hidden on mobile, accessible via Settings */}
+        <div className="hidden md:flex items-center gap-1">
+          <ThemeSelector />
+          <FontSelector />
+          <FontScaleControl />
+        </div>
       </div>
     </header>
   )
