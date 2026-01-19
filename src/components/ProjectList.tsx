@@ -3,6 +3,7 @@ import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
 import {GitProject, Project} from '../types/index.js';
 import {projectManager} from '../services/projectManager.js';
+import {coreService} from '../services/coreService.js';
 import TextInputWrapper from './TextInputWrapper.js';
 import {useSearchMode} from '../hooks/useSearchMode.js';
 import {globalSessionOrchestrator} from '../services/globalSessionOrchestrator.js';
@@ -70,6 +71,21 @@ const ProjectList: React.FC<ProjectListProps> = ({
 
 	useEffect(() => {
 		loadProjects();
+	}, []);
+
+	// Listen to project changes from WebUI/API
+	useEffect(() => {
+		const handleProjectChange = () => {
+			loadProjects();
+		};
+
+		coreService.on('projectAdded', handleProjectChange);
+		coreService.on('projectRemoved', handleProjectChange);
+
+		return () => {
+			coreService.off('projectAdded', handleProjectChange);
+			coreService.off('projectRemoved', handleProjectChange);
+		};
 	}, []);
 
 	// Build menu items
@@ -395,43 +411,57 @@ const ProjectList: React.FC<ProjectListProps> = ({
 				<Box>
 					<Text color="yellow">Loading projects...</Text>
 				</Box>
-			) : projects.length === 0 && !displayError && !addingProject ? (
-				<Box flexDirection="column" marginBottom={1}>
-					<Box marginBottom={1}>
-						<Text color="yellow">No projects tracked yet.</Text>
-					</Box>
-					<Box flexDirection="column">
-						<Text>Get started by adding a project:</Text>
-						<Text dimColor> • Press A to add a project</Text>
-						<Text dimColor> • Or run: cacd add /path/to/project</Text>
-					</Box>
-				</Box>
-			) : isSearchMode && items.length === 0 ? (
-				<Box>
-					<Text color="yellow">No projects match your search</Text>
-				</Box>
-			) : addingProject ? null : isSearchMode ? (
-				// In search mode, show the items as a list without SelectInput
-				<Box flexDirection="column">
-					{items.slice(0, limit).map((item, index) => (
-						<Text
-							key={item.value}
-							color={index === selectedIndex ? 'green' : undefined}
-						>
-							{index === selectedIndex ? '❯ ' : '  '}
-							{item.label}
-						</Text>
-					))}
-				</Box>
 			) : (
-				<SelectInput
-					items={items}
-					onSelect={handleSelect}
-					onHighlight={setHighlightedItem}
-					isFocused={!displayError && !confirmingDelete}
-					limit={limit}
-					initialIndex={selectedIndex}
-				/>
+				<>
+					{/* Show empty state message when no projects (additive, not replacement) */}
+					{projects.length === 0 &&
+						!displayError &&
+						!addingProject &&
+						!isSearchMode && (
+							<Box flexDirection="column" marginBottom={1}>
+								<Box marginBottom={1}>
+									<Text color="yellow">No projects tracked yet.</Text>
+								</Box>
+								<Text dimColor>
+									Select an option below or run: cacd add /path/to/project
+								</Text>
+							</Box>
+						)}
+
+					{/* Search no match message */}
+					{isSearchMode && items.length === 0 && (
+						<Box>
+							<Text color="yellow">No projects match your search</Text>
+						</Box>
+					)}
+
+					{/* Always render interactive menu (except when adding or empty search) */}
+					{!addingProject &&
+						!(isSearchMode && items.length === 0) &&
+						(isSearchMode ? (
+							// In search mode, show the items as a list without SelectInput
+							<Box flexDirection="column">
+								{items.slice(0, limit).map((item, index) => (
+									<Text
+										key={item.value}
+										color={index === selectedIndex ? 'green' : undefined}
+									>
+										{index === selectedIndex ? '❯ ' : '  '}
+										{item.label}
+									</Text>
+								))}
+							</Box>
+						) : (
+							<SelectInput
+								items={items}
+								onSelect={handleSelect}
+								onHighlight={setHighlightedItem}
+								isFocused={!displayError && !confirmingDelete}
+								limit={limit}
+								initialIndex={selectedIndex}
+							/>
+						))}
+				</>
 			)}
 
 			{displayError && (

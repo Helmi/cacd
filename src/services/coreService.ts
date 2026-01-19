@@ -74,7 +74,9 @@ export class CoreService extends EventEmitter {
 			CoreService.instance = null as unknown as CoreService;
 
 			if (CoreService.isDevMode) {
-				console.log('[CoreService] Destroyed CoreService instance for hot reload');
+				console.log(
+					'[CoreService] Destroyed CoreService instance for hot reload',
+				);
 			}
 		}
 	}
@@ -180,6 +182,24 @@ export class CoreService extends EventEmitter {
 			this.emit('worktreesUpdated', result.right);
 		}
 		return result;
+	}
+
+	// --- Project Registry Events ---
+
+	/**
+	 * Emit when a project is added to the registry.
+	 * Called by apiServer after successful project add.
+	 */
+	public emitProjectAdded(projectPath: string): void {
+		this.emit('projectAdded', projectPath);
+	}
+
+	/**
+	 * Emit when a project is removed from the registry.
+	 * Called by apiServer after successful project remove.
+	 */
+	public emitProjectRemoved(projectPath: string): void {
+		this.emit('projectRemoved', projectPath);
 	}
 }
 
