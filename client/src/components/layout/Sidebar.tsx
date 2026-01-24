@@ -49,9 +49,9 @@ export function Sidebar() {
     expandSidebar,
     toggleSidebar,
     selectSession,
-    openAddProjectModal,
-    openAddWorktreeModal,
-    openAddSessionModal,
+    openAddProject,
+    openAddWorktree,
+    openAddSession,
     removeProject,
     deleteWorktree,
     stopSession,
@@ -346,16 +346,16 @@ export function Sidebar() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="text-xs">
-            <DropdownMenuItem onClick={() => openAddSessionModal()} className="text-xs">
+            <DropdownMenuItem onClick={() => openAddSession()} className="text-xs">
               <Plus className="h-3 w-3 mr-2" />
               New Session
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => openAddWorktreeModal()} className="text-xs">
+            <DropdownMenuItem onClick={() => openAddWorktree()} className="text-xs">
               <GitBranch className="h-3 w-3 mr-2" />
               New Worktree
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={openAddProjectModal} className="text-xs">
+            <DropdownMenuItem onClick={openAddProject} className="text-xs">
               <FolderPlus className="h-3 w-3 mr-2" />
               Add Project
             </DropdownMenuItem>
@@ -417,11 +417,11 @@ export function Sidebar() {
                           </div>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="text-xs">
-                          <DropdownMenuItem onClick={() => openAddWorktreeModal(project.path)}>
+                          <DropdownMenuItem onClick={() => openAddWorktree(project.path)}>
                             <GitBranch className="h-3.5 w-3.5 mr-2" />
                             New Worktree
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openAddSessionModal(undefined, project.path)}>
+                          <DropdownMenuItem onClick={() => openAddSession(undefined, project.path)}>
                             <Plus className="h-3.5 w-3.5 mr-2" />
                             New Session
                           </DropdownMenuItem>
@@ -443,11 +443,11 @@ export function Sidebar() {
                     </button>
                   </ContextMenuTrigger>
                   <ContextMenuContent>
-                    <ContextMenuItem onClick={() => openAddWorktreeModal(project.path)}>
+                    <ContextMenuItem onClick={() => openAddWorktree(project.path)}>
                       <GitBranch className="h-3.5 w-3.5 mr-2" />
                       New Worktree
                     </ContextMenuItem>
-                    <ContextMenuItem onClick={() => openAddSessionModal(undefined, project.path)}>
+                    <ContextMenuItem onClick={() => openAddSession(undefined, project.path)}>
                       <Plus className="h-3.5 w-3.5 mr-2" />
                       New Session
                     </ContextMenuItem>
@@ -513,7 +513,7 @@ export function Sidebar() {
                                       </div>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="text-xs">
-                                      <DropdownMenuItem onClick={() => openAddSessionModal(worktree.path)}>
+                                      <DropdownMenuItem onClick={() => openAddSession(worktree.path)}>
                                         <Plus className="h-3.5 w-3.5 mr-2" />
                                         New Session
                                       </DropdownMenuItem>
@@ -531,7 +531,7 @@ export function Sidebar() {
                                 </button>
                               </ContextMenuTrigger>
                               <ContextMenuContent>
-                                <ContextMenuItem onClick={() => openAddSessionModal(worktree.path)}>
+                                <ContextMenuItem onClick={() => openAddSession(worktree.path)}>
                                   <Plus className="h-3.5 w-3.5 mr-2" />
                                   New Session
                                 </ContextMenuItem>

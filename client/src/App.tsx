@@ -5,9 +5,9 @@ import { SessionGrid } from '@/components/SessionGrid'
 import { InlineDiffViewer } from '@/components/InlineDiffViewer'
 import { FileViewer } from '@/components/FileViewer'
 import { ErrorBanner } from '@/components/ErrorBanner'
-import { AddProjectModal } from '@/components/AddProjectModal'
-import { AddWorktreeModal } from '@/components/AddWorktreeModal'
-import { AddSessionModal } from '@/components/AddSessionModal'
+import { AddProjectScreen } from '@/components/AddProjectScreen'
+import { AddWorktreeScreen } from '@/components/AddWorktreeScreen'
+import { AddSessionScreen } from '@/components/AddSessionScreen'
 import { SettingsScreen } from '@/components/SettingsScreen'
 import { PasscodeEntry } from '@/components/PasscodeEntry'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -52,7 +52,7 @@ function MainContent() {
 }
 
 function AuthenticatedAppContent() {
-  const { settingsOpen } = useAppStore()
+  const { settingsOpen, addProjectOpen, addWorktreeOpen, addSessionOpen } = useAppStore()
 
   return (
     <>
@@ -60,11 +60,10 @@ function AuthenticatedAppContent() {
       <Layout>
         <MainContent />
       </Layout>
-      {/* Modals - rendered based on store state */}
-      <AddProjectModal />
-      <AddWorktreeModal />
-      <AddSessionModal />
-      {/* Settings screen - full-screen overlay */}
+      {/* Full-screen overlays */}
+      {addProjectOpen && <AddProjectScreen />}
+      {addWorktreeOpen && <AddWorktreeScreen />}
+      {addSessionOpen && <AddSessionScreen />}
       {settingsOpen && <SettingsScreen />}
     </>
   )

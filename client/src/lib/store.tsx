@@ -45,11 +45,11 @@ interface AppState {
   contextSidebarSessionId: string | null
   sessionContextTabs: Record<string, 'changes' | 'files'>
 
-  // Modal State
-  addProjectModalOpen: boolean
-  addWorktreeModalOpen: boolean
+  // Inline View State
+  addProjectOpen: boolean
+  addWorktreeOpen: boolean
   addWorktreeProjectPath: string | null  // Pre-selected project context for worktree
-  addSessionModalOpen: boolean
+  addSessionOpen: boolean
   addSessionWorktreePath: string | null  // Pre-selected worktree context
   addSessionProjectPath: string | null  // Pre-selected project context
 
@@ -132,13 +132,13 @@ interface AppActions {
   createWorktree: (path: string, branch: string, baseBranch: string, copySessionData: boolean, copyClaudeDirectory: boolean, projectPath?: string) => Promise<boolean>
   deleteWorktree: (path: string, deleteBranch: boolean, projectPath?: string) => Promise<boolean>
 
-  // Modal actions
-  openAddProjectModal: () => void
-  closeAddProjectModal: () => void
-  openAddWorktreeModal: (projectPath?: string) => void
-  closeAddWorktreeModal: () => void
-  openAddSessionModal: (worktreePath?: string, projectPath?: string) => void
-  closeAddSessionModal: () => void
+  // Inline View actions
+  openAddProject: () => void
+  closeAddProject: () => void
+  openAddWorktree: (projectPath?: string) => void
+  closeAddWorktree: () => void
+  openAddSession: (worktreePath?: string, projectPath?: string) => void
+  closeAddSession: () => void
   openSettings: (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => void
   closeSettings: () => void
   navigateSettings: (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => void
@@ -223,11 +223,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  // Modal state
-  const [addProjectModalOpen, setAddProjectModalOpen] = useState(false)
-  const [addWorktreeModalOpen, setAddWorktreeModalOpen] = useState(false)
+  // Inline View state
+  const [addProjectOpen, setAddProjectOpen] = useState(false)
+  const [addWorktreeOpen, setAddWorktreeOpen] = useState(false)
   const [addWorktreeProjectPath, setAddWorktreeProjectPath] = useState<string | null>(null)
-  const [addSessionModalOpen, setAddSessionModalOpen] = useState(false)
+  const [addSessionOpen, setAddSessionOpen] = useState(false)
   const [addSessionWorktreePath, setAddSessionWorktreePath] = useState<string | null>(null)
   const [addSessionProjectPath, setAddSessionProjectPath] = useState<string | null>(null)
   const [viewingFileDiff, setViewingFileDiff] = useState<{ sessionId: string; file: ChangedFile; worktreePath: string } | null>(null)
@@ -743,24 +743,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const clearError = () => setError(null)
 
-  // Modal actions
-  const openAddProjectModal = () => setAddProjectModalOpen(true)
-  const closeAddProjectModal = () => setAddProjectModalOpen(false)
-  const openAddWorktreeModal = (projectPath?: string) => {
+  // Inline View actions
+  const openAddProject = () => setAddProjectOpen(true)
+  const closeAddProject = () => setAddProjectOpen(false)
+  const openAddWorktree = (projectPath?: string) => {
     setAddWorktreeProjectPath(projectPath || null)
-    setAddWorktreeModalOpen(true)
+    setAddWorktreeOpen(true)
   }
-  const closeAddWorktreeModal = () => {
-    setAddWorktreeModalOpen(false)
+  const closeAddWorktree = () => {
+    setAddWorktreeOpen(false)
     setAddWorktreeProjectPath(null)
   }
-  const openAddSessionModal = (worktreePath?: string, projectPath?: string) => {
+  const openAddSession = (worktreePath?: string, projectPath?: string) => {
     setAddSessionWorktreePath(worktreePath || null)
     setAddSessionProjectPath(projectPath || null)
-    setAddSessionModalOpen(true)
+    setAddSessionOpen(true)
   }
-  const closeAddSessionModal = () => {
-    setAddSessionModalOpen(false)
+  const closeAddSession = () => {
+    setAddSessionOpen(false)
     setAddSessionWorktreePath(null)
     setAddSessionProjectPath(null)
   }
@@ -931,10 +931,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sidebarCollapsed,
     contextSidebarSessionId,
     sessionContextTabs,
-    addProjectModalOpen,
-    addWorktreeModalOpen,
+    addProjectOpen,
+    addWorktreeOpen,
     addWorktreeProjectPath,
-    addSessionModalOpen,
+    addSessionOpen,
     addSessionWorktreePath,
     addSessionProjectPath,
     settingsOpen,
@@ -967,12 +967,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     closeContextSidebar,
     toggleContextSidebar,
     setSessionContextTab,
-    openAddProjectModal,
-    closeAddProjectModal,
-    openAddWorktreeModal,
-    closeAddWorktreeModal,
-    openAddSessionModal,
-    closeAddSessionModal,
+    openAddProject,
+    closeAddProject,
+    openAddWorktree,
+    closeAddWorktree,
+    openAddSession,
+    closeAddSession,
     openSettings,
     closeSettings,
     navigateSettings,
