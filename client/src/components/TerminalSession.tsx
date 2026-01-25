@@ -145,6 +145,8 @@ export const TerminalSession = memo(function TerminalSession({
 	const xtermRef = useRef<XTerm | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
 	const sessionIdRef = useRef(session.id);
+	// Lock to prevent checkScrollPosition from overriding programmatic scrolls
+	const isProgrammaticScrollRef = useRef(false);
 
 	const isContextOpen = contextSidebarSessionId === session.id;
 
@@ -281,6 +283,9 @@ export const TerminalSession = memo(function TerminalSession({
 		// Check if terminal is scrolled up from bottom
 		let lastIsAtBottom = true;
 		const checkScrollPosition = () => {
+			// Skip check during programmatic scroll to prevent race condition
+			if (isProgrammaticScrollRef.current) return;
+
 			const buffer = term.buffer.active;
 			const isAtBottom = buffer.viewportY >= buffer.baseY;
 			if (isAtBottom !== lastIsAtBottom) {
@@ -541,11 +546,19 @@ export const TerminalSession = memo(function TerminalSession({
 	// Focus terminal and scroll to bottom when isFocused becomes true
 	useEffect(() => {
 		if (isFocused && xtermRef.current) {
+			// Set lock BEFORE scrolling to prevent race with checkScrollPosition
+			isProgrammaticScrollRef.current = true;
+
 			// Small delay to ensure DOM is ready after state updates
 			requestAnimationFrame(() => {
 				xtermRef.current?.focus();
 				xtermRef.current?.scrollToBottom();
 				setIsScrolledUp(false);
+
+				// Clear lock after viewport settles (double rAF from here)
+				requestAnimationFrame(() => {
+					isProgrammaticScrollRef.current = false;
+				});
 			});
 		}
 	}, [isFocused]);
@@ -564,10 +577,20 @@ export const TerminalSession = memo(function TerminalSession({
 	};
 
 	const handleScrollToBottom = useCallback(() => {
-		if (xtermRef.current) {
-			xtermRef.current.scrollToBottom();
-			setIsScrolledUp(false);
-		}
+		if (!xtermRef.current) return;
+
+		// Set lock BEFORE scrolling to prevent race with checkScrollPosition
+		isProgrammaticScrollRef.current = true;
+
+		xtermRef.current.scrollToBottom();
+		setIsScrolledUp(false);
+
+		// Clear lock after viewport settles (double rAF ensures render completes)
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				isProgrammaticScrollRef.current = false;
+			});
+		});
 	}, []);
 
 	// Handle clicking the terminal area to focus
