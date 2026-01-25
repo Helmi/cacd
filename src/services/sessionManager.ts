@@ -81,6 +81,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		command: string,
 		args: string[],
 		worktreePath: string,
+		extraEnv?: Record<string, string>,
 	): Promise<IPty> {
 		const spawnOptions = {
 			name: 'xterm-256color',
@@ -88,12 +89,17 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			rows: process.stdout.rows || 24,
 			cwd: worktreePath,
 			// Use platform-aware env: Unix gets TERM/COLORTERM, Windows preserved as-is
-			env: getPtyEnv(),
+			env: getPtyEnv(extraEnv),
 		};
 
 		logger.info(
 			`[SessionManager] Spawning: ${command} ${args.join(' ')} in ${worktreePath}`,
 		);
+		if (extraEnv && Object.keys(extraEnv).length > 0) {
+			logger.info(
+				`[SessionManager] Extra env: ${Object.keys(extraEnv).join(', ')}`,
+			);
+		}
 		const pty = spawn(command, args, spawnOptions);
 		logger.info(`[SessionManager] Spawned PID: ${pty.pid}`);
 		return pty;
@@ -464,6 +470,8 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	 * @param args - Resolved arguments array
 	 * @param detectionStrategy - Optional state detection strategy
 	 * @param sessionName - Optional custom session name
+	 * @param agentId - Optional agent ID
+	 * @param extraEnv - Optional extra environment variables to pass to the process
 	 */
 	createSessionWithAgentEffect(
 		worktreePath: string,
@@ -472,11 +480,17 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		detectionStrategy?: StateDetectionStrategy,
 		sessionName?: string,
 		agentId?: string,
+		extraEnv?: Record<string, string>,
 	): Effect.Effect<Session, ProcessError, never> {
 		return Effect.tryPromise({
 			try: async () => {
-				// Spawn the process
-				const ptyProcess = await this.spawn(command, args, worktreePath);
+				// Spawn the process with optional extra env
+				const ptyProcess = await this.spawn(
+					command,
+					args,
+					worktreePath,
+					extraEnv,
+				);
 
 				// Create session without fallback config (agents don't use fallback)
 				const session = this.createSessionInternal(

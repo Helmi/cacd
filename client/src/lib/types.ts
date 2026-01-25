@@ -79,6 +79,13 @@ export interface Worktree {
   gitStatusError?: string
 }
 
+/**
+ * Project-specific metadata stored alongside the project.
+ */
+export interface ProjectMetadata {
+  taskListNames?: string[] // Previously used Claude task list names
+}
+
 // Project from the backend API
 export interface Project {
   name: string
@@ -86,6 +93,7 @@ export interface Project {
   description?: string
   lastAccessed: number
   isValid?: boolean
+  metadata?: ProjectMetadata // Project-specific metadata
 }
 
 // Connection status for Socket.IO
