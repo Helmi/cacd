@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 /**
  * Path validation utilities to prevent path traversal attacks.
@@ -7,6 +8,177 @@ import fs from 'fs';
  * These functions ensure user-provided paths don't escape their intended
  * directories via ../ sequences or symlink tricks.
  */
+
+/**
+ * Directory entry returned by getDirectoryEntries
+ */
+export interface DirectoryEntry {
+	name: string;
+	path: string;
+	isDirectory: boolean;
+	isGitRepo: boolean;
+}
+
+/**
+ * Result of directory browse operation
+ */
+export interface BrowseResult {
+	currentPath: string;
+	parentPath: string | null;
+	entries: DirectoryEntry[];
+	error?: string;
+}
+
+/**
+ * Result of path validation
+ */
+export interface PathValidation {
+	path: string;
+	exists: boolean;
+	isDirectory: boolean;
+	isGitRepo: boolean;
+}
+
+/**
+ * Expands ~ to the user's home directory.
+ * Returns the original path if it doesn't start with ~.
+ */
+export function expandPath(inputPath: string): string {
+	if (!inputPath) return inputPath;
+
+	if (inputPath === '~') {
+		return os.homedir();
+	}
+
+	if (inputPath.startsWith('~/')) {
+		return path.join(os.homedir(), inputPath.slice(2));
+	}
+
+	return inputPath;
+}
+
+/**
+ * Get directory entries for the file browser.
+ * Only returns directories, sorted alphabetically.
+ * Detects which directories are git repositories.
+ *
+ * @param dirPath - Directory to list
+ * @param showHidden - Whether to include hidden files (starting with .)
+ * @param limit - Maximum number of entries to return (default 500)
+ * @returns BrowseResult with entries and metadata
+ */
+export function getDirectoryEntries(
+	dirPath: string,
+	showHidden: boolean = false,
+	limit: number = 500,
+): BrowseResult {
+	try {
+		// Expand ~ and resolve to absolute path
+		const expandedPath = expandPath(dirPath);
+		const resolvedPath = path.resolve(expandedPath);
+
+		// Check if directory exists
+		const stat = fs.statSync(resolvedPath);
+		if (!stat.isDirectory()) {
+			return {
+				currentPath: resolvedPath,
+				parentPath: path.dirname(resolvedPath),
+				entries: [],
+				error: 'Not a directory',
+			};
+		}
+
+		// Read directory entries
+		const dirents = fs.readdirSync(resolvedPath, {withFileTypes: true});
+
+		// Filter and map entries
+		const entries: DirectoryEntry[] = [];
+		for (const dirent of dirents) {
+			// Skip hidden files unless requested
+			if (!showHidden && dirent.name.startsWith('.')) {
+				continue;
+			}
+
+			// Only include directories
+			if (!dirent.isDirectory()) {
+				continue;
+			}
+
+			const entryPath = path.join(resolvedPath, dirent.name);
+
+			// Check if it's a git repo
+			const gitPath = path.join(entryPath, '.git');
+			const isGitRepo = fs.existsSync(gitPath);
+
+			entries.push({
+				name: dirent.name,
+				path: entryPath,
+				isDirectory: true,
+				isGitRepo,
+			});
+
+			// Respect limit
+			if (entries.length >= limit) {
+				break;
+			}
+		}
+
+		// Sort alphabetically (case-insensitive)
+		entries.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+
+		// Calculate parent path (null if at root)
+		const parentPath = resolvedPath === '/' ? null : path.dirname(resolvedPath);
+
+		return {
+			currentPath: resolvedPath,
+			parentPath,
+			entries,
+		};
+	} catch (err) {
+		const error = err instanceof Error ? err.message : 'Unknown error';
+		return {
+			currentPath: dirPath,
+			parentPath: null,
+			entries: [],
+			error,
+		};
+	}
+}
+
+/**
+ * Validates a path and returns detailed information about it.
+ *
+ * @param inputPath - Path to validate (can include ~)
+ * @returns PathValidation with exists, isDirectory, and isGitRepo flags
+ */
+export function validatePathForBrowser(inputPath: string): PathValidation {
+	// Expand ~ and resolve
+	const expandedPath = expandPath(inputPath);
+	const resolvedPath = path.resolve(expandedPath);
+
+	const result: PathValidation = {
+		path: resolvedPath,
+		exists: false,
+		isDirectory: false,
+		isGitRepo: false,
+	};
+
+	try {
+		const stat = fs.statSync(resolvedPath);
+		result.exists = true;
+		result.isDirectory = stat.isDirectory();
+
+		if (result.isDirectory) {
+			// Check for .git
+			const gitPath = path.join(resolvedPath, '.git');
+			result.isGitRepo = fs.existsSync(gitPath);
+		}
+	} catch {
+		// Path doesn't exist
+	}
+
+	return result;
+}
 
 /**
  * Validates that a file path stays within a base directory.

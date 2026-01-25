@@ -25,6 +25,8 @@ import {generateRandomPort, isDevMode} from '../constants/env.js';
 import {
 	validateWorktreePath,
 	validatePathWithinBase,
+	getDirectoryEntries,
+	validatePathForBrowser,
 } from '../utils/pathValidation.js';
 import {getDefaultShell} from '../utils/platform.js';
 
@@ -421,6 +423,38 @@ export class APIServer {
 				return {success: true};
 			},
 		);
+
+		// --- Directory Browser (for Add Project) ---
+
+		// Browse directories for file picker
+		this.app.get<{
+			Querystring: {path?: string; showHidden?: string};
+		}>('/api/browse', async request => {
+			const {path: dirPath, showHidden} = request.query;
+
+			// Default to home directory if no path provided
+			const targetPath = dirPath || '~';
+			const includeHidden = showHidden === 'true';
+
+			logger.info(`API: Browsing directory: ${targetPath}`);
+			const result = getDirectoryEntries(targetPath, includeHidden);
+
+			return result;
+		});
+
+		// Validate a path for the project picker
+		this.app.get<{
+			Querystring: {path: string};
+		}>('/api/validate-path', async (request, reply) => {
+			const {path: inputPath} = request.query;
+
+			if (!inputPath) {
+				return reply.code(400).send({error: 'path query parameter required'});
+			}
+
+			const result = validatePathForBrowser(inputPath);
+			return result;
+		});
 
 		// --- Worktrees ---
 		// Returns worktrees for ALL registered projects
