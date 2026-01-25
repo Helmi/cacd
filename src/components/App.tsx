@@ -8,7 +8,7 @@ import NewWorktree from './NewWorktree.js';
 import DeleteWorktree from './DeleteWorktree.js';
 import MergeWorktree from './MergeWorktree.js';
 import Configuration from './Configuration.js';
-import PresetSelector from './PresetSelector.js';
+import AgentSelector from './AgentSelector.js';
 import RemoteBranchSelector from './RemoteBranchSelector.js';
 import LoadingSpinner from './LoadingSpinner.js';
 import {SessionManager} from '../services/sessionManager.js';
@@ -33,12 +33,11 @@ type View =
 	| 'new-worktree'
 	| 'creating-worktree'
 	| 'creating-session'
-	| 'creating-session-preset'
 	| 'delete-worktree'
 	| 'deleting-worktree'
 	| 'merge-worktree'
 	| 'configuration'
-	| 'preset-selector'
+	| 'agent-selector'
 	| 'remote-branch-selector'
 	| 'clearing';
 
@@ -69,7 +68,7 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 	const [menuKey, setMenuKey] = useState(0); // Force menu refresh
 	const [selectedWorktree, setSelectedWorktree] = useState<Worktree | null>(
 		null,
-	); // Store selected worktree for preset selection
+	); // Store selected worktree for agent selection
 	const [selectedProject, setSelectedProject] = useState<GitProject | null>(
 		null,
 	); // Store selected project in multi-project mode
@@ -122,42 +121,6 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 			case 'ValidationError':
 				return `Validation failed for ${error.field}: ${error.constraint}`;
 		}
-	};
-
-	// Helper function to create session with Effect-based error handling
-	const createSessionWithEffect = async (
-		worktreePath: string,
-		presetId?: string,
-	): Promise<{
-		success: boolean;
-		session?: ISession;
-		errorMessage?: string;
-	}> => {
-		const sessionEffect = devcontainerConfig
-			? sessionManager.createSessionWithDevcontainerEffect(
-					worktreePath,
-					devcontainerConfig,
-					presetId,
-				)
-			: sessionManager.createSessionWithPresetEffect(worktreePath, presetId);
-
-		// Execute the Effect and handle both success and failure cases
-		const result = await Effect.runPromise(Effect.either(sessionEffect));
-
-		if (result._tag === 'Left') {
-			// Handle error using pattern matching on _tag
-			const errorMessage = formatErrorMessage(result.left);
-			return {
-				success: false,
-				errorMessage: `Failed to create session: ${errorMessage}`,
-			};
-		}
-
-		// Success case - extract session from Right
-		return {
-			success: true,
-			session: result.right,
-		};
 	};
 
 	// Helper function to clear terminal screen
@@ -314,66 +277,78 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 			return;
 		}
 
-		// Get or create session for this worktree
-		let session = sessionManager.getSession(worktree.path);
+		// Check if session already exists for this worktree
+		const session = sessionManager.getSession(worktree.path);
 
-		if (!session) {
-			// Check if we should show preset selector
-			if (configurationManager.getSelectPresetOnStart()) {
-				setSelectedWorktree(worktree);
-				navigateWithClear('preset-selector');
-				return;
-			}
-
-			// Set loading state before async operation
-			setView('creating-session');
-
-			// Use Effect-based session creation with default preset
-			const result = await createSessionWithEffect(worktree.path);
-
-			if (!result.success) {
-				setError(result.errorMessage!);
-				navigateWithClear('menu');
-				return;
-			}
-
-			session = result.session!;
-		}
-
-		setActiveSession(session);
-		navigateWithClear('session');
-	};
-
-	const handlePresetSelected = async (presetId: string) => {
-		if (!selectedWorktree) return;
-
-		// Set loading state before async operation
-		setView('creating-session-preset');
-
-		// Create session with selected preset using Effect
-		const result = await createSessionWithEffect(
-			selectedWorktree.path,
-			presetId,
-		);
-
-		if (!result.success) {
-			setError(result.errorMessage!);
-			setView('menu');
-			setSelectedWorktree(null);
+		if (session) {
+			// Resume existing session
+			setActiveSession(session);
+			navigateWithClear('session');
 			return;
 		}
 
-		// Success case
-		setActiveSession(result.session!);
-		navigateWithClear('session');
-		setSelectedWorktree(null);
+		// No existing session - show agent selector
+		setSelectedWorktree(worktree);
+		navigateWithClear('agent-selector');
 	};
 
-	const handlePresetSelectorCancel = () => {
+	const handleAgentSelectorCancel = () => {
 		setSelectedWorktree(null);
 		navigateWithClear('menu', () => {
 			setMenuKey(prev => prev + 1);
 		});
+	};
+
+	const handleAgentSelected = async (
+		agentId: string,
+		options: Record<string, boolean | string>,
+	) => {
+		if (!selectedWorktree) return;
+
+		// Get agent config
+		const agent = configurationManager.getAgentById(agentId);
+		if (!agent) {
+			setError(`Agent not found: ${agentId}`);
+			setSelectedWorktree(null);
+			navigateWithClear('menu');
+			return;
+		}
+
+		// Build command and args
+		const command =
+			agent.command === '$SHELL'
+				? process.env['SHELL'] || '/bin/bash'
+				: agent.command;
+		const args = configurationManager.buildAgentArgs(agent, options);
+
+		// Set loading state
+		setView('creating-session');
+
+		// Create session with agent
+		const effect = sessionManager.createSessionWithAgentEffect(
+			selectedWorktree.path,
+			command,
+			args,
+			agent.detectionStrategy,
+			undefined, // sessionName
+			agentId,
+		);
+
+		const result = await Effect.runPromise(Effect.either(effect));
+
+		if (result._tag === 'Left') {
+			const errorMessage = formatErrorMessage(result.left);
+			setError(`Failed to create session: ${errorMessage}`);
+			setSelectedWorktree(null);
+			navigateWithClear('menu');
+			return;
+		}
+
+		// Success
+		const session = result.right;
+		setActiveSession(session);
+		setSelectedWorktree(null);
+		navigateWithClear('session');
 	};
 
 	const handleReturnToMenu = () => {
@@ -689,11 +664,11 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 		return <Configuration onComplete={handleReturnToMenu} />;
 	}
 
-	if (view === 'preset-selector') {
+	if (view === 'agent-selector' && selectedWorktree) {
 		return (
-			<PresetSelector
-				onSelect={handlePresetSelected}
-				onCancel={handlePresetSelectorCancel}
+			<AgentSelector
+				onSelect={handleAgentSelected}
+				onCancel={handleAgentSelectorCancel}
 			/>
 		);
 	}
@@ -718,23 +693,6 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 
 		// Use yellow color for devcontainer operations (longer duration),
 		// cyan for standard session creation
-		const color = devcontainerConfig ? 'yellow' : 'cyan';
-
-		return (
-			<Box flexDirection="column">
-				<LoadingSpinner message={message} color={color} />
-			</Box>
-		);
-	}
-
-	if (view === 'creating-session-preset') {
-		// Always display preset-specific message
-		// Devcontainer operations take >5 seconds, so indicate extended duration
-		const message = devcontainerConfig
-			? 'Creating session with preset (this may take a moment)...'
-			: 'Creating session with preset...';
-
-		// Use yellow color for devcontainer, cyan for standard
 		const color = devcontainerConfig ? 'yellow' : 'cyan';
 
 		return (

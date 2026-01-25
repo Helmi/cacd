@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
 import {GitProject, Project} from '../types/index.js';
@@ -9,6 +9,10 @@ import {useSearchMode} from '../hooks/useSearchMode.js';
 import {globalSessionOrchestrator} from '../services/globalSessionOrchestrator.js';
 import {SessionManager} from '../services/sessionManager.js';
 import Header from './Header.js';
+import {existsSync} from 'fs';
+import {join} from 'path';
+
+type ValidationState = 'idle' | 'checking' | 'valid' | 'invalid' | 'not-found';
 
 interface ProjectListProps {
 	onSelectProject: (project: GitProject) => void;
@@ -44,6 +48,9 @@ const ProjectList: React.FC<ProjectListProps> = ({
 	const [addingProject, setAddingProject] = useState(false);
 	const [addProjectPath, setAddProjectPath] = useState('');
 	const [addProjectError, setAddProjectError] = useState<string | null>(null);
+	const [validationState, setValidationState] =
+		useState<ValidationState>('idle');
+	const validationAbortRef = useRef<AbortController | null>(null);
 	const [confirmingDelete, setConfirmingDelete] = useState<Project | null>(
 		null,
 	);
@@ -87,6 +94,60 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			coreService.off('projectRemoved', handleProjectChange);
 		};
 	}, []);
+
+	// Debounced git validation for add project path
+	useEffect(() => {
+		if (!addingProject || !addProjectPath.trim()) {
+			setValidationState('idle');
+			return;
+		}
+
+		const path = addProjectPath.trim();
+
+		// Cancel any pending validation
+		if (validationAbortRef.current) {
+			validationAbortRef.current.abort();
+		}
+
+		// Fast path: synchronous .git folder check
+		const gitPath = join(path, '.git');
+		if (!existsSync(path)) {
+			setValidationState('not-found');
+			return;
+		}
+
+		if (!existsSync(gitPath)) {
+			// Could be a bare repo or subdirectory - need deeper check
+			setValidationState('checking');
+		} else {
+			// .git exists - likely valid, but verify async
+			setValidationState('checking');
+		}
+
+		// Slow path: async validation with debounce
+		const abortController = new AbortController();
+		validationAbortRef.current = abortController;
+
+		const timeoutId = setTimeout(async () => {
+			if (abortController.signal.aborted) return;
+
+			try {
+				const isValid =
+					await projectManager.instance.validateGitRepository(path);
+				if (abortController.signal.aborted) return;
+
+				setValidationState(isValid ? 'valid' : 'invalid');
+			} catch {
+				if (abortController.signal.aborted) return;
+				setValidationState('invalid');
+			}
+		}, 300); // 300ms debounce
+
+		return () => {
+			clearTimeout(timeoutId);
+			abortController.abort();
+		};
+	}, [addingProject, addProjectPath]);
 
 	// Build menu items
 	useEffect(() => {
@@ -170,11 +231,27 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			return;
 		}
 
+		// Check validation state before adding
+		if (validationState === 'checking') {
+			setAddProjectError('Please wait for validation to complete');
+			return;
+		}
+
+		if (validationState === 'invalid' || validationState === 'not-found') {
+			setAddProjectError(
+				validationState === 'not-found'
+					? 'Path does not exist'
+					: 'Not a valid git repository',
+			);
+			return;
+		}
+
 		const result = projectManager.addProject(addProjectPath.trim());
 		if (result) {
 			setAddingProject(false);
 			setAddProjectPath('');
 			setAddProjectError(null);
+			setValidationState('idle');
 			loadProjects();
 		} else {
 			setAddProjectError('Not a valid git repository');
@@ -233,6 +310,7 @@ const ProjectList: React.FC<ProjectListProps> = ({
 				setAddingProject(false);
 				setAddProjectPath('');
 				setAddProjectError(null);
+				setValidationState('idle');
 			} else if (key.return) {
 				handleAddProject();
 			}
@@ -391,6 +469,16 @@ const ProjectList: React.FC<ProjectListProps> = ({
 							focus={true}
 							placeholder="Enter path to git repository..."
 						/>
+						<Text> </Text>
+						{validationState === 'idle' && <Text dimColor>...</Text>}
+						{validationState === 'checking' && <Text color="yellow">⏳</Text>}
+						{validationState === 'valid' && <Text color="green">✓</Text>}
+						{validationState === 'invalid' && (
+							<Text color="red">✗ not a git repo</Text>
+						)}
+						{validationState === 'not-found' && (
+							<Text color="red">✗ path not found</Text>
+						)}
 					</Box>
 					<Text dimColor>Enter to add, Escape to cancel</Text>
 					<Text dimColor>Tip: Run `cacd add .` from any project directory</Text>

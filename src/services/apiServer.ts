@@ -920,37 +920,7 @@ export class APIServer {
 			}));
 		});
 
-		this.app.post<{
-			Body: {path: string; presetId?: string; sessionName?: string};
-		}>('/api/session/create', async (request, reply) => {
-			const {path, presetId, sessionName} = request.body;
-			logger.info(
-				`API: Creating session "${sessionName || 'unnamed'}" for ${path} with preset: ${presetId || 'default'}`,
-			);
-
-			const effect = coreService.sessionManager.createSessionWithPresetEffect(
-				path,
-				presetId,
-				sessionName,
-			);
-			const result = await Effect.runPromise(Effect.either(effect));
-
-			if (result._tag === 'Left') {
-				return reply.code(500).send({error: result.left.message});
-			}
-
-			// Session created successfully
-			const session = result.right;
-			// Ensure it's marked active
-			coreService.sessionManager.setSessionActive(session.id, true);
-
-			return {
-				success: true,
-				id: session.id,
-				name: session.name,
-				agentId: session.agentId,
-			};
-		});
+		// Legacy /api/session/create endpoint removed - use /api/session/create-with-agent instead
 
 		this.app.post<{Body: {id: string}}>(
 			'/api/session/stop',
@@ -970,9 +940,7 @@ export class APIServer {
 		);
 
 		// --- Configuration ---
-		this.app.get('/api/presets', async () => {
-			return configurationManager.getAllPresets();
-		});
+		// Legacy /api/presets endpoint removed - use /api/agents instead
 
 		this.app.get('/api/config', async () => {
 			return configurationManager.getConfiguration();

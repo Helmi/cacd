@@ -5,7 +5,6 @@ import ConfigureShortcuts from './ConfigureShortcuts.js';
 import ConfigureStatusHooks from './ConfigureStatusHooks.js';
 import ConfigureWorktreeHooks from './ConfigureWorktreeHooks.js';
 import ConfigureWorktree from './ConfigureWorktree.js';
-import ConfigureCommand from './ConfigureCommand.js';
 import ConfigureOther from './ConfigureOther.js';
 import {shortcutManager} from '../services/shortcutManager.js';
 import Header from './Header.js';
@@ -21,7 +20,6 @@ type ConfigView =
 	| 'statusHooks'
 	| 'worktreeHooks'
 	| 'worktree'
-	| 'presets'
 	| 'other';
 
 interface MenuItem {
@@ -50,8 +48,8 @@ const Configuration: React.FC<ConfigurationProps> = ({onComplete, onQuit}) => {
 			value: 'worktree',
 		},
 		{
-			label: 'C - Command Presets',
-			value: 'presets',
+			label: 'A - Agents (configure in WebUI)',
+			value: 'agents-info',
 		},
 		{
 			label: 'O - Other & Experimental',
@@ -84,8 +82,9 @@ const Configuration: React.FC<ConfigurationProps> = ({onComplete, onQuit}) => {
 			setView('worktreeHooks');
 		} else if (item.value === 'worktree') {
 			setView('worktree');
-		} else if (item.value === 'presets') {
-			setView('presets');
+		} else if (item.value === 'agents-info') {
+			// No-op - agents are configured in WebUI
+			// The menu item is informational only
 		} else if (item.value === 'other') {
 			setView('other');
 		}
@@ -114,8 +113,8 @@ const Configuration: React.FC<ConfigurationProps> = ({onComplete, onQuit}) => {
 			case 'w':
 				setView('worktree');
 				break;
-			case 'c':
-				setView('presets');
+			case 'a':
+				// Agents are configured in WebUI - no action needed
 				break;
 			case 'o':
 				setView('other');
@@ -152,10 +151,6 @@ const Configuration: React.FC<ConfigurationProps> = ({onComplete, onQuit}) => {
 
 	if (view === 'worktree') {
 		return <ConfigureWorktree onComplete={handleSubMenuComplete} />;
-	}
-
-	if (view === 'presets') {
-		return <ConfigureCommand onComplete={handleSubMenuComplete} />;
 	}
 
 	if (view === 'other') {
