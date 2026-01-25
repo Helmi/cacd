@@ -121,7 +121,7 @@ interface AppActions {
 
   // Session management
   createSession: (path: string, presetId?: string, sessionName?: string) => Promise<boolean>
-  createSessionWithAgent: (path: string, agentId: string, options?: Record<string, boolean | string>, sessionName?: string) => Promise<boolean>
+  createSessionWithAgent: (path: string, agentId: string, options?: Record<string, boolean | string>, sessionName?: string, taskListName?: string) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<void>
 
   // Project management
@@ -683,14 +683,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     path: string,
     agentId: string,
     options?: Record<string, boolean | string>,
-    sessionName?: string
+    sessionName?: string,
+    taskListName?: string
   ): Promise<boolean> => {
     try {
       const res = await fetch('/api/session/create-with-agent', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, agentId, options: options || {}, sessionName })
+        body: JSON.stringify({ path, agentId, options: options || {}, sessionName, taskListName })
       })
       const data = await res.json()
       if (!res.ok) {

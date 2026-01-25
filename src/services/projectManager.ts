@@ -306,6 +306,78 @@ export class ProjectManager implements IProjectManager {
 		};
 	}
 
+	// ==================== Task List Name Management ====================
+
+	private static readonly MAX_TASK_LIST_NAMES = 20;
+
+	/**
+	 * Get stored task list names for a project
+	 */
+	public getTaskListNames(projectPath: string): string[] {
+		const absolutePath = path.resolve(expandTilde(projectPath));
+		const project = this.projects.find(p => p.path === absolutePath);
+		return project?.metadata?.taskListNames || [];
+	}
+
+	/**
+	 * Add a task list name to a project's metadata (deduplicated, max 20 entries)
+	 */
+	public addTaskListName(projectPath: string, name: string): boolean {
+		const absolutePath = path.resolve(expandTilde(projectPath));
+		const project = this.projects.find(p => p.path === absolutePath);
+		if (!project) {
+			return false;
+		}
+
+		// Initialize metadata if needed
+		if (!project.metadata) {
+			project.metadata = {};
+		}
+		if (!project.metadata.taskListNames) {
+			project.metadata.taskListNames = [];
+		}
+
+		// Check if already exists (deduplicate)
+		if (project.metadata.taskListNames.includes(name)) {
+			return true; // Already exists, nothing to do
+		}
+
+		// Add to the beginning (most recent first)
+		project.metadata.taskListNames.unshift(name);
+
+		// Trim to max entries
+		const names = project.metadata.taskListNames;
+		if (names.length > ProjectManager.MAX_TASK_LIST_NAMES) {
+			project.metadata.taskListNames = names.slice(
+				0,
+				ProjectManager.MAX_TASK_LIST_NAMES,
+			);
+		}
+
+		this.saveProjects();
+		return true;
+	}
+
+	/**
+	 * Remove a task list name from a project's metadata
+	 */
+	public removeTaskListName(projectPath: string, name: string): boolean {
+		const absolutePath = path.resolve(expandTilde(projectPath));
+		const project = this.projects.find(p => p.path === absolutePath);
+		if (!project?.metadata?.taskListNames) {
+			return false;
+		}
+
+		const idx = project.metadata.taskListNames.indexOf(name);
+		if (idx === -1) {
+			return false;
+		}
+
+		project.metadata.taskListNames.splice(idx, 1);
+		this.saveProjects();
+		return true;
+	}
+
 	// ==================== Effect-based API methods ====================
 
 	/**

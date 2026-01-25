@@ -224,6 +224,13 @@ export interface GitProject {
 	error?: string; // Error message if project is invalid
 }
 
+/**
+ * Project-specific metadata stored alongside the project.
+ */
+export interface ProjectMetadata {
+	taskListNames?: string[]; // Previously used Claude task list names
+}
+
 export interface RecentProject {
 	path: string;
 	name: string;
@@ -240,6 +247,7 @@ export interface Project {
 	description?: string; // Optional user description
 	lastAccessed: number; // Unix timestamp
 	isValid?: boolean; // Set to false if path doesn't exist on disk
+	metadata?: ProjectMetadata; // Project-specific metadata
 }
 
 export interface IProjectManager {

@@ -1076,9 +1076,16 @@ export class APIServer {
 				agentId: string;
 				options?: Record<string, boolean | string>;
 				sessionName?: string;
+				taskListName?: string;
 			};
 		}>('/api/session/create-with-agent', async (request, reply) => {
-			const {path, agentId, options = {}, sessionName} = request.body;
+			const {
+				path,
+				agentId,
+				options = {},
+				sessionName,
+				taskListName,
+			} = request.body;
 			logger.info(
 				`API: Creating session "${sessionName || 'unnamed'}" for ${path} with agent: ${agentId}`,
 			);
@@ -1113,6 +1120,18 @@ export class APIServer {
 			}
 			logger.info(`API: Spawning command: ${command} ${args.join(' ')}`);
 
+			// Build extra env for Claude task list (only for Claude agents)
+			let extraEnv: Record<string, string> | undefined;
+			const isClaudeAgent =
+				agentId === 'claude' ||
+				agent.command === 'claude' ||
+				agent.detectionStrategy === 'claude';
+
+			if (taskListName && isClaudeAgent) {
+				extraEnv = {CLAUDE_TASK_LIST: taskListName};
+				logger.info(`API: Setting CLAUDE_TASK_LIST=${taskListName}`);
+			}
+
 			// Create session with resolved command and args
 			const effect = coreService.sessionManager.createSessionWithAgentEffect(
 				path,
@@ -1121,6 +1140,7 @@ export class APIServer {
 				agent.detectionStrategy,
 				sessionName,
 				agentId,
+				extraEnv,
 			);
 			const result = await Effect.runPromise(Effect.either(effect));
 
@@ -1128,7 +1148,21 @@ export class APIServer {
 				return reply.code(500).send({error: result.left.message});
 			}
 
-			// Session created successfully
+			// Session created successfully - store task list name to project metadata
+			if (taskListName && isClaudeAgent) {
+				// Find the project that contains this worktree path
+				const projects = projectManager.getProjects();
+				for (const project of projects) {
+					if (path.startsWith(project.path)) {
+						projectManager.instance.addTaskListName(project.path, taskListName);
+						logger.info(
+							`API: Stored task list name "${taskListName}" for project ${project.name}`,
+						);
+						break;
+					}
+				}
+			}
+
 			const session = result.right;
 			coreService.sessionManager.setSessionActive(session.id, true);
 
@@ -1138,6 +1172,49 @@ export class APIServer {
 				name: session.name,
 				agentId: session.agentId,
 			};
+		});
+
+		// --- Task List Names ---
+		this.app.get<{
+			Querystring: {projectPath: string};
+		}>('/api/project/task-list-names', async (request, reply) => {
+			const {projectPath} = request.query;
+
+			if (!projectPath) {
+				return reply
+					.code(400)
+					.send({error: 'projectPath query parameter required'});
+			}
+
+			const taskListNames =
+				projectManager.instance.getTaskListNames(projectPath);
+			return {taskListNames};
+		});
+
+		this.app.delete<{
+			Body: {projectPath: string; taskListName: string};
+		}>('/api/project/task-list-names', async (request, reply) => {
+			const {projectPath, taskListName} = request.body;
+
+			if (!projectPath || !taskListName) {
+				return reply
+					.code(400)
+					.send({error: 'projectPath and taskListName required'});
+			}
+
+			const removed = projectManager.instance.removeTaskListName(
+				projectPath,
+				taskListName,
+			);
+
+			if (!removed) {
+				return reply.code(404).send({error: 'Task list name not found'});
+			}
+
+			logger.info(
+				`API: Removed task list name "${taskListName}" from project ${projectPath}`,
+			);
+			return {success: true};
 		});
 	}
 

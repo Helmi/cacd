@@ -59,13 +59,18 @@ export function getSpawnShell(): string {
  *
  * Unix considerations:
  * - Set TERM and COLORTERM for color support
+ *
+ * @param extraEnv - Optional additional environment variables to merge
  */
-export function getPtyEnv(): Record<string, string | undefined> {
+export function getPtyEnv(
+	extraEnv?: Record<string, string>,
+): Record<string, string | undefined> {
 	if (isWindows) {
 		// On Windows, don't override env vars - let node-pty handle ConPTY
 		// SystemRoot is required for PowerShell to function
 		return {
 			...process.env,
+			...extraEnv,
 		};
 	}
 
@@ -74,6 +79,7 @@ export function getPtyEnv(): Record<string, string | undefined> {
 		...process.env,
 		COLORTERM: 'truecolor',
 		TERM: 'xterm-256color',
+		...extraEnv,
 	};
 }
 
