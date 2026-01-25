@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +14,7 @@ import {
   Loader2,
   Folder,
   Plus,
+  AlertTriangle,
 } from 'lucide-react'
 import { cn, generateWorktreePath as generatePath } from '@/lib/utils'
 import type { AgentConfig } from '@/lib/types'
@@ -51,8 +52,26 @@ export function AddSessionScreen() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Task list state (Claude-specific)
+  const [taskListName, setTaskListName] = useState('')
+  const [taskListSuggestions, setTaskListSuggestions] = useState<string[]>([])
+  const [showTaskListDropdown, setShowTaskListDropdown] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ name: string } | null>(null)
+  const taskListInputRef = useRef<HTMLInputElement>(null)
+  const taskListDropdownRef = useRef<HTMLDivElement>(null)
+
   // Get the currently selected agent config
   const selectedAgent = agents.find(a => a.id === selectedAgentId)
+
+  // Check if this is a Claude agent
+  const isClaudeAgent = useMemo(() => {
+    if (!selectedAgent) return false
+    return (
+      selectedAgentId === 'claude' ||
+      selectedAgent.command === 'claude' ||
+      selectedAgent.detectionStrategy === 'claude'
+    )
+  }, [selectedAgentId, selectedAgent])
 
   // Determine if context was pre-selected
   const hasPreselectedWorktree = !!addSessionWorktreePath
@@ -158,6 +177,50 @@ export function AddSessionScreen() {
     }
   }, [selectedAgentId, selectedAgent])
 
+  // Fetch task list suggestions when project changes and Claude is selected
+  useEffect(() => {
+    if (!selectedProjectPath || !isClaudeAgent) {
+      setTaskListSuggestions([])
+      return
+    }
+
+    fetch(`/api/project/task-list-names?projectPath=${encodeURIComponent(selectedProjectPath)}`, {
+      credentials: 'include'
+    })
+      .then(res => res.json())
+      .then(data => {
+        setTaskListSuggestions(data.taskListNames || [])
+      })
+      .catch(() => setTaskListSuggestions([]))
+  }, [selectedProjectPath, isClaudeAgent])
+
+  // Clear task list when switching away from Claude agent
+  useEffect(() => {
+    if (!isClaudeAgent) {
+      setTaskListName('')
+      setShowTaskListDropdown(false)
+    }
+  }, [isClaudeAgent])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        taskListDropdownRef.current &&
+        !taskListDropdownRef.current.contains(event.target as Node) &&
+        taskListInputRef.current &&
+        !taskListInputRef.current.contains(event.target as Node)
+      ) {
+        setShowTaskListDropdown(false)
+      }
+    }
+
+    if (showTaskListDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showTaskListDropdown])
+
   // Generate default session name
   const generateDefaultSessionName = (agent: AgentConfig | undefined): string => {
     if (!agent) return `Session-${Date.now().toString(36).slice(-4)}`
@@ -204,6 +267,48 @@ export function AddSessionScreen() {
     if (!newBranchName || !selectedProjectPath) return ''
     return generatePath(selectedProjectPath, newBranchName, config.worktreePathTemplate)
   }, [newBranchName, selectedProjectPath, config.worktreePathTemplate])
+
+  // Task list name validation (alphanumeric + underscores, max 64 chars)
+  const TASK_LIST_PATTERN = /^[a-zA-Z0-9_]*$/
+  const MAX_TASK_LIST_LENGTH = 64
+
+  const handleTaskListNameChange = (value: string) => {
+    if (value.length <= MAX_TASK_LIST_LENGTH && TASK_LIST_PATTERN.test(value)) {
+      setTaskListName(value)
+    }
+  }
+
+  // Filter suggestions based on current input
+  const filteredSuggestions = useMemo(() => {
+    if (!taskListName) return taskListSuggestions
+    return taskListSuggestions.filter(s =>
+      s.toLowerCase().includes(taskListName.toLowerCase())
+    )
+  }, [taskListName, taskListSuggestions])
+
+  // Delete a task list name suggestion
+  const handleDeleteTaskListName = async (name: string) => {
+    if (!selectedProjectPath) return
+
+    try {
+      const res = await fetch('/api/project/task-list-names', {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath: selectedProjectPath, taskListName: name })
+      })
+
+      if (res.ok) {
+        setTaskListSuggestions(prev => prev.filter(s => s !== name))
+        if (taskListName === name) {
+          setTaskListName('')
+        }
+      }
+    } catch {
+      // Silently fail - suggestion remains in list
+    }
+    setShowDeleteConfirm(null)
+  }
 
   const handleSubmit = async () => {
     setSubmitting(true)
@@ -266,7 +371,8 @@ export function AddSessionScreen() {
         worktreePath,
         selectedAgentId,
         agentOptions,
-        sessionName || undefined
+        sessionName || undefined,
+        taskListName || undefined
       )
 
       if (success) {
@@ -530,6 +636,94 @@ export function AddSessionScreen() {
                         A name to identify this session
                       </p>
                     </div>
+
+                    {/* Task List Name (Claude only) */}
+                    {isClaudeAgent && (
+                      <div className="space-y-2">
+                        <Label htmlFor="task-list-name">Task List Name</Label>
+                        <div className="relative">
+                          <Input
+                            ref={taskListInputRef}
+                            id="task-list-name"
+                            value={taskListName}
+                            onChange={(e) => handleTaskListNameChange(e.target.value)}
+                            onFocus={() => setShowTaskListDropdown(true)}
+                            placeholder="e.g., feature_auth, bugfix_123"
+                            className="h-8 font-mono text-sm"
+                          />
+
+                          {/* Dropdown for suggestions */}
+                          {showTaskListDropdown && filteredSuggestions.length > 0 && (
+                            <div
+                              ref={taskListDropdownRef}
+                              className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg"
+                            >
+                              {filteredSuggestions.map((suggestion) => (
+                                <div
+                                  key={suggestion}
+                                  className="flex items-center justify-between px-3 py-2 hover:bg-secondary cursor-pointer"
+                                >
+                                  <span
+                                    className="font-mono text-sm flex-1"
+                                    onClick={() => {
+                                      setTaskListName(suggestion)
+                                      setShowTaskListDropdown(false)
+                                    }}
+                                  >
+                                    {suggestion}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setShowDeleteConfirm({ name: suggestion })
+                                    }}
+                                    className="ml-2 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                    title="Remove from suggestions"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Delete confirmation dialog */}
+                          {showDeleteConfirm && (
+                            <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg p-3">
+                              <div className="flex items-start gap-2 mb-3">
+                                <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+                                <div className="text-sm">
+                                  <p className="font-medium">Remove "{showDeleteConfirm.name}"?</p>
+                                  <p className="text-muted-foreground text-xs mt-1">
+                                    This task list may still be in use by other sessions.
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setShowDeleteConfirm(null)}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => handleDeleteTaskListName(showDeleteConfirm.name)}
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Share a task list across sessions. Only letters, numbers, and underscores.
+                        </p>
+                      </div>
+                    )}
                   </>
                 )}
 
