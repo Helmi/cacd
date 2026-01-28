@@ -1,6 +1,5 @@
 import {promisify} from 'util';
 import {execFile, type ExecException} from 'child_process';
-import path from 'path';
 import {Effect, Either} from 'effect';
 import {pipe} from 'effect/Function';
 import {GitError} from '../types/errors.js';
@@ -507,7 +506,7 @@ export const getFileDiff = (
 		let validatedFullPath: string;
 		try {
 			validatedFullPath = validatePathWithinBase(worktreePath, filePath);
-		} catch (error) {
+		} catch (_error) {
 			return yield* Effect.fail(
 				new GitError({
 					command: `validate ${filePath}`,

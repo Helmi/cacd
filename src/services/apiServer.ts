@@ -151,7 +151,7 @@ export class APIServer {
 						logger.warn(`CORS rejected origin: ${origin}`);
 						cb(new Error('Not allowed by CORS'), false);
 					}
-				} catch (e) {
+				} catch (_e) {
 					logger.warn(`CORS invalid origin: ${origin}`);
 					cb(new Error('Invalid origin'), false);
 				}
