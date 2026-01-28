@@ -1,6 +1,6 @@
 # CA⚡CD - Coding Agent Control Desk
 
-
+```
                                        ░▒▓░
  ░▒▓███████▓▒░  ░▒▓███████▓▒░        ░▒▓▓▒    ░▒▓███████▓▒░ ░▒▓████████▓▒░
 ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░     ░▒▓█▓▒░    ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░
@@ -12,340 +12,54 @@
 ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓█▓▒░      ░▒▓█▓▒░ ░▒▓█▓▒░░▒▓█▓▒░ ░▒▓█▓▒░
  ░▒▓███████▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓▓▒░       ░▒▓███████▓▒░ ░▒▓████████▓▒░
                                  ░▓▒░
+```
 
+> A control plane for managing multiple AI coding agents across projects and worktrees.
 
-CACD is a CLI application for managing multiple AI coding assistant sessions (Claude Code, Gemini CLI, Codex CLI) across Git worktrees and projects.
+## What is CACD?
 
-https://github.com/user-attachments/assets/15914a88-e288-4ac9-94d5-8127f2e19dbf
+CACD lets you run multiple AI coding assistant sessions in parallel - Claude Code, Gemini CLI, Codex CLI, or Cursor - and manage them from a single interface. It's built around Git worktrees, allowing each agent to work on a separate branch without conflicts. Access everything via WebUI or the terminal-based TUI.
 
 ## Features
 
-- Run multiple AI assistant sessions in parallel across different Git worktrees
-- **Multi-project support**: Manage multiple git repositories from a single interface
-- Support for multiple AI coding assistants (Claude Code, Gemini CLI, Codex CLI)
-- Switch between sessions seamlessly
-- Visual status indicators for session states (busy, waiting, idle)
-- Create, merge, and delete worktrees from within the app
-- **Copy Claude Code session data** between worktrees to maintain conversation context
-- Configurable keyboard shortcuts
-- Command presets with automatic fallback support
-- Configurable state detection strategies for different CLI tools
-- Status change hooks for automation and notifications
-- Devcontainer integration
-- **Auto Approval (experimental)**: Automatically approve safe prompts using AI verification
-- **WebUI**: Full-featured web interface alongside the terminal UI
+- **WebUI + TUI** - Full web interface alongside the terminal UI
+- **Multi-agent** - Claude Code, Gemini CLI, Codex CLI, GitHub Copilot, Cursor
+- **Multi-project** - Manage multiple repositories from one interface
+- **Git worktree integration** - Create, merge, and delete worktrees without leaving the app
+- **Session state detection** - Visual indicators for idle, busy, and waiting states
+- **Status hooks** - Trigger notifications or scripts on state changes
+- **Session data copying** - Transfer conversation context between worktrees
+- **Auto-approval** - Automatically approve safe prompts (experimental)
 
-## Install
+## Quick Start
 
 ```bash
-npm install -g coding-agent-control-desk
+# Install globally
+npm install -g cacd
+
+# Or run directly with npx
+npx cacd
 ```
 
-Or for local development:
+The WebUI is available at `http://localhost:3000` when CACD is running.
 
-```bash
-npm install
-npm run build
-npm start
-```
+## Documentation
 
-## Usage
-
-```bash
-cacd
-```
-
-Or run without installing:
-
-```bash
-npx coding-agent-control-desk
-```
-
-## Keyboard Shortcuts
-
-### Default Shortcuts
-
-- **Ctrl+E**: Return to menu from active session
-- **Escape**: Cancel/Go back in dialogs
-
-### Customizing Shortcuts
-
-You can customize keyboard shortcuts in two ways:
-
-1. **Through the UI**: Select "Configuration" → "Configure Shortcuts" from the main menu
-2. **Configuration file**: Edit `~/.config/cacd/config.json`
-
-Example configuration:
-```json
-// config.json (new format)
-{
-  "shortcuts": {
-    "returnToMenu": {
-      "ctrl": true,
-      "key": "r"
-    },
-    "cancel": {
-      "key": "escape"
-    }
-  }
-}
-```
-
-Note: Shortcuts from `shortcuts.json` will be automatically migrated to `config.json` on first use.
-
-### Restrictions
-
-- Shortcuts must use a modifier key (Ctrl) except for special keys like Escape
-- The following key combinations are reserved and cannot be used:
-  - Ctrl+C
-  - Ctrl+D
-  - Ctrl+[ (equivalent to Escape)
-
-## Supported AI Assistants
-
-CACD supports multiple AI coding assistants with tailored state detection:
-
-### Claude Code (Default)
-- Command: `claude`
-- State detection: Built-in patterns for Claude's prompts and status messages
-
-### Gemini CLI
-- Command: `gemini`
-- State detection: Custom patterns for Gemini's confirmation prompts
-- Installation: [google-gemini/gemini-cli](https://github.com/google-gemini/gemini-cli)
-
-### Codex CLI
-- Command: `codex`
-- State detection: Custom patterns for Codex's prompts
-- Installation: [openai/codex](https://github.com/openai/codex)
-
-### GitHub Copilot CLI
-- Command: `gh copilot`
-- State detection: Custom patterns for Copilot's prompts
-
-Each assistant has its own state detection strategy to properly track:
-- **Idle**: Ready for new input
-- **Busy**: Processing a request
-- **Waiting**: Awaiting user confirmation
-
-See [Gemini Support Documentation](docs/gemini-support.md) for detailed configuration instructions.
-
-
-## Command Configuration
-
-![Screenshot From 2025-06-18 16-43-27](https://github.com/user-attachments/assets/47d62483-ce81-4340-8687-8afcae93d5db)
-
-
-CACD supports configuring the command and arguments used to run AI assistant sessions, with automatic fallback options for reliability.
-
-### Features
-
-- Configure the main command (default: `claude`)
-- Set primary arguments (e.g., `--resume`)
-- Define fallback arguments if the primary configuration fails
-- Automatic retry with no arguments as final fallback
-
-### Quick Start
-
-1. Navigate to **Configuration** → **Configure Command Presets**
-2. Set your desired arguments (e.g., `--resume` for resuming sessions)
-3. Optionally set fallback arguments
-4. Save changes
-
-For detailed configuration options and examples, see [docs/command-config.md](docs/command-config.md).
-
-
-## Session Data Copying
-
-CACD can copy Claude Code session data (conversation history, context, and project state) when creating new worktrees, allowing you to maintain context across different branches.
-
-### Features
-
-- **Seamless Context Transfer**: Continue conversations in new worktrees without losing context
-- **Configurable Default**: Set whether to copy session data by default
-- **Per-Creation Choice**: Decide on each worktree creation whether to copy data
-- **Safe Operation**: Copying is non-fatal - worktree creation succeeds even if copying fails
-
-### How It Works
-
-When creating a new worktree, CACD:
-1. Asks whether to copy session data from the current worktree
-2. Copies all session files from `~/.claude/projects/[source-path]` to `~/.claude/projects/[target-path]`
-3. Preserves conversation history, project context, and Claude Code state
-4. Allows immediate continuation of conversations in the new worktree
-
-### Configuration
-
-1. Navigate to **Configuration** → **Configure Worktree**
-2. Toggle **Copy Session Data** to set the default behavior
-3. Save changes
-
-The default choice (copy or start fresh) will be pre-selected when creating new worktrees.
-
-### Use Cases
-
-- **Feature Development**: Copy session data when creating feature branches to maintain project context
-- **Experimentation**: Start fresh when testing unrelated changes
-- **Collaboration**: Share session state across team worktrees
-- **Context Preservation**: Maintain long conversations across multiple development branches
-
-
-## Status Change Hooks
-
-CACD can execute custom commands when AI assistant session status changes. This enables powerful automation workflows like desktop notifications, logging, or integration with other tools.
-
-### Overview
-
-Status hooks allow you to:
-- Get notified when Claude needs your input
-- Track time spent in different states
-- Trigger automations based on session activity
-- Integrate with notification systems like [noti](https://github.com/variadico/noti)
-
-For detailed setup instructions, see [docs/state-hooks.md](docs/status-hooks.md).
-
-## Worktree Hooks
-
-Worktree hooks execute custom commands when worktrees are created, enabling automation of development environment setup.
-
-### Features
-- **Post-creation hook**: Run commands after a worktree is created
-- **Environment variables**: Access worktree path, branch name, and git root
-- **Non-blocking execution**: Hooks run asynchronously without delaying operations
-- **Error resilience**: Hook failures don't prevent worktree creation
-
-### Use Cases
-- Set up development dependencies (`npm install`, `bundle install`)
-- Configure IDE settings per branch
-- Send notifications when worktrees are created
-- Initialize branch-specific configurations
-
-For configuration and examples, see [docs/worktree-hooks.md](docs/worktree-hooks.md).
-
-## Automatic Worktree Directory Generation
-
-CACD can automatically generate worktree directory paths based on branch names, streamlining the worktree creation process.
-
-- **Auto-generate paths**: No need to manually specify directories
-- **Customizable patterns**: Use placeholders like `{branch}` in your pattern
-- **Smart sanitization**: Branch names are automatically made filesystem-safe
-
-For detailed configuration and examples, see [docs/worktree-auto-directory.md](docs/worktree-auto-directory.md).
-
-## Auto Approval (Experimental)
-
-CACD can automatically approve Claude Code prompts that don't require user permission, reducing manual intervention while maintaining safety for sensitive operations.
-
-### Features
-
-- **Automatic decision**: Uses Claude (Haiku) to analyze prompts and determine if they need manual approval
-- **Custom commands**: Replace the default verifier with your own script or different AI model
-- **Safe fallback**: Always defaults to manual approval on errors or timeouts
-- **Interruptible**: Press any key to cancel auto-approval and review manually
-
-### Quick Start
-
-1. Navigate to **Configuration** → **Other & Experimental**
-2. Enable **Auto Approval (experimental)**
-3. (Optional) Configure a custom command for verification
-
-For detailed configuration and usage, see [docs/auto-approval.md](docs/auto-approval.md).
-
-## Devcontainer Integration
-
-CACD supports running AI assistant sessions inside devcontainers while keeping the manager itself on the host machine. This enables sandboxed development environments with restricted network access while maintaining host-level notifications and automation.
-
-### Features
-
-- **Host-based management**: CACD runs on your host machine, managing sessions inside containers
-- **Seamless integration**: All existing features (presets, status hooks, etc.) work with devcontainers
-- **Security-focused**: Compatible with Anthropic's recommended devcontainer configurations
-- **Persistent state**: Configuration and history persist across container recreations
-
-### Usage
-
-```bash
-# Start CACD with devcontainer support
-cacd --devc-up-command "<your devcontainer up command>" \
-     --devc-exec-command "<your devcontainer exec command>"
-```
-
-The devcontainer integration requires both commands:
-- `--devc-up-command`: Any command to start the devcontainer
-- `--devc-exec-command`: Any command to execute inside the container
-
-### Benefits
-
-- **Safe experimentation**: Run commands like `claude --dangerously-skip-permissions` without risk
-
-For detailed setup and configuration, see [docs/devcontainer.md](docs/devcontainer.md).
-
-## Multi-Project Mode
-
-CACD can manage multiple git repositories from a single interface, allowing you to organize and navigate between different projects and their worktrees efficiently.
-
-### Quick Start
-
-```bash
-# Set the root directory containing your git projects
-export CACD_PROJECTS_DIR="/path/to/your/projects"
-
-# Run CACD in multi-project mode
-cacd --multi-project
-```
-
-### Features
-
-- **Automatic project discovery**: Recursively finds all git repositories
-- **Recent projects**: Frequently used projects appear at the top
-- **Vi-like search**: Press `/` to filter projects or worktrees
-- **Session persistence**: Sessions remain active when switching projects
-- **Visual indicators**: See session counts `[active/busy/waiting]` for each project
-
-### Navigation
-
-1. **Project List**: Select from all discovered git repositories
-2. **Worktree Menu**: Manage worktrees for the selected project
-3. **Session View**: Interact with your AI assistant
-
-Use `B` key to navigate back from worktrees to project list.
-
-For detailed configuration and usage, see [docs/multi-project.md](docs/multi-project.md).
-
-## Git Worktree Configuration
-
-CACD can display enhanced git status information for each worktree when Git's worktree configuration extension is enabled.
-
-```bash
-# Enable enhanced status tracking
-git config extensions.worktreeConfig true
-```
-
-With this enabled, you'll see:
-- **File changes**: `+10 -5` (additions/deletions)
-- **Commit tracking**: `↑3 ↓1` (ahead/behind parent branch)
-- **Parent branch context**: Shows which branch the worktree was created from
-
-For complete setup instructions and troubleshooting, see [docs/git-worktree-config.md](docs/git-worktree-config.md).
+Visit the [documentation site](https://helmi.github.io/cacd/) for detailed guides on features, configuration, and more.
 
 ## Development
 
 ```bash
-# Install dependencies
-npm install
-
-# Run in development mode
-npm run dev
-
-# Build
-npm run build
-
-# Run tests
-npm test
-
-# Run linter
-npm run lint
-
-# Run type checker
-npm run typecheck
+bun install
+bun run dev
 ```
+
+This starts both backend and frontend with hot reload. See [CLAUDE.md](CLAUDE.md) for detailed development guidelines.
+
+## License
+
+AGPL-3.0-or-later - see [LICENSE](LICENSE)
+
+## Acknowledgments
+
+CACD is a fork of [ccmanager](https://github.com/kbwo/ccmanager) by [@kbwo](https://github.com/kbwo).

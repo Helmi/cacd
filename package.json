@@ -1,12 +1,12 @@
 {
-	"name": "coding-agent-control-desk",
+	"name": "cacd",
 	"version": "0.3.0",
 	"description": "CA⚡CD - Web-based control desk for managing multiple AI coding agent sessions (Claude, Gemini, Codex, Cursor)",
-	"license": "MIT",
+	"license": "AGPL-3.0-or-later",
 	"author": "Helmi",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/helmi/agent-control-desk.git"
+		"url": "https://github.com/Helmi/cacd.git"
 	},
 	"keywords": [
 		"ai",
