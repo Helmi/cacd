@@ -1,0 +1,163 @@
+/* CACD Documentation - Custom Styles
+   Matching the terminal aesthetic of the CACD application */
+
+/* Import fonts - JetBrains Mono for code, Inter for body text */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* CSS Custom Properties - CACD Dark Terminal Theme */
+:root {
+  /* Accent colors - CACD's yellow lightning bolt theme */
+  --sl-color-accent-low: #3d3510;
+  --sl-color-accent: #eab308;
+  --sl-color-accent-high: #fde047;
+
+  /* Fonts - balanced mix of monospace and readable */
+  --sl-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --sl-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Slightly smaller base for cleaner look */
+  --sl-text-base: 0.9375rem;
+  --sl-text-body: 0.9375rem;
+
+  /* Heading size scale - slightly reduced */
+  --sl-text-h1: 1.75rem;
+  --sl-text-h2: 1.35rem;
+  --sl-text-h3: 1.15rem;
+  --sl-text-h4: 1rem;
+}
+
+/* Dark theme specific colors */
+:root[data-theme='dark'] {
+  --sl-color-bg: #0f1419;
+  --sl-color-bg-nav: #0a0d11;
+  --sl-color-bg-sidebar: #0c1015;
+  --sl-color-bg-inline-code: rgba(36, 169, 149, 0.15);
+  --sl-color-hairline-light: rgba(255, 255, 255, 0.08);
+  --sl-color-hairline: rgba(255, 255, 255, 0.12);
+  --sl-color-white: #e6e6e6;
+  --sl-color-gray-1: #b8b8b8;
+  --sl-color-gray-2: #8a8a8a;
+  --sl-color-gray-3: #5c5c5c;
+  --sl-color-gray-4: #3a3a3a;
+  --sl-color-gray-5: #252525;
+  --sl-color-gray-6: #1a1a1a;
+  --sl-color-black: #0f1419;
+}
+
+/* Light theme adjustments */
+:root[data-theme='light'] {
+  --sl-color-accent-low: #fef9c3;
+  --sl-color-accent: #ca8a04;
+  --sl-color-accent-high: #854d0e;
+  --sl-color-bg-inline-code: rgba(202, 138, 4, 0.12);
+}
+
+/* Body text - clean and readable */
+.sl-markdown-content {
+  font-family: var(--sl-font);
+  line-height: 1.65;
+}
+
+.sl-markdown-content p,
+.sl-markdown-content li {
+  font-size: var(--sl-text-body);
+  color: var(--sl-color-gray-1);
+}
+
+/* Typography - Make headings monospace with tighter tracking */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4 {
+  font-family: var(--sl-font-mono);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+/* Splash page title styling */
+.hero h1 {
+  font-family: var(--sl-font-mono) !important;
+  letter-spacing: -0.02em;
+}
+
+/* Code blocks - tighter, terminal-like */
+.sl-markdown-content pre {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 4px;
+}
+
+.sl-markdown-content code {
+  font-family: var(--sl-font-mono);
+  font-size: 0.875em;
+}
+
+/* Inline code styling */
+.sl-markdown-content :not(pre) > code {
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+/* Tables - cleaner borders */
+.sl-markdown-content table {
+  border-collapse: collapse;
+}
+
+.sl-markdown-content th,
+.sl-markdown-content td {
+  border-color: var(--sl-color-hairline);
+}
+
+/* Sidebar - tighter spacing */
+nav.sidebar {
+  font-size: 0.875rem;
+}
+
+/* Cards - subtle terminal feel */
+.card {
+  border-color: var(--sl-color-hairline);
+  background: var(--sl-color-bg-sidebar);
+}
+
+/* Screenshot placeholder styling */
+.screenshot-placeholder {
+  background: linear-gradient(135deg, var(--sl-color-gray-5) 0%, var(--sl-color-gray-6) 100%);
+  border: 2px dashed var(--sl-color-gray-4);
+  border-radius: 6px;
+  padding: 3rem 2rem;
+  text-align: center;
+  color: var(--sl-color-gray-2);
+  font-family: var(--sl-font-mono);
+  font-size: 0.875rem;
+  margin: 1.5rem 0;
+}
+
+.screenshot-placeholder::before {
+  content: '📷';
+  display: block;
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Keyboard shortcuts styling */
+kbd {
+  font-family: var(--sl-font-mono);
+  font-size: 0.8em;
+  padding: 0.15em 0.4em;
+  background: var(--sl-color-gray-5);
+  border: 1px solid var(--sl-color-gray-4);
+  border-radius: 3px;
+  box-shadow: 0 1px 0 var(--sl-color-gray-4);
+}
+
+/* Aside/callout refinements */
+.starlight-aside {
+  border-radius: 4px;
+  border-left-width: 3px;
+}
+
+/* Status indicator colors (matching CACD) */
+.status-idle { color: #4ade80; }
+.status-busy { color: #facc15; }
+.status-waiting { color: #f87171; }

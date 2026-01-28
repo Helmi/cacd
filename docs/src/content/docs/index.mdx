@@ -1,0 +1,34 @@
+---
+title: CACD - Coding Agent Control Desk
+description: A control plane for managing multiple AI coding agents across projects and worktrees.
+template: splash
+hero:
+  tagline: Manage Claude Code, Gemini CLI, Codex, and Cursor from a single WebUI
+  actions:
+    - text: Get Started
+      link: /cacd/getting-started/introduction/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/Helmi/cacd
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Features
+
+<CardGrid stagger>
+	<Card title="WebUI + TUI" icon="laptop">
+		Full-featured web interface alongside the terminal UI. Access your agents from anywhere.
+	</Card>
+	<Card title="Multi-Agent" icon="rocket">
+		Auto-detects Claude Code, Gemini CLI, Codex, Cursor, and more.
+	</Card>
+	<Card title="Multi-Project" icon="open-book">
+		Manage multiple repositories from a single interface with visual session indicators.
+	</Card>
+	<Card title="Git Worktrees" icon="setting">
+		Create, merge, and delete worktrees without leaving the app. Each agent works on its own branch.
+	</Card>
+</CardGrid>
