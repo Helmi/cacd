@@ -6,7 +6,7 @@
 ## Upstream Repository
 
 - **Original repo:** https://github.com/kbwo/ccmanager (for reference only, not a git remote)
-- **This repo:** git@github.com:Helmi/agent-control-desk.git (remote: `origin`, local folder: `cacd`)
+- **This repo:** git@github.com:Helmi/cacd.git (remote: `origin`)
 - **Note:** This project has fully diverged from upstream. No backward compatibility with ccmanager configs.
 
 ### Upstream Compatibility Guidelines
