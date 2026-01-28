@@ -1,6 +1,7 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useAppStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { StatusIndicator } from '@/components/StatusIndicator'
 import { AgentIcon } from '@/components/AgentIcon'
@@ -31,6 +32,7 @@ import {
   GitBranch,
   MoreVertical,
   PanelLeftClose,
+  Pencil,
   Plus,
   X,
 } from 'lucide-react'
@@ -52,6 +54,7 @@ export function Sidebar() {
     openAddProject,
     openAddWorktree,
     openAddSession,
+    updateProject,
     removeProject,
     deleteWorktree,
     stopSession,
@@ -82,6 +85,52 @@ export function Sidebar() {
     open: boolean
     session: Session | null
   }>({ open: false, session: null })
+
+  // Rename project state
+  const [renamingProject, setRenamingProject] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const renameInputRef = useRef<HTMLInputElement>(null)
+
+  // Start renaming a project
+  const startRenameProject = useCallback((project: Project) => {
+    setRenamingProject(project.path)
+    setRenameValue(project.name)
+  }, [])
+
+  // Save renamed project
+  const saveRenamedProject = useCallback(async () => {
+    if (!renamingProject || !renameValue.trim()) {
+      setRenamingProject(null)
+      return
+    }
+    await updateProject(renamingProject, renameValue.trim())
+    setRenamingProject(null)
+  }, [renamingProject, renameValue, updateProject])
+
+  // Cancel rename
+  const cancelRename = useCallback(() => {
+    setRenamingProject(null)
+    setRenameValue('')
+  }, [])
+
+  // Handle rename input key events
+  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      saveRenamedProject()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      cancelRename()
+    }
+  }, [saveRenamedProject, cancelRename])
+
+  // Auto-focus and select rename input when it appears
+  useEffect(() => {
+    if (renamingProject && renameInputRef.current) {
+      renameInputRef.current.focus()
+      renameInputRef.current.select()
+    }
+  }, [renamingProject])
 
   // Confirm remove project
   const confirmRemoveProject = (project: Project) => {
@@ -389,7 +438,7 @@ export function Sidebar() {
                 <ContextMenu>
                   <ContextMenuTrigger asChild>
                     <button
-                      onClick={() => toggleProject(project.path)}
+                      onClick={() => renamingProject !== project.path && toggleProject(project.path)}
                       className={cn(
                         'group flex w-full min-w-0 items-center gap-2 px-2 py-2 text-sm',
                         'bg-muted/50 hover:bg-muted transition-colors',
@@ -401,7 +450,20 @@ export function Sidebar() {
                         'h-4 w-4 shrink-0 transition-colors',
                         isExpanded ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
                       )} />
-                      <span className="truncate font-medium flex-1 text-left">{project.name}</span>
+                      {renamingProject === project.path ? (
+                        <Input
+                          ref={renameInputRef}
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={handleRenameKeyDown}
+                          onBlur={saveRenamedProject}
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-6 flex-1 px-1 py-0 text-sm font-medium"
+                          aria-label={`Rename project ${project.name}`}
+                        />
+                      ) : (
+                        <span className="truncate font-medium flex-1 text-left">{project.name}</span>
+                      )}
                       {/* Visible menu button - always on mobile, hover on desktop */}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -417,6 +479,11 @@ export function Sidebar() {
                           </div>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="text-xs">
+                          <DropdownMenuItem onClick={() => startRenameProject(project)}>
+                            <Pencil className="h-3.5 w-3.5 mr-2" />
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => openAddWorktree(project.path)}>
                             <GitBranch className="h-3.5 w-3.5 mr-2" />
                             New Worktree
@@ -443,6 +510,11 @@ export function Sidebar() {
                     </button>
                   </ContextMenuTrigger>
                   <ContextMenuContent>
+                    <ContextMenuItem onClick={() => startRenameProject(project)}>
+                      <Pencil className="h-3.5 w-3.5 mr-2" />
+                      Rename
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
                     <ContextMenuItem onClick={() => openAddWorktree(project.path)}>
                       <GitBranch className="h-3.5 w-3.5 mr-2" />
                       New Worktree

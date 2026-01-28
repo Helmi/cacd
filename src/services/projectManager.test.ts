@@ -173,7 +173,7 @@ describe('ProjectManager', () => {
 			expect(mockFs.writeFileSync).toHaveBeenCalled();
 		});
 
-		it('should add project with description', () => {
+		it('should add project with custom name', () => {
 			mockFs.existsSync.mockImplementation((filePath: string) => {
 				if (filePath.endsWith('.git')) return true;
 				if (filePath === mockConfigDir) return true;
@@ -182,10 +182,10 @@ describe('ProjectManager', () => {
 
 			const result = projectManager.addProject(
 				'/path/to/project',
-				'My awesome project',
+				'My Awesome Project',
 			);
 
-			expect(result?.description).toBe('My awesome project');
+			expect(result?.name).toBe('My Awesome Project');
 		});
 
 		it('should return null for non-git directory', () => {

@@ -152,20 +152,20 @@ export class ProjectManager implements IProjectManager {
 	/**
 	 * Add a project to the registry
 	 * @param projectPath - Absolute path to the project
-	 * @param description - Optional description
+	 * @param name - Optional display name (defaults to directory name)
 	 * @returns The added project, or null if invalid
 	 */
-	public addProject(projectPath: string, description?: string): Project | null {
+	public addProject(projectPath: string, name?: string): Project | null {
 		// Expand ~ and resolve to absolute path
 		const absolutePath = path.resolve(expandTilde(projectPath));
 
 		// Check if already exists
 		const existing = this.projects.find(p => p.path === absolutePath);
 		if (existing) {
-			// Update lastAccessed and optionally description
+			// Update lastAccessed and optionally name
 			existing.lastAccessed = Date.now();
-			if (description !== undefined) {
-				existing.description = description;
+			if (name !== undefined && name.trim()) {
+				existing.name = name.trim();
 			}
 			existing.isValid = true;
 			this.saveProjects();
@@ -181,8 +181,7 @@ export class ProjectManager implements IProjectManager {
 		// Create new project entry
 		const project: Project = {
 			path: absolutePath,
-			name: path.basename(absolutePath),
-			description,
+			name: name?.trim() || path.basename(absolutePath),
 			lastAccessed: Date.now(),
 			isValid: true,
 		};
@@ -442,11 +441,11 @@ export class ProjectManager implements IProjectManager {
 	 */
 	addProjectEffect(
 		projectPath: string,
-		description?: string,
+		name?: string,
 	): Effect.Effect<Project, FileSystemError, never> {
 		return Effect.try({
 			try: () => {
-				const result = this.addProject(projectPath, description);
+				const result = this.addProject(projectPath, name);
 				if (!result) {
 					throw new Error('Invalid git repository');
 				}
@@ -479,8 +478,8 @@ export const projectManager = {
 		return this.instance.getProjects();
 	},
 
-	addProject(projectPath: string, description?: string) {
-		return this.instance.addProject(projectPath, description);
+	addProject(projectPath: string, name?: string) {
+		return this.instance.addProject(projectPath, name);
 	},
 
 	removeProject(projectPath: string) {

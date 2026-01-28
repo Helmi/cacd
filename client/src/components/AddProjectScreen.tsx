@@ -49,7 +49,7 @@ export function AddProjectScreen() {
 
   // Form state
   const [path, setPath] = useState('')
-  const [description, setDescription] = useState('')
+  const [name, setName] = useState('')
   const [showHidden, setShowHidden] = useState(false)
 
   // Validation state
@@ -240,7 +240,7 @@ export function AddProjectScreen() {
     setError(null)
 
     try {
-      const success = await addProject(validation.path, description || undefined)
+      const success = await addProject(validation.path, name || undefined)
       if (success) {
         fetchData()
         handleClose()
@@ -418,14 +418,14 @@ export function AddProjectScreen() {
                   </p>
                 )}
 
-                {/* Description input */}
+                {/* Project Name input */}
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description (optional)</Label>
+                  <Label htmlFor="name">Project Name (optional)</Label>
                   <Input
-                    id="description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="A brief description"
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Defaults to folder name"
                     className="text-sm"
                   />
                 </div>

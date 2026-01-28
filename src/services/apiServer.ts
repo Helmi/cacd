@@ -359,11 +359,11 @@ export class APIServer {
 			};
 		});
 
-		this.app.post<{Body: {path: string; description?: string}}>(
+		this.app.post<{Body: {path: string; name?: string}}>(
 			'/api/project/add',
 			async (request, reply) => {
-				const {path, description} = request.body;
-				const result = projectManager.addProject(path, description);
+				const {path, name} = request.body;
+				const result = projectManager.addProject(path, name);
 
 				if (result) {
 					logger.info(`API: Added project ${result.name}`);
@@ -389,6 +389,23 @@ export class APIServer {
 					return {success: true};
 				} else {
 					logger.error(`API: Failed to remove project (not found): ${path}`);
+					reply.status(404);
+					return {success: false, error: 'Project not found'};
+				}
+			},
+		);
+
+		this.app.post<{Body: {path: string; name?: string}}>(
+			'/api/project/update',
+			async (request, reply) => {
+				const {path, name} = request.body;
+				const updated = projectManager.instance.updateProject(path, {name});
+
+				if (updated) {
+					logger.info(`API: Updated project ${path} -> name: ${name}`);
+					return {success: true, project: updated};
+				} else {
+					logger.error(`API: Failed to update project (not found): ${path}`);
 					reply.status(404);
 					return {success: false, error: 'Project not found'};
 				}

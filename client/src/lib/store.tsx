@@ -125,7 +125,8 @@ interface AppActions {
   stopSession: (sessionId: string) => Promise<void>
 
   // Project management
-  addProject: (path: string, description?: string) => Promise<boolean>
+  addProject: (path: string, name?: string) => Promise<boolean>
+  updateProject: (path: string, name: string) => Promise<boolean>
   removeProject: (path: string) => Promise<boolean>
 
   // Worktree management
@@ -344,7 +345,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ])
 
       setWorktrees(worktreesData)
-      setProjects(projectsData.projects || [])
+      // Sort projects alphabetically by name (case-insensitive)
+      const sortedProjects = (projectsData.projects || []).sort((a: Project, b: Project) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      )
+      setProjects(sortedProjects)
 
       if (configRes.ok) {
         const configData = await configRes.json()
@@ -810,13 +815,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const addProject = async (path: string, description?: string): Promise<boolean> => {
+  const addProject = async (path: string, name?: string): Promise<boolean> => {
     try {
       const res = await fetch('/api/project/add', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, description })
+        body: JSON.stringify({ path, name })
       })
       const data = await res.json()
       if (!res.ok) {
@@ -831,6 +836,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error(e)
       setError('Failed to add project. Check your connection.')
+      return false
+    }
+  }
+
+  const updateProject = async (path: string, name: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/project/update', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, name })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to update project')
+        return false
+      }
+      if (data.success) {
+        // Update local state optimistically
+        setProjects(prev =>
+          prev.map(p => p.path === path ? { ...p, name } : p)
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+        )
+        return true
+      }
+      return false
+    } catch (e) {
+      console.error(e)
+      setError('Failed to update project. Check your connection.')
       return false
     }
   }
@@ -989,6 +1023,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     createSessionWithAgent,
     stopSession,
     addProject,
+    updateProject,
     removeProject,
     createWorktree,
     deleteWorktree,
