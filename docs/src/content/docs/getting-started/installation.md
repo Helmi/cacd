@@ -11,13 +11,13 @@ description: How to install CACD
 ## Install via npm
 
 ```bash
-npm install -g cacd
+npm install -g ca-cd
 ```
 
 ## Run without installing
 
 ```bash
-npx cacd
+npx ca-cd
 ```
 
 ## Verify installation

@@ -35,13 +35,13 @@ CACD lets you run multiple AI coding assistant sessions in parallel - Claude Cod
 
 ```bash
 # Install globally
-npm install -g cacd
+npm install -g ca-cd
 
 # Or run directly with npx
-npx cacd
+npx ca-cd
 ```
 
-The WebUI is available at `http://localhost:3000` when CACD is running.
+On first run, an onboarding wizard guides you through setup. The WebUI URL is shown after setup completes.
 
 ## Documentation
 
