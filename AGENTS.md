@@ -31,14 +31,6 @@
 
 The UI reference design is located at `.ui-reference/` in the project root (gitignored).
 - **Source repo:** https://github.com/Helmi/v0-agent-control-desk (branch: `v0-updates`)
-- **Main project location:** `/Users/helmi/code/cacd/.ui-reference/`
-- **Worktree setup:** Automatically copied to worktrees via `.cacd.json` setup script
-
-**Important:** Before starting UI work, always update the reference from remote:
-```bash
-cd /Users/helmi/code/acd-ui-reference && git pull origin v0-updates
-cp -r /Users/helmi/code/acd-ui-reference/* /Users/helmi/code/cacd/.ui-reference/
-```
 
 Use this as a guide for UI/UX improvements when rebuilding the WebUI.
 
