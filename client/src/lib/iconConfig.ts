@@ -7,6 +7,7 @@ export const BRAND_ICONS = {
   gemini: { svg: 'google-gemini', light: '#0066CC', dark: '#078EFA', match: ['gemini'] },
   openai: { svg: 'openai-codex', light: '#000000', dark: '#FFFFFF', match: ['codex', 'openai'] },
   cursor: { svg: 'cursor', light: '#000000', dark: '#FFFFFF', match: ['cursor'] },
+  pi: { svg: 'pi', light: '#000000', dark: '#FFFFFF', match: ['pi ', '/pi', 'pi-coding-agent'] },
   droid: { svg: 'factory-droid', light: '#D15010', dark: '#EF6F2E', match: ['droid'] },
   kilo: { svg: 'kilocode', light: '#8B7A00', dark: '#F8F676', match: ['kilo', 'kilocode'] },
   opencode: { svg: 'opencode', light: '#211E1E', dark: '#E5E5E5', match: ['opencode'] },

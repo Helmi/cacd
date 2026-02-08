@@ -8,6 +8,7 @@ export {
 	CursorStateDetector,
 	GitHubCopilotStateDetector,
 	ClineStateDetector,
+	PiStateDetector,
 } from './stateDetector/index.js';
 
 // Type-only re-export

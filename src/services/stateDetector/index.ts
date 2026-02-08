@@ -6,6 +6,7 @@ import {CodexStateDetector} from './codex.js';
 import {CursorStateDetector} from './cursor.js';
 import {GitHubCopilotStateDetector} from './github-copilot.js';
 import {ClineStateDetector} from './cline.js';
+import {PiStateDetector} from './pi.js';
 
 export function createStateDetector(
 	strategy: StateDetectionStrategy = 'claude',
@@ -23,6 +24,8 @@ export function createStateDetector(
 			return new GitHubCopilotStateDetector();
 		case 'cline':
 			return new ClineStateDetector();
+		case 'pi':
+			return new PiStateDetector();
 		default:
 			return new ClaudeStateDetector();
 	}
@@ -37,3 +40,4 @@ export {CodexStateDetector} from './codex.js';
 export {CursorStateDetector} from './cursor.js';
 export {GitHubCopilotStateDetector} from './github-copilot.js';
 export {ClineStateDetector} from './cline.js';
+export {PiStateDetector} from './pi.js';

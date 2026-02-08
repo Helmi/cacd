@@ -22,7 +22,7 @@ import {
 import {getConfigDir} from '../utils/configDir.js';
 
 // Current schema version for agents config
-const AGENTS_SCHEMA_VERSION = 1;
+const AGENTS_SCHEMA_VERSION = 2;
 
 // Default agent configurations shipped with CACD
 const DEFAULT_AGENTS: AgentConfig[] = [
@@ -109,6 +109,82 @@ const DEFAULT_AGENTS: AgentConfig[] = [
 			},
 		],
 		detectionStrategy: 'gemini',
+	},
+	{
+		id: 'pi',
+		name: 'Pi Coding Agent',
+		description: 'Pi Coding Agent (pi CLI)',
+		kind: 'agent',
+		command: 'pi',
+		icon: 'pi',
+		options: [
+			{
+				id: 'tools',
+				flag: '--tools',
+				label: 'Tools',
+				description:
+					'Enabled tools (controls permissions). Default disables bash for safety.',
+				type: 'string',
+				default: 'read,edit,write,grep,find,ls',
+				choices: [
+					{value: 'read,grep,find,ls', label: 'Read-only'},
+					{value: 'read,edit,write,grep,find,ls', label: 'Safe (no bash)'},
+					{value: 'read,bash,edit,write', label: 'Default (includes bash)'},
+					{
+						value: 'read,bash,edit,write,grep,find,ls',
+						label: 'All tools',
+					},
+				],
+			},
+			{
+				id: 'continue',
+				flag: '--continue',
+				label: 'Continue',
+				description: 'Continue previous session',
+				type: 'boolean',
+				default: false,
+				group: 'resume-mode',
+			},
+			{
+				id: 'resume',
+				flag: '--resume',
+				label: 'Resume',
+				description: 'Select a session to resume',
+				type: 'boolean',
+				default: false,
+				group: 'resume-mode',
+			},
+			{
+				id: 'session',
+				flag: '--session',
+				label: 'Session File',
+				description: 'Use specific session file',
+				type: 'string',
+			},
+			{
+				id: 'session-dir',
+				flag: '--session-dir',
+				label: 'Session Dir',
+				description: 'Directory for session storage and lookup',
+				type: 'string',
+			},
+			{
+				id: 'thinking',
+				flag: '--thinking',
+				label: 'Thinking',
+				description: 'Thinking level',
+				type: 'string',
+				choices: [
+					{value: 'off', label: 'Off'},
+					{value: 'minimal', label: 'Minimal'},
+					{value: 'low', label: 'Low'},
+					{value: 'medium', label: 'Medium'},
+					{value: 'high', label: 'High'},
+					{value: 'xhigh', label: 'Extra High'},
+				],
+			},
+		],
+		detectionStrategy: 'pi',
 	},
 	{
 		id: 'terminal',
@@ -496,9 +572,38 @@ export class ConfigurationManager {
 	 */
 	private initializeAgentsConfig(): void {
 		if (this.config.agents) {
-			// Already have agents config, just ensure schema version
-			if (!this.config.agents.schemaVersion) {
+			let changed = false;
+			const schemaVersion = this.config.agents.schemaVersion ?? 0;
+
+			// One-time migrations for existing configs.
+			// Important: do NOT continuously re-add default agents, since users can delete agents.
+			if (schemaVersion < 2) {
+				// v2: add Pi default profile once
+				const piDefault = DEFAULT_AGENTS.find(a => a.id === 'pi');
+				if (
+					piDefault &&
+					!this.config.agents.agents.some(a => a.id === piDefault.id)
+				) {
+					this.config.agents.agents.push(piDefault);
+					changed = true;
+				}
+
 				this.config.agents.schemaVersion = AGENTS_SCHEMA_VERSION;
+				changed = true;
+			}
+
+			// Ensure defaultAgentId points to a real agent
+			if (
+				!this.config.agents.agents.some(
+					a => a.id === this.config.agents!.defaultAgentId,
+				)
+			) {
+				this.config.agents.defaultAgentId =
+					this.config.agents.agents[0]?.id || 'claude';
+				changed = true;
+			}
+
+			if (changed) {
 				this.saveConfig();
 			}
 			return;

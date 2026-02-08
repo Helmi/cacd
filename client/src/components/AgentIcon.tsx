@@ -17,6 +17,7 @@ import claudeCodeSvg from '@/assets/icons/claude-code.svg?raw'
 import googleGeminiSvg from '@/assets/icons/google-gemini.svg?raw'
 import openaiCodexSvg from '@/assets/icons/openai-codex.svg?raw'
 import cursorSvg from '@/assets/icons/cursor.svg?raw'
+import piSvg from '@/assets/icons/pi.svg?raw'
 import factoryDroidSvg from '@/assets/icons/factory-droid.svg?raw'
 import kilocodeSvg from '@/assets/icons/kilocode.svg?raw'
 import opencodeSvg from '@/assets/icons/opencode.svg?raw'
@@ -27,6 +28,7 @@ const BRAND_SVG_MAP: Record<BrandIconId, string> = {
   gemini: googleGeminiSvg,
   openai: openaiCodexSvg,
   cursor: cursorSvg,
+  pi: piSvg,
   droid: factoryDroidSvg,
   kilo: kilocodeSvg,
   opencode: opencodeSvg,
@@ -85,6 +87,8 @@ const LEGACY_AGENT_MAP: Record<string, { icon: string; iconColor?: string }> = {
   gemini: { icon: 'gemini' },
   'gemini-cli': { icon: 'gemini' },
   codex: { icon: 'openai' },
+  pi: { icon: 'pi' },
+  'pi-coding-agent': { icon: 'pi' },
   droid: { icon: 'droid' },
   kilocode: { icon: 'kilo' },
   opencode: { icon: 'opencode' },
