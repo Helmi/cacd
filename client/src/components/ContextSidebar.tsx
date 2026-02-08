@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { StatusIndicator, statusLabels } from '@/components/StatusIndicator'
-import { AgentIcon } from '@/components/AgentIcon'
+import { AgentIcon, getLegacyAgentIconProps } from '@/components/AgentIcon'
 import { FileBrowser } from '@/components/FileBrowser'
 import { mapSessionState, ChangedFile } from '@/lib/types'
 import { X, GitBranch, Folder, Copy, Check, FileText, FilePlus, FileX, FileEdit, FileQuestion, GitCommit, FolderTree } from 'lucide-react'
@@ -16,6 +16,7 @@ export function ContextSidebar() {
   const {
     sessions,
     worktrees,
+    agents,
     currentProject,
     contextSidebarSessionId,
     closeContextSidebar,
@@ -37,6 +38,13 @@ export function ContextSidebar() {
 
   // Find the worktree for this session
   const worktree = session ? worktrees.find((w) => w.path === session.path) : null
+
+  // Find agent config (for icon + label)
+  const agentConfig = session?.agentId ? agents.find(a => a.id === session.agentId) : undefined
+  const legacyIconProps = session?.agentId ? getLegacyAgentIconProps(session.agentId) : undefined
+  const agentIcon = agentConfig?.icon || legacyIconProps?.icon
+  const agentIconColor = agentConfig?.iconColor || legacyIconProps?.iconColor
+  const agentLabel = agentConfig?.name || session?.agentId || 'unknown'
 
   // Fetch changed files function
   const fetchChangedFiles = useCallback(async () => {
@@ -112,7 +120,7 @@ export function ContextSidebar() {
           <div className="space-y-2">
             <div className="flex items-center gap-2 min-w-0">
               <StatusIndicator status={mapSessionState(session.state)} size="md" />
-              <AgentIcon icon="claude" className="h-5 w-5 shrink-0" />
+              <AgentIcon icon={agentIcon} iconColor={agentIconColor} className="h-5 w-5 shrink-0" />
               <span className="font-medium text-sm truncate">{session.name || formatName(session.path)}</span>
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -125,7 +133,7 @@ export function ContextSidebar() {
                 {statusLabels[mapSessionState(session.state)] || session.state}
               </span>
               <span className="text-border">•</span>
-              <span>claude-code</span>
+              <span>{agentLabel}</span>
             </div>
           </div>
 
