@@ -24,6 +24,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import {
+  AlertTriangle,
   ChevronsRight,
   ChevronDown,
   ChevronRight,
@@ -431,6 +432,7 @@ export function Sidebar() {
             const projectWorktrees = getWorktreesForProject(project.path)
             const isExpanded = expandedProjects.has(project.path)
             const isCurrentProject = currentProject?.path === project.path
+            const isInvalid = project.isValid === false
 
             return (
               <div key={project.path} className={cn(projectIndex > 0 && 'mt-2')}>
@@ -448,7 +450,11 @@ export function Sidebar() {
                     >
                       <FolderGit2 className={cn(
                         'h-4 w-4 shrink-0 transition-colors',
-                        isExpanded ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
+                        isInvalid
+                          ? 'text-yellow-600'
+                          : isExpanded
+                            ? 'text-primary'
+                            : 'text-muted-foreground group-hover:text-foreground'
                       )} />
                       {renamingProject === project.path ? (
                         <Input
@@ -463,6 +469,14 @@ export function Sidebar() {
                         />
                       ) : (
                         <span className="truncate font-medium flex-1 text-left">{project.name}</span>
+                      )}
+                      {isInvalid && (
+                        <span
+                          className="shrink-0 text-yellow-600"
+                          title={`Invalid project path: ${project.path}`}
+                        >
+                          <AlertTriangle className="h-4 w-4" />
+                        </span>
                       )}
                       {/* Visible menu button - always on mobile, hover on desktop */}
                       <DropdownMenu>
@@ -479,16 +493,31 @@ export function Sidebar() {
                           </div>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="text-xs">
+                          {isInvalid && (
+                            <>
+                              <DropdownMenuItem disabled className="text-yellow-600">
+                                <AlertTriangle className="h-3.5 w-3.5 mr-2" />
+                                Invalid path
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
                           <DropdownMenuItem onClick={() => startRenameProject(project)}>
                             <Pencil className="h-3.5 w-3.5 mr-2" />
                             Rename
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => openAddWorktree(project.path)}>
+                          <DropdownMenuItem
+                            onClick={() => openAddWorktree(project.path)}
+                            disabled={isInvalid}
+                          >
                             <GitBranch className="h-3.5 w-3.5 mr-2" />
                             New Worktree
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openAddSession(undefined, project.path)}>
+                          <DropdownMenuItem
+                            onClick={() => openAddSession(undefined, project.path)}
+                            disabled={isInvalid}
+                          >
                             <Plus className="h-3.5 w-3.5 mr-2" />
                             New Session
                           </DropdownMenuItem>
@@ -510,16 +539,31 @@ export function Sidebar() {
                     </button>
                   </ContextMenuTrigger>
                   <ContextMenuContent>
+                    {isInvalid && (
+                      <>
+                        <ContextMenuItem disabled className="text-yellow-600">
+                          <AlertTriangle className="h-3.5 w-3.5 mr-2" />
+                          Invalid path
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                      </>
+                    )}
                     <ContextMenuItem onClick={() => startRenameProject(project)}>
                       <Pencil className="h-3.5 w-3.5 mr-2" />
                       Rename
                     </ContextMenuItem>
                     <ContextMenuSeparator />
-                    <ContextMenuItem onClick={() => openAddWorktree(project.path)}>
+                    <ContextMenuItem
+                      onClick={() => openAddWorktree(project.path)}
+                      disabled={isInvalid}
+                    >
                       <GitBranch className="h-3.5 w-3.5 mr-2" />
                       New Worktree
                     </ContextMenuItem>
-                    <ContextMenuItem onClick={() => openAddSession(undefined, project.path)}>
+                    <ContextMenuItem
+                      onClick={() => openAddSession(undefined, project.path)}
+                      disabled={isInvalid}
+                    >
                       <Plus className="h-3.5 w-3.5 mr-2" />
                       New Session
                     </ContextMenuItem>

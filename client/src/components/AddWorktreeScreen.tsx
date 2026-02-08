@@ -12,6 +12,7 @@ import {
   Loader2,
   Folder,
   Plus,
+  AlertTriangle,
 } from 'lucide-react'
 import { cn, generateWorktreePath as generatePath } from '@/lib/utils'
 
@@ -31,7 +32,11 @@ export function AddWorktreeScreen() {
   const [isVisible, setIsVisible] = useState(false)
 
   // Determine if project was pre-selected from context menu
-  const hasPreselectedProject = !!addWorktreeProjectPath
+  const preselectedProject = addWorktreeProjectPath
+    ? projects.find(p => p.path === addWorktreeProjectPath)
+    : undefined
+  const hasPreselectedProject =
+    !!addWorktreeProjectPath && preselectedProject?.isValid !== false
 
   const [selectedProjectPath, setSelectedProjectPath] = useState<string>('')
   const [baseBranch, setBaseBranch] = useState<string>('main')
@@ -71,14 +76,34 @@ export function AddWorktreeScreen() {
 
   // Initialize project selection
   useEffect(() => {
+    if (selectedProjectPath) return
+
     if (addWorktreeProjectPath) {
-      setSelectedProjectPath(addWorktreeProjectPath)
-    } else if (currentProject) {
-      setSelectedProjectPath(currentProject.path)
-    } else if (projects.length === 1) {
-      setSelectedProjectPath(projects[0].path)
+      if (projects.length === 0) return
+
+      const project = projects.find(p => p.path === addWorktreeProjectPath)
+      if (project?.isValid === false) {
+        setError(`Project path is invalid or missing: ${addWorktreeProjectPath}`)
+        return
+      }
+      if (project) {
+        setSelectedProjectPath(addWorktreeProjectPath)
+        return
+      }
     }
-  }, [addWorktreeProjectPath, currentProject, projects])
+
+    if (currentProject?.path) {
+      const project = projects.find(p => p.path === currentProject.path)
+      if (project?.isValid === false) return
+      setSelectedProjectPath(currentProject.path)
+      return
+    }
+
+    const validProjects = projects.filter(p => p.isValid !== false)
+    if (validProjects.length === 1) {
+      setSelectedProjectPath(validProjects[0].path)
+    }
+  }, [addWorktreeProjectPath, currentProject, projects, selectedProjectPath])
 
   // Fetch branches when project changes
   useEffect(() => {
@@ -137,7 +162,12 @@ export function AddWorktreeScreen() {
     }
   }
 
-  const canSubmit = selectedProjectPath && baseBranch && branchName.trim() && !submitting
+  const canSubmit =
+    selectedProjectPath &&
+    selectedProject?.isValid !== false &&
+    baseBranch &&
+    branchName.trim() &&
+    !submitting
 
   return (
     <>
@@ -207,19 +237,38 @@ export function AddWorktreeScreen() {
                 {!hasPreselectedProject && (
                   <div className="space-y-2">
                     <Label>Project</Label>
-                    <Select value={selectedProjectPath} onValueChange={setSelectedProjectPath}>
+                    <Select
+                      value={selectedProjectPath}
+                      onValueChange={(v) => {
+                        setSelectedProjectPath(v)
+                        setError(null)
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select project" />
                       </SelectTrigger>
                       <SelectContent>
-                        {projects.map((project) => (
-                          <SelectItem key={project.path} value={project.path}>
-                            <div className="flex items-center gap-2">
-                              <Folder className="h-3 w-3" />
-                              {project.name}
-                            </div>
-                          </SelectItem>
-                        ))}
+                        {projects.map((project) => {
+                          const isInvalid = project.isValid === false
+                          return (
+                            <SelectItem
+                              key={project.path}
+                              value={project.path}
+                              disabled={isInvalid}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Folder className="h-3 w-3 shrink-0" />
+                                <span className="truncate">{project.name}</span>
+                                {isInvalid && (
+                                  <span className="flex items-center gap-1 text-xs text-yellow-600 shrink-0">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    invalid
+                                  </span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          )
+                        })}
                       </SelectContent>
                     </Select>
                   </div>

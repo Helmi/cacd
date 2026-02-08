@@ -313,7 +313,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (state.selectedProject) setCurrentProject(state.selectedProject)
       if (state.isDevMode !== undefined) setIsDevMode(state.isDevMode)
       setSessions(sessionsData)
-      setError(null)
     } catch (err) {
       console.error('Failed to fetch session data:', err)
     }
@@ -356,7 +355,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setConfig(mapBackendToFrontend(configData))
       }
       setConfigLoading(false)
-      setError(null)
     } catch (err) {
       console.error('Failed to fetch reference data:', err)
       setError('Failed to load data from server. Check your connection.')

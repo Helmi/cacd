@@ -515,6 +515,12 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 			process.exit(0);
 		}
 
+		// Don't allow selecting invalid projects (missing path / not a git repo)
+		if (project.isValid === false) {
+			setError(`Project path is invalid or no longer exists: ${project.path}`);
+			return;
+		}
+
 		// Set the selected project and update services
 		setSelectedProject(project);
 		coreService.selectProject(project);

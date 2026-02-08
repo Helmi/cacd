@@ -75,7 +75,11 @@ export function AddSessionScreen() {
 
   // Determine if context was pre-selected
   const hasPreselectedWorktree = !!addSessionWorktreePath
-  const hasPreselectedProject = !!addSessionProjectPath
+  const preselectedProject = addSessionProjectPath
+    ? projects.find(p => p.path === addSessionProjectPath)
+    : undefined
+  const hasPreselectedProject =
+    !!addSessionProjectPath && preselectedProject?.isValid !== false
 
   // Get the selected project object for display
   const selectedProject = projects.find(p => p.path === selectedProjectPath)
@@ -144,10 +148,22 @@ export function AddSessionScreen() {
 
   // Handle pre-selected project
   useEffect(() => {
-    if (addSessionProjectPath && !addSessionWorktreePath) {
-      setSelectedProjectPath(addSessionProjectPath)
+    if (!addSessionProjectPath || addSessionWorktreePath) return
+    if (selectedProjectPath) return
+    if (projects.length === 0) return
+
+    const project = projects.find(p => p.path === addSessionProjectPath)
+    if (project?.isValid === false) {
+      setError(`Project path is invalid or missing: ${addSessionProjectPath}`)
+      return
     }
-  }, [addSessionProjectPath, addSessionWorktreePath])
+    if (!project) {
+      setError(`Project not found: ${addSessionProjectPath}`)
+      return
+    }
+
+    setSelectedProjectPath(addSessionProjectPath)
+  }, [addSessionProjectPath, addSessionWorktreePath, projects, selectedProjectPath])
 
   // Fetch agents on mount
   useEffect(() => {
@@ -238,10 +254,14 @@ export function AddSessionScreen() {
 
   // Auto-select project if only one exists
   useEffect(() => {
-    if (!hasPreselectedWorktree && !hasPreselectedProject && projects.length === 1) {
-      setSelectedProjectPath(projects[0].path)
+    if (hasPreselectedWorktree || hasPreselectedProject) return
+    if (selectedProjectPath) return
+
+    const validProjects = projects.filter(p => p.isValid !== false)
+    if (validProjects.length === 1) {
+      setSelectedProjectPath(validProjects[0].path)
     }
-  }, [hasPreselectedWorktree, hasPreselectedProject, projects])
+  }, [hasPreselectedWorktree, hasPreselectedProject, projects, selectedProjectPath])
 
   // Fetch branches when project changes
   useEffect(() => {
@@ -391,6 +411,7 @@ export function AddSessionScreen() {
   const isSubmitDisabled =
     submitting ||
     !selectedProjectPath ||
+    selectedProject?.isValid === false ||
     !selectedAgentId ||
     (mode === 'existing' && !selectedWorktreePath) ||
     (mode === 'new' && (!baseBranch || !newBranchName.trim()))
@@ -463,19 +484,38 @@ export function AddSessionScreen() {
                 {!hasPreselectedWorktree && !hasPreselectedProject && (
                   <div className="space-y-2">
                     <Label>Project</Label>
-                    <Select value={selectedProjectPath} onValueChange={setSelectedProjectPath}>
+                    <Select
+                      value={selectedProjectPath}
+                      onValueChange={(v) => {
+                        setSelectedProjectPath(v)
+                        setError(null)
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select project" />
                       </SelectTrigger>
                       <SelectContent>
-                        {projects.map((project) => (
-                          <SelectItem key={project.path} value={project.path}>
-                            <div className="flex items-center gap-2">
-                              <Folder className="h-3 w-3" />
-                              {project.name}
-                            </div>
-                          </SelectItem>
-                        ))}
+                        {projects.map((project) => {
+                          const isInvalid = project.isValid === false
+                          return (
+                            <SelectItem
+                              key={project.path}
+                              value={project.path}
+                              disabled={isInvalid}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Folder className="h-3 w-3 shrink-0" />
+                                <span className="truncate">{project.name}</span>
+                                {isInvalid && (
+                                  <span className="flex items-center gap-1 text-xs text-yellow-600 shrink-0">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    invalid
+                                  </span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          )
+                        })}
                       </SelectContent>
                     </Select>
                   </div>
