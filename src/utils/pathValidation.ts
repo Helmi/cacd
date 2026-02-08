@@ -124,7 +124,9 @@ export function getDirectoryEntries(
 		}
 
 		// Sort alphabetically (case-insensitive)
-		entries.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+		entries.sort((a, b) =>
+			a.name.toLowerCase().localeCompare(b.name.toLowerCase()),
+		);
 
 		// Calculate parent path (null if at root)
 		const parentPath = resolvedPath === '/' ? null : path.dirname(resolvedPath);
@@ -205,7 +207,10 @@ export function validatePathWithinBase(
 		? normalizedBase
 		: normalizedBase + path.sep;
 
-	if (!resolvedPath.startsWith(baseWithSep) && resolvedPath !== normalizedBase) {
+	if (
+		!resolvedPath.startsWith(baseWithSep) &&
+		resolvedPath !== normalizedBase
+	) {
 		throw new Error(
 			`Path traversal detected: "${filePath}" escapes base directory`,
 		);

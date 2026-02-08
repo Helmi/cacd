@@ -121,10 +121,14 @@ export class WorktreeService {
 		try {
 			// First check if local branch exists (highest priority)
 			try {
-				execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branchName}`], {
-					cwd: this.rootPath,
-					encoding: 'utf8',
-				});
+				execFileSync(
+					'git',
+					['show-ref', '--verify', '--quiet', `refs/heads/${branchName}`],
+					{
+						cwd: this.rootPath,
+						encoding: 'utf8',
+					},
+				);
 				// Local branch exists, use it as-is
 				return branchName;
 			} catch {
@@ -138,10 +142,19 @@ export class WorktreeService {
 			// Check each remote for the branch
 			for (const remote of remotes) {
 				try {
-					execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/remotes/${remote}/${branchName}`], {
-						cwd: this.rootPath,
-						encoding: 'utf8',
-					});
+					execFileSync(
+						'git',
+						[
+							'show-ref',
+							'--verify',
+							'--quiet',
+							`refs/remotes/${remote}/${branchName}`,
+						],
+						{
+							cwd: this.rootPath,
+							encoding: 'utf8',
+						},
+					);
 					// Remote branch exists
 					remoteBranchMatches.push({
 						remote,
@@ -457,10 +470,14 @@ export class WorktreeService {
 			Effect.try({
 				try: () => {
 					// Try to get the default branch from origin
-					const output = execFileSync('git', ['symbolic-ref', 'refs/remotes/origin/HEAD'], {
-						cwd: self.rootPath,
-						encoding: 'utf8',
-					}).trim();
+					const output = execFileSync(
+						'git',
+						['symbolic-ref', 'refs/remotes/origin/HEAD'],
+						{
+							cwd: self.rootPath,
+							encoding: 'utf8',
+						},
+					).trim();
 					// Replace refs/remotes/origin/ prefix (equivalent to sed)
 					const defaultBranch = output.replace(/^refs\/remotes\/origin\//, '');
 					if (!defaultBranch) {
@@ -544,10 +561,14 @@ export class WorktreeService {
 		return Effect.catchAll(
 			Effect.try({
 				try: () => {
-					const output = execFileSync('git', ['branch', '-a', '--format=%(refname:short)'], {
-						cwd: self.rootPath,
-						encoding: 'utf8',
-					});
+					const output = execFileSync(
+						'git',
+						['branch', '-a', '--format=%(refname:short)'],
+						{
+							cwd: self.rootPath,
+							encoding: 'utf8',
+						},
+					);
 
 					// Filter out HEAD and sort (equivalent to grep -v HEAD | sort -u)
 					const lines = output
@@ -557,7 +578,9 @@ export class WorktreeService {
 						.sort();
 
 					// Deduplicate (equivalent to sort -u)
-					const uniqueLines = lines.filter((v, i, a) => i === 0 || a[i - 1] !== v);
+					const uniqueLines = lines.filter(
+						(v, i, a) => i === 0 || a[i - 1] !== v,
+					);
 
 					const branches = uniqueLines
 						.filter(branch => branch && !branch.startsWith('origin/'))
@@ -892,7 +915,15 @@ export class WorktreeService {
 			// Execute the worktree creation command
 			const worktreeArgs: string[] = branchExists
 				? ['worktree', 'add', '--', resolvedPath, branch]
-				: ['worktree', 'add', '-b', branch, '--', resolvedPath, self.resolveBranchReference(baseBranch)];
+				: [
+						'worktree',
+						'add',
+						'-b',
+						branch,
+						'--',
+						resolvedPath,
+						self.resolveBranchReference(baseBranch),
+					];
 
 			const commandStr = `git ${worktreeArgs.join(' ')}`; // For error reporting only
 
@@ -1095,10 +1126,14 @@ export class WorktreeService {
 			// Remove the worktree
 			yield* Effect.try({
 				try: () => {
-					execFileSync('git', ['worktree', 'remove', '--force', '--', worktreePath], {
-						cwd: self.rootPath,
-						encoding: 'utf8',
-					});
+					execFileSync(
+						'git',
+						['worktree', 'remove', '--force', '--', worktreePath],
+						{
+							cwd: self.rootPath,
+							encoding: 'utf8',
+						},
+					);
 				},
 				catch: (error: unknown) => {
 					const execError = error as {

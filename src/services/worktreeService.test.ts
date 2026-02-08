@@ -62,7 +62,9 @@ describe('WorktreeService', () => {
 		// Default mock for execFileSync - used for security-hardened git commands
 		mockedExecFileSync.mockImplementation((file, args, _options) => {
 			// Default: throw error (tests should mock specific commands)
-			throw new Error(`execFileSync not mocked: ${file} ${(args as string[])?.join(' ')}`);
+			throw new Error(
+				`execFileSync not mocked: ${file} ${(args as string[])?.join(' ')}`,
+			);
 		});
 		// Default mock for getWorktreeHooks to return empty config
 		mockedGetWorktreeHooks.mockReturnValue({});
@@ -181,7 +183,9 @@ describe('WorktreeService', () => {
 				if (file === 'git' && argsArray?.includes('symbolic-ref')) {
 					return 'refs/remotes/origin/main\n';
 				}
-				throw new Error(`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`);
+				throw new Error(
+					`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`,
+				);
 			});
 
 			const effect = service.getDefaultBranchEffect();
@@ -215,7 +219,9 @@ describe('WorktreeService', () => {
 				if (file === 'git' && argsArray?.includes('symbolic-ref')) {
 					throw new Error('No origin');
 				}
-				throw new Error(`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`);
+				throw new Error(
+					`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`,
+				);
 			});
 
 			const effect = service.getDefaultBranchEffect();
@@ -245,7 +251,9 @@ origin/feature/remote
 origin/feature/test
 `;
 				}
-				throw new Error(`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`);
+				throw new Error(
+					`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`,
+				);
 			});
 
 			const effect = service.getAllBranchesEffect();
@@ -360,10 +368,16 @@ origin/feature/test
 			mockedExecFileSync.mockImplementation((file, args, _options) => {
 				const argsArray = args as string[];
 				// Local branch check - succeeds (branch exists)
-				if (file === 'git' && argsArray?.includes('show-ref') && argsArray?.includes('refs/heads/foo/bar-xyz')) {
+				if (
+					file === 'git' &&
+					argsArray?.includes('show-ref') &&
+					argsArray?.includes('refs/heads/foo/bar-xyz')
+				) {
 					return ''; // Local branch exists
 				}
-				throw new Error(`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`);
+				throw new Error(
+					`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`,
+				);
 			});
 
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -399,7 +413,9 @@ origin/feature/test
 						throw new Error('Remote branch not found in upstream');
 					}
 				}
-				throw new Error(`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`);
+				throw new Error(
+					`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`,
+				);
 			});
 
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -427,12 +443,16 @@ origin/feature/test
 						throw new Error('Local branch not found');
 					}
 					// Both remotes have the branch
-					if (argsArray?.includes('refs/remotes/origin/foo/bar-xyz') ||
-						argsArray?.includes('refs/remotes/upstream/foo/bar-xyz')) {
+					if (
+						argsArray?.includes('refs/remotes/origin/foo/bar-xyz') ||
+						argsArray?.includes('refs/remotes/upstream/foo/bar-xyz')
+					) {
 						return '';
 					}
 				}
-				throw new Error(`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`);
+				throw new Error(
+					`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`,
+				);
 			});
 
 			expect(() => {
@@ -498,11 +518,17 @@ origin/feature/test
 			});
 			mockedExecFileSync.mockImplementation((file, args, _options) => {
 				const argsArray = args as string[];
-				if (file === 'git' && argsArray?.includes('show-ref') && argsArray?.includes('refs/heads/foo/bar-xyz')) {
+				if (
+					file === 'git' &&
+					argsArray?.includes('show-ref') &&
+					argsArray?.includes('refs/heads/foo/bar-xyz')
+				) {
 					return ''; // Local branch exists
 				}
 				// Remote commands should not be called when local exists
-				throw new Error(`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`);
+				throw new Error(
+					`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`,
+				);
 			});
 
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -834,7 +860,10 @@ branch refs/heads/feature
 				const argsArray = args as string[];
 				if (file === 'git') {
 					// Branch check - branch doesn't exist
-					if (argsArray?.includes('rev-parse') && argsArray?.includes('--verify')) {
+					if (
+						argsArray?.includes('rev-parse') &&
+						argsArray?.includes('--verify')
+					) {
 						throw new Error('Branch not found');
 					}
 					// Worktree add
@@ -876,7 +905,10 @@ branch refs/heads/feature
 				const argsArray = args as string[];
 				if (file === 'git') {
 					// Branch check - branch doesn't exist
-					if (argsArray?.includes('rev-parse') && argsArray?.includes('--verify')) {
+					if (
+						argsArray?.includes('rev-parse') &&
+						argsArray?.includes('--verify')
+					) {
 						throw new Error('Branch not found');
 					}
 					// Worktree add - fails
@@ -893,7 +925,9 @@ branch refs/heads/feature
 						throw new Error('Branch not found');
 					}
 				}
-				throw new Error(`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`);
+				throw new Error(
+					`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`,
+				);
 			});
 
 			const effect = service.createWorktreeEffect(
@@ -937,7 +971,10 @@ branch refs/heads/feature
 				const argsArray = args as string[];
 				if (file === 'git') {
 					// Worktree remove
-					if (argsArray?.includes('worktree') && argsArray?.includes('remove')) {
+					if (
+						argsArray?.includes('worktree') &&
+						argsArray?.includes('remove')
+					) {
 						return '';
 					}
 					// Branch delete
@@ -945,7 +982,9 @@ branch refs/heads/feature
 						return '';
 					}
 				}
-				throw new Error(`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`);
+				throw new Error(
+					`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`,
+				);
 			});
 
 			const effect = service.deleteWorktreeEffect('/fake/path/feature');
@@ -1041,7 +1080,9 @@ branch refs/heads/feature
 						return 'Merge successful';
 					}
 				}
-				throw new Error(`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`);
+				throw new Error(
+					`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`,
+				);
 			});
 
 			const effect = service.mergeWorktreeEffect('feature', 'main', false);
@@ -1117,7 +1158,9 @@ branch refs/heads/feature
 						throw error;
 					}
 				}
-				throw new Error(`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`);
+				throw new Error(
+					`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`,
+				);
 			});
 
 			const effect = service.mergeWorktreeEffect('feature', 'main', false);

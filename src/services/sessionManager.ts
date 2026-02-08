@@ -562,7 +562,12 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		session.process.onExit(async (e: {exitCode: number; signal?: number}) => {
 			// Check if we should attempt fallback
 			// Only attempt fallback for preset sessions (commandConfig exists), not agent sessions
-			if (e.exitCode === 1 && !e.signal && session.isPrimaryCommand && session.commandConfig) {
+			if (
+				e.exitCode === 1 &&
+				!e.signal &&
+				session.isPrimaryCommand &&
+				session.commandConfig
+			) {
 				try {
 					let fallbackProcess: IPty;
 					// Use fallback args if available, otherwise use empty args

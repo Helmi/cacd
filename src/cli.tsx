@@ -487,8 +487,12 @@ try {
 	const tokenPath = accessToken ? `/${accessToken}` : '';
 	webConfig = {
 		url: result.address.replace('0.0.0.0', 'localhost') + tokenPath,
-		externalUrl: externalIP ? `http://${externalIP}:${actualPort}${tokenPath}` : undefined,
-		hostname: hostname ? `http://${hostname}:${actualPort}${tokenPath}` : undefined,
+		externalUrl: externalIP
+			? `http://${externalIP}:${actualPort}${tokenPath}`
+			: undefined,
+		hostname: hostname
+			? `http://${hostname}:${actualPort}${tokenPath}`
+			: undefined,
 		port: actualPort,
 		configDir,
 		isCustomConfigDir: customConfigDir,
