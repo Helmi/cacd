@@ -92,6 +92,9 @@ export class CoreService extends EventEmitter {
 		this.sessionManager.on('sessionStateChanged', session =>
 			this.emit('sessionStateChanged', session),
 		);
+		this.sessionManager.on('sessionUpdated', session =>
+			this.emit('sessionUpdated', session),
+		);
 		this.sessionManager.on('sessionData', (session, data) =>
 			this.emit('sessionData', session, data),
 		);

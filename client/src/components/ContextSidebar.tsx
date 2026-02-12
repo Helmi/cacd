@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '@/lib/store'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -9,7 +10,7 @@ import { StatusIndicator, statusLabels } from '@/components/StatusIndicator'
 import { AgentIcon, getLegacyAgentIconProps } from '@/components/AgentIcon'
 import { FileBrowser } from '@/components/FileBrowser'
 import { mapSessionState, ChangedFile } from '@/lib/types'
-import { X, GitBranch, Folder, Copy, Check, FileText, FilePlus, FileX, FileEdit, FileQuestion, GitCommit, FolderTree } from 'lucide-react'
+import { X, GitBranch, Folder, Copy, Check, FileText, FilePlus, FileX, FileEdit, FileQuestion, GitCommit, FolderTree, Pencil } from 'lucide-react'
 import { cn, formatPath, copyToClipboard } from '@/lib/utils'
 
 export function ContextSidebar() {
@@ -21,12 +22,16 @@ export function ContextSidebar() {
     contextSidebarSessionId,
     closeContextSidebar,
     openFileDiff,
+    renameSession,
     sessionContextTabs,
     setSessionContextTab,
   } = useAppStore()
 
   const isMobile = useIsMobile()
   const [copied, setCopied] = useState(false)
+  const [isRenamingSession, setIsRenamingSession] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const renameInputRef = useRef<HTMLInputElement>(null)
   const [changedFiles, setChangedFiles] = useState<ChangedFile[]>([])
   const [filesLoading, setFilesLoading] = useState(false)
   const [filesError, setFilesError] = useState<string | null>(null)
@@ -73,6 +78,49 @@ export function ContextSidebar() {
   // Track previous session state to detect meaningful changes
   const prevSessionStateRef = useRef<string | null>(null)
 
+  const formatName = useCallback((path: string) => path.split('/').pop() || path, [])
+
+  const startRenameSession = useCallback(() => {
+    if (!session) return
+    setRenameValue(session.name || formatName(session.path))
+    setIsRenamingSession(true)
+  }, [session, formatName])
+
+  const saveRenamedSession = useCallback(async () => {
+    if (!session || !isRenamingSession) return
+    const success = await renameSession(session.id, renameValue.trim())
+    if (success) {
+      setIsRenamingSession(false)
+    }
+  }, [session, isRenamingSession, renameSession, renameValue])
+
+  const cancelRenameSession = useCallback(() => {
+    setIsRenamingSession(false)
+    setRenameValue('')
+  }, [])
+
+  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      saveRenamedSession()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      cancelRenameSession()
+    }
+  }, [saveRenamedSession, cancelRenameSession])
+
+  useEffect(() => {
+    if (isRenamingSession && renameInputRef.current) {
+      renameInputRef.current.focus()
+      renameInputRef.current.select()
+    }
+  }, [isRenamingSession])
+
+  useEffect(() => {
+    setIsRenamingSession(false)
+    setRenameValue('')
+  }, [session?.id])
+
   // Fetch on session change
   useEffect(() => {
     fetchChangedFiles()
@@ -101,9 +149,6 @@ export function ContextSidebar() {
     return null
   }
 
-  // Format name from path
-  const formatName = (path: string) => path.split('/').pop() || path
-
   // Handle path copy
   const handleCopyPath = async () => {
     const success = await copyToClipboard(session.path)
@@ -121,7 +166,19 @@ export function ContextSidebar() {
             <div className="flex items-center gap-2 min-w-0">
               <StatusIndicator status={mapSessionState(session.state)} size="md" />
               <AgentIcon icon={agentIcon} iconColor={agentIconColor} className="h-5 w-5 shrink-0" />
-              <span className="font-medium text-sm truncate">{session.name || formatName(session.path)}</span>
+              {isRenamingSession ? (
+                <Input
+                  ref={renameInputRef}
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={handleRenameKeyDown}
+                  onBlur={saveRenamedSession}
+                  className="h-7 text-sm"
+                  aria-label={`Rename session ${session.name || formatName(session.path)}`}
+                />
+              ) : (
+                <span className="font-medium text-sm truncate">{session.name || formatName(session.path)}</span>
+              )}
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className={cn(
@@ -342,14 +399,25 @@ export function ContextSidebar() {
           {/* Header */}
           <div className="flex h-11 items-center justify-between border-b border-border px-2 shrink-0">
             <span className="text-sm font-medium text-muted-foreground">Session Details</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={closeContextSidebar}
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={startRenameSession}
+                title="Rename session"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={closeContextSidebar}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <ScrollArea className="flex-1 w-full">
             <div className="space-y-4 p-3 w-full max-w-full box-border">
@@ -367,14 +435,25 @@ export function ContextSidebar() {
       {/* Header */}
       <div className="flex h-7 items-center justify-between border-b border-border px-2 shrink-0">
         <span className="text-xs font-medium text-muted-foreground">Session Details</span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-5 w-5"
-          onClick={closeContextSidebar}
-        >
-          <X className="h-3 w-3" />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5"
+            onClick={startRenameSession}
+            title="Rename session"
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5"
+            onClick={closeContextSidebar}
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
       </div>
       <ScrollArea className="flex-1 w-full">
         <div className="space-y-4 p-3 w-full max-w-full box-border">

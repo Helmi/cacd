@@ -122,6 +122,7 @@ interface AppActions {
   // Session management
   createSession: (path: string, presetId?: string, sessionName?: string) => Promise<boolean>
   createSessionWithAgent: (path: string, agentId: string, options?: Record<string, boolean | string>, sessionName?: string, taskListName?: string) => Promise<boolean>
+  renameSession: (sessionId: string, name: string) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<void>
 
   // Project management
@@ -725,6 +726,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const renameSession = async (sessionId: string, name: string): Promise<boolean> => {
+    try {
+      const normalizedName = name.trim()
+      const res = await fetch('/api/session/rename', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sessionId, name: normalizedName || undefined })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to rename session')
+        return false
+      }
+
+      // Update local state immediately; socket event will still refresh from backend
+      setSessions(prev =>
+        prev.map(session =>
+          session.id === sessionId
+            ? { ...session, name: normalizedName || undefined }
+            : session
+        )
+      )
+      return true
+    } catch (e) {
+      console.error(e)
+      setError('Failed to rename session. Check your connection.')
+      return false
+    }
+  }
+
   const stopSession = async (sessionId: string) => {
     try {
       const res = await fetch('/api/session/stop', {
@@ -1019,6 +1051,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFontScale,
     createSession,
     createSessionWithAgent,
+    renameSession,
     stopSession,
     addProject,
     updateProject,

@@ -64,6 +64,7 @@ export interface SessionManager {
 	getSession(sessionId: string): Session | undefined;
 	getSessionByPath(worktreePath: string): Session | undefined; // For backwards compat
 	getSessionsForWorktree(worktreePath: string): Session[]; // Get all sessions for a worktree
+	renameSession(sessionId: string, name?: string): boolean;
 	destroySession(sessionId: string): void;
 	getAllSessions(): Session[];
 	cancelAutoApproval(sessionId: string, reason?: string): void;

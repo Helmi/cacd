@@ -956,6 +956,22 @@ export class APIServer {
 			},
 		);
 
+		this.app.post<{Body: {id: string; name?: string}}>(
+			'/api/session/rename',
+			async (request, reply) => {
+				const {id, name} = request.body;
+				logger.info(`API: Renaming session ${id}`);
+
+				const session = coreService.sessionManager.getSession(id);
+				if (!session) {
+					return reply.code(404).send({error: 'Session not found'});
+				}
+
+				coreService.sessionManager.renameSession(id, name);
+				return {success: true};
+			},
+		);
+
 		// --- Configuration ---
 		// Legacy /api/presets endpoint removed - use /api/agents instead
 
@@ -1487,6 +1503,7 @@ export class APIServer {
 		};
 
 		coreService.on('sessionStateChanged', notifyUpdate);
+		coreService.on('sessionUpdated', notifyUpdate);
 		coreService.on('sessionCreated', notifyUpdate);
 		coreService.on('sessionDestroyed', notifyUpdate);
 	}

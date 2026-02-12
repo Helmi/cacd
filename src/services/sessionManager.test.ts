@@ -486,6 +486,58 @@ describe('SessionManager', () => {
 			expect(exitedSession).toBe(createdSession);
 			expect(sessionManager.getSession('/test/worktree')).toBeUndefined();
 		});
+
+		it('should rename an existing session and emit update event', async () => {
+			vi.mocked(configurationManager.getDefaultPreset).mockReturnValue({
+				id: '1',
+				name: 'Main',
+				command: 'claude',
+			});
+			vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
+
+			const createdSession = await Effect.runPromise(
+				sessionManager.createSessionWithPresetEffect('/test/worktree'),
+			);
+
+			let updatedSession: {id: string; name?: string} | null = null;
+			sessionManager.on('sessionUpdated', (session: Session) => {
+				updatedSession = session;
+			});
+
+			const result = sessionManager.renameSession(
+				createdSession.id,
+				'Renamed Session',
+			);
+
+			expect(result).toBe(true);
+			expect(createdSession.name).toBe('Renamed Session');
+			expect(updatedSession).toMatchObject({
+				id: createdSession.id,
+				name: 'Renamed Session',
+			});
+		});
+
+		it('should clear session name when renaming to empty string', async () => {
+			vi.mocked(configurationManager.getDefaultPreset).mockReturnValue({
+				id: '1',
+				name: 'Main',
+				command: 'claude',
+			});
+			vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
+
+			const createdSession = await Effect.runPromise(
+				sessionManager.createSessionWithPresetEffect(
+					'/test/worktree',
+					undefined,
+					'Custom Name',
+				),
+			);
+
+			const result = sessionManager.renameSession(createdSession.id, '   ');
+
+			expect(result).toBe(true);
+			expect(createdSession.name).toBeUndefined();
+		});
 	});
 
 	describe('createSessionWithDevcontainerEffect', () => {
