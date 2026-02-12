@@ -50,7 +50,7 @@ export function SessionGrid() {
   return (
     <div
       className={cn(
-        'grid h-full gap-px bg-border',
+        'grid h-full min-h-0 min-w-0 w-full gap-px bg-border',
         getGridClass(activeSessions.length)
       )}
     >

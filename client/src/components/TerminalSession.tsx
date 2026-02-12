@@ -49,6 +49,11 @@ function createDebouncedFit(delay = 100) {
 			rafId = requestAnimationFrame(() => {
 				if (!fitAddon || !xterm) return;
 
+				const terminalElement = xterm.element;
+				const container = terminalElement?.parentElement;
+				if (!terminalElement || !container) return;
+				if (container.clientWidth <= 0 || container.clientHeight <= 0) return;
+
 				fitAddon.fit();
 				const { cols, rows } = xterm;
 
@@ -432,13 +437,46 @@ export const TerminalSession = memo(function TerminalSession({
 			);
 		};
 
-		// Initial fit after a short delay - emit resize so PTY knows the terminal size
-		setTimeout(() => {
+		// Re-fit multiple times during startup because iOS Safari often reports
+		// unstable viewport/font metrics right after mount.
+		const initialFitTimers = [0, 220, 700, 1400].map(delay =>
+			setTimeout(() => {
+				handleResize();
+			}, delay)
+		);
+
+		const handleViewportChange = () => {
 			handleResize();
-		}, 100);
+		};
+
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === 'visible') {
+				handleResize();
+			}
+		};
+
+		const handleFontMetricsChange = () => {
+			handleResize();
+		};
+
+		window.addEventListener('resize', handleViewportChange);
+		window.addEventListener('orientationchange', handleViewportChange);
+		window.addEventListener('pageshow', handleViewportChange);
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+
+		const visualViewport = window.visualViewport;
+		visualViewport?.addEventListener('resize', handleViewportChange);
+		visualViewport?.addEventListener('scroll', handleViewportChange);
+
+		const fontSet = document.fonts;
+		void fontSet.ready.then(() => {
+			if (isMounted) {
+				handleResize();
+			}
+		});
+		fontSet.addEventListener('loadingdone', handleFontMetricsChange);
 
 		// ResizeObserver handles both window and container resizes
-		// No need for separate window.addEventListener('resize')
 		const resizeObserver = new ResizeObserver(() => {
 			handleResize();
 		});
@@ -472,6 +510,14 @@ export const TerminalSession = memo(function TerminalSession({
 			// Use captured references for cleanup to ensure correct socket/session
 			currentSocket.off('terminal_data', handleData);
 			currentSocket.off('image_path', handleImagePath);
+			initialFitTimers.forEach(timer => clearTimeout(timer));
+			window.removeEventListener('resize', handleViewportChange);
+			window.removeEventListener('orientationchange', handleViewportChange);
+			window.removeEventListener('pageshow', handleViewportChange);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			visualViewport?.removeEventListener('resize', handleViewportChange);
+			visualViewport?.removeEventListener('scroll', handleViewportChange);
+			fontSet.removeEventListener('loadingdone', handleFontMetricsChange);
 			resizeObserver.disconnect();
 			onDataDisposable.dispose();
 			onWriteDisposable.dispose();
@@ -606,7 +652,7 @@ export const TerminalSession = memo(function TerminalSession({
 	return (
 		<div
 			className={cn(
-				'flex flex-col bg-terminal-bg outline-none',
+				'flex min-h-0 min-w-0 flex-col bg-terminal-bg outline-none',
 				isMaximized && 'fixed inset-0 z-50',
 				hasMultipleSessions && isFocused && 'border-2 border-primary',
 			)}
@@ -736,8 +782,8 @@ export const TerminalSession = memo(function TerminalSession({
 			</div>
 
 			{/* Terminal content */}
-			<div className="relative flex-1 overflow-hidden">
-				<div ref={terminalRef} className="h-full w-full" />
+			<div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+				<div ref={terminalRef} className="h-full w-full min-w-0" />
 				{/* Jump to bottom button */}
 				{isScrolledUp && (
 					<Button

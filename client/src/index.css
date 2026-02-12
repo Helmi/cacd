@@ -439,6 +439,7 @@
 /* Enable touch scrolling in xterm viewport */
 .xterm-viewport {
   -webkit-overflow-scrolling: touch;
+  overflow-x: hidden !important;
   overflow-y: scroll !important;
 }
 

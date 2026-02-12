@@ -47,7 +47,7 @@ export function Layout({ children }: LayoutProps) {
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <Header />
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="relative flex min-w-0 flex-1 overflow-hidden">
         {/* Mobile backdrop */}
         {isMobile && sidebarOpen && (
           <div
@@ -74,7 +74,7 @@ export function Layout({ children }: LayoutProps) {
 
         <main
           className={cn(
-            'flex-1 overflow-hidden transition-all duration-200',
+            'min-h-0 min-w-0 flex-1 overflow-hidden transition-all duration-200',
             sidebarOpen && !sidebarCollapsed && 'md:ml-0',
           )}
         >
