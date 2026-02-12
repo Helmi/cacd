@@ -23,6 +23,7 @@ import {
 	Info,
 	GitBranch,
 	ArrowDown,
+	Pencil,
 } from 'lucide-react';
 import {cn} from '@/lib/utils';
 import type {Session} from '@/lib/types';
@@ -120,6 +121,7 @@ export const TerminalSession = memo(function TerminalSession({
 		toggleContextSidebar,
 		contextSidebarSessionId,
 		stopSession,
+		renameSession,
 		theme,
 		font,
 		fontScale,
@@ -622,6 +624,13 @@ export const TerminalSession = memo(function TerminalSession({
 		await stopSession(session.id);
 	};
 
+	const handleRenameSession = async () => {
+		const currentLabel = session.name || formatName(session.path);
+		const nextName = window.prompt('Rename session', currentLabel);
+		if (nextName === null) return;
+		await renameSession(session.id, nextName.trim());
+	};
+
 	const handleScrollToBottom = useCallback(() => {
 		if (!xtermRef.current) return;
 
@@ -758,6 +767,10 @@ export const TerminalSession = memo(function TerminalSession({
 							<DropdownMenuItem onClick={handleCopyOutput}>
 								<Copy className="mr-2 h-3 w-3" />
 								Copy selection
+							</DropdownMenuItem>
+							<DropdownMenuItem onClick={handleRenameSession}>
+								<Pencil className="mr-2 h-3 w-3" />
+								Rename session
 							</DropdownMenuItem>
 							<DropdownMenuItem
 								className="text-destructive"

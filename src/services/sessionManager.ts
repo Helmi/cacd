@@ -795,6 +795,18 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		}
 	}
 
+	renameSession(sessionId: string, name?: string): boolean {
+		const session = this.sessions.get(sessionId);
+		if (!session) {
+			return false;
+		}
+
+		const normalizedName = name?.trim();
+		session.name = normalizedName ? normalizedName : undefined;
+		this.emit('sessionUpdated', session);
+		return true;
+	}
+
 	cancelAutoApproval(sessionId: string, reason = 'User input received'): void {
 		const session = this.sessions.get(sessionId);
 		if (!session) {

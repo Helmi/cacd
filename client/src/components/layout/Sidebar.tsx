@@ -39,6 +39,14 @@ import {
 } from 'lucide-react'
 import { useIsMobile } from '@/hooks/useIsMobile'
 
+const areSetsEqual = (a: Set<string>, b: Set<string>) => {
+  if (a.size !== b.size) return false
+  for (const value of a) {
+    if (!b.has(value)) return false
+  }
+  return true
+}
+
 export function Sidebar() {
   const {
     projects,
@@ -57,11 +65,13 @@ export function Sidebar() {
     openAddSession,
     updateProject,
     removeProject,
+    renameSession,
     deleteWorktree,
     stopSession,
   } = useAppStore()
 
   const isMobile = useIsMobile()
+  const formatName = useCallback((path: string) => path.split('/').pop() || path, [])
 
   // Helper to get agent config by ID
   const getAgentById = (agentId?: string) => {
@@ -89,49 +99,102 @@ export function Sidebar() {
 
   // Rename project state
   const [renamingProject, setRenamingProject] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  const renameInputRef = useRef<HTMLInputElement>(null)
+  const [projectRenameValue, setProjectRenameValue] = useState('')
+  const projectRenameInputRef = useRef<HTMLInputElement>(null)
+
+  // Rename session state
+  const [renamingSession, setRenamingSession] = useState<string | null>(null)
+  const [sessionRenameValue, setSessionRenameValue] = useState('')
+  const sessionRenameInputRef = useRef<HTMLInputElement>(null)
 
   // Start renaming a project
   const startRenameProject = useCallback((project: Project) => {
+    setRenamingSession(null)
+    setSessionRenameValue('')
     setRenamingProject(project.path)
-    setRenameValue(project.name)
+    setProjectRenameValue(project.name)
   }, [])
 
   // Save renamed project
   const saveRenamedProject = useCallback(async () => {
-    if (!renamingProject || !renameValue.trim()) {
+    if (!renamingProject || !projectRenameValue.trim()) {
       setRenamingProject(null)
       return
     }
-    await updateProject(renamingProject, renameValue.trim())
+    await updateProject(renamingProject, projectRenameValue.trim())
     setRenamingProject(null)
-  }, [renamingProject, renameValue, updateProject])
+  }, [renamingProject, projectRenameValue, updateProject])
 
-  // Cancel rename
-  const cancelRename = useCallback(() => {
+  // Cancel project rename
+  const cancelProjectRename = useCallback(() => {
     setRenamingProject(null)
-    setRenameValue('')
+    setProjectRenameValue('')
   }, [])
 
-  // Handle rename input key events
-  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent) => {
+  // Handle project rename input key events
+  const handleProjectRenameKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
       saveRenamedProject()
     } else if (e.key === 'Escape') {
       e.preventDefault()
-      cancelRename()
+      cancelProjectRename()
     }
-  }, [saveRenamedProject, cancelRename])
+  }, [saveRenamedProject, cancelProjectRename])
 
-  // Auto-focus and select rename input when it appears
+  // Start renaming a session
+  const startRenameSession = useCallback((session: Session) => {
+    setRenamingProject(null)
+    setProjectRenameValue('')
+    setRenamingSession(session.id)
+    setSessionRenameValue(session.name || formatName(session.path))
+  }, [formatName])
+
+  // Save renamed session
+  const saveRenamedSession = useCallback(async () => {
+    if (!renamingSession) {
+      return
+    }
+
+    const success = await renameSession(renamingSession, sessionRenameValue.trim())
+    if (success) {
+      setRenamingSession(null)
+      setSessionRenameValue('')
+    }
+  }, [renamingSession, renameSession, sessionRenameValue])
+
+  // Cancel session rename
+  const cancelSessionRename = useCallback(() => {
+    setRenamingSession(null)
+    setSessionRenameValue('')
+  }, [])
+
+  // Handle session rename input key events
+  const handleSessionRenameKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      saveRenamedSession()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      cancelSessionRename()
+    }
+  }, [saveRenamedSession, cancelSessionRename])
+
+  // Auto-focus and select project rename input when it appears
   useEffect(() => {
-    if (renamingProject && renameInputRef.current) {
-      renameInputRef.current.focus()
-      renameInputRef.current.select()
+    if (renamingProject && projectRenameInputRef.current) {
+      projectRenameInputRef.current.focus()
+      projectRenameInputRef.current.select()
     }
   }, [renamingProject])
+
+  // Auto-focus and select session rename input when it appears
+  useEffect(() => {
+    if (renamingSession && sessionRenameInputRef.current) {
+      sessionRenameInputRef.current.focus()
+      sessionRenameInputRef.current.select()
+    }
+  }, [renamingSession])
 
   // Confirm remove project
   const confirmRemoveProject = (project: Project) => {
@@ -177,6 +240,8 @@ export function Sidebar() {
   // Track known projects and worktrees to detect newly added ones
   const [knownProjectPaths, setKnownProjectPaths] = useState<Set<string>>(() => new Set(projects.map(p => p.path)))
   const [knownWorktreePaths, setKnownWorktreePaths] = useState<Set<string>>(() => new Set(worktrees.map(w => w.path)))
+  const [knownSessionIds, setKnownSessionIds] = useState<Set<string>>(new Set())
+  const [sessionTrackingInitialized, setSessionTrackingInitialized] = useState(false)
 
   // Persist expanded state to localStorage
   useEffect(() => {
@@ -188,8 +253,8 @@ export function Sidebar() {
   }, [expandedWorktrees])
 
   // Consolidated auto-expansion effect with debouncing
-  // Combines: new projects, new worktrees, and session-based expansion
-  // Uses a single debounced update to prevent cascading re-renders
+  // Handles new projects/worktrees and only expands for newly created sessions
+  // after initial session tracking has completed.
   useEffect(() => {
     const timer = setTimeout(() => {
       const newExpandedProjects = new Set(expandedProjects)
@@ -227,31 +292,43 @@ export function Sidebar() {
         worktreesChanged = true
       }
 
-      // 3. Auto-expand tree to show sessions
-      if (sessions.length > 0) {
-        const worktreePathsWithSessions = new Set(sessions.map(s => s.path))
+      // 3. Auto-expand only for newly added sessions (not every update)
+      const currentSessionIds = new Set(sessions.map(s => s.id))
+      if (!sessionTrackingInitialized) {
+        setSessionTrackingInitialized(true)
+      } else {
+        const newSessions = sessions.filter(s => !knownSessionIds.has(s.id))
 
-        // Expand worktrees with sessions
-        worktreePathsWithSessions.forEach(path => {
-          if (!newExpandedWorktrees.has(path)) {
-            newExpandedWorktrees.add(path)
-            worktreesChanged = true
-          }
-        })
+        if (newSessions.length > 0) {
+          const newSessionWorktreePaths = new Set(newSessions.map(s => s.path))
 
-        // Find and expand projects containing these worktrees
-        worktreePathsWithSessions.forEach(wtPath => {
-          for (const project of projects) {
-            const projectName = project.path.split('/').pop() || ''
-            if (wtPath.startsWith(project.path) || wtPath.includes(`/.worktrees/${projectName}/`)) {
-              if (!newExpandedProjects.has(project.path)) {
-                newExpandedProjects.add(project.path)
-                projectsChanged = true
-              }
-              break
+          // Expand worktrees for newly created sessions
+          newSessionWorktreePaths.forEach(path => {
+            if (!newExpandedWorktrees.has(path)) {
+              newExpandedWorktrees.add(path)
+              worktreesChanged = true
             }
-          }
-        })
+          })
+
+          // Expand projects containing those worktrees
+          newSessionWorktreePaths.forEach(wtPath => {
+            for (const project of projects) {
+              const projectName = project.path.split('/').pop() || ''
+              if (
+                wtPath.startsWith(project.path) ||
+                wtPath.includes(`/.worktrees/${projectName}/`) ||
+                wtPath.startsWith(`${project.path.split('/').slice(0, -1).join('/')}/${projectName}-`) ||
+                wtPath.startsWith(`${project.path.split('/').slice(0, -1).join('/')}/${projectName}/`)
+              ) {
+                if (!newExpandedProjects.has(project.path)) {
+                  newExpandedProjects.add(project.path)
+                  projectsChanged = true
+                }
+                break
+              }
+            }
+          })
+        }
       }
 
       // Batch state updates
@@ -263,12 +340,29 @@ export function Sidebar() {
       }
 
       // Update known paths
-      setKnownProjectPaths(currentProjectPaths)
-      setKnownWorktreePaths(currentWorktreePaths)
+      if (!areSetsEqual(knownProjectPaths, currentProjectPaths)) {
+        setKnownProjectPaths(currentProjectPaths)
+      }
+      if (!areSetsEqual(knownWorktreePaths, currentWorktreePaths)) {
+        setKnownWorktreePaths(currentWorktreePaths)
+      }
+      if (!areSetsEqual(knownSessionIds, currentSessionIds)) {
+        setKnownSessionIds(currentSessionIds)
+      }
     }, 50) // Small debounce to batch updates
 
     return () => clearTimeout(timer)
-  }, [projects, worktrees, sessions, knownProjectPaths, knownWorktreePaths, expandedProjects, expandedWorktrees])
+  }, [
+    projects,
+    worktrees,
+    sessions,
+    knownProjectPaths,
+    knownWorktreePaths,
+    knownSessionIds,
+    sessionTrackingInitialized,
+    expandedProjects,
+    expandedWorktrees,
+  ])
 
   // Toggle project expansion
   const toggleProject = (path: string) => {
@@ -346,9 +440,6 @@ export function Sidebar() {
       toggleSidebar()
     }
   }
-
-  // Extract name from path
-  const formatName = (path: string) => path.split('/').pop() || path
 
   if (!sidebarOpen) return null
 
@@ -458,10 +549,10 @@ export function Sidebar() {
                       )} />
                       {renamingProject === project.path ? (
                         <Input
-                          ref={renameInputRef}
-                          value={renameValue}
-                          onChange={(e) => setRenameValue(e.target.value)}
-                          onKeyDown={handleRenameKeyDown}
+                          ref={projectRenameInputRef}
+                          value={projectRenameValue}
+                          onChange={(e) => setProjectRenameValue(e.target.value)}
+                          onKeyDown={handleProjectRenameKeyDown}
                           onBlur={saveRenamedProject}
                           onClick={(e) => e.stopPropagation()}
                           className="h-6 flex-1 px-1 py-0 text-sm font-medium"
@@ -681,7 +772,11 @@ export function Sidebar() {
                                               : 'hover:bg-secondary/50',
                                             isMobile && 'min-h-[44px]'
                                           )}
-                                          onClick={() => handleSessionClick(session.id)}
+                                          onClick={() => {
+                                            if (renamingSession !== session.id) {
+                                              handleSessionClick(session.id)
+                                            }
+                                          }}
                                         >
                                           {/* Status indicator and agent icon */}
                                           <StatusIndicator status={mapSessionState(session.state)} size="sm" />
@@ -690,12 +785,25 @@ export function Sidebar() {
                                             iconColor={agent?.iconColor}
                                             className="h-4 w-4 shrink-0"
                                           />
-                                          <span className={cn(
-                                            'flex-1 truncate text-sm',
-                                            isSelected ? 'text-primary font-medium' : 'text-foreground'
-                                          )}>
-                                            {session.name || formatName(session.path)}
-                                          </span>
+                                          {renamingSession === session.id ? (
+                                            <Input
+                                              ref={sessionRenameInputRef}
+                                              value={sessionRenameValue}
+                                              onChange={(e) => setSessionRenameValue(e.target.value)}
+                                              onKeyDown={handleSessionRenameKeyDown}
+                                              onBlur={saveRenamedSession}
+                                              onClick={(e) => e.stopPropagation()}
+                                              className="h-6 flex-1 px-1 py-0 text-sm"
+                                              aria-label={`Rename session ${session.name || formatName(session.path)}`}
+                                            />
+                                          ) : (
+                                            <span className={cn(
+                                              'flex-1 truncate text-sm',
+                                              isSelected ? 'text-primary font-medium' : 'text-foreground'
+                                            )}>
+                                              {session.name || formatName(session.path)}
+                                            </span>
+                                          )}
                                           {/* Visible menu button */}
                                           <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
@@ -713,6 +821,10 @@ export function Sidebar() {
                                             <DropdownMenuContent align="end" className="text-xs">
                                               <DropdownMenuItem onClick={() => selectSession(session.id)}>
                                                 View Terminal
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem onClick={() => startRenameSession(session)}>
+                                                <Pencil className="h-3.5 w-3.5 mr-2" />
+                                                Rename
                                               </DropdownMenuItem>
                                               <DropdownMenuSeparator />
                                               <DropdownMenuItem
@@ -736,6 +848,10 @@ export function Sidebar() {
                                       <ContextMenuContent>
                                         <ContextMenuItem onClick={() => selectSession(session.id)}>
                                           View Terminal
+                                        </ContextMenuItem>
+                                        <ContextMenuItem onClick={() => startRenameSession(session)}>
+                                          <Pencil className="h-3.5 w-3.5 mr-2" />
+                                          Rename
                                         </ContextMenuItem>
                                         <ContextMenuSeparator />
                                         <ContextMenuItem
