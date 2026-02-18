@@ -160,9 +160,16 @@ export interface TdProjectState {
   tdRoot: string | null
 }
 
+export interface TdProjectConfig {
+  enabled?: boolean
+  autoStart?: boolean
+  defaultPrompt?: string
+}
+
 export interface TdStatus {
   availability: TdAvailability
   projectState: TdProjectState | null
+  projectConfig?: TdProjectConfig | null
 }
 
 export interface TdIssue {

@@ -271,10 +271,14 @@ export function AddSessionScreen() {
       .finally(() => setLoadingTdTasks(false))
   }, [tdEnabled])
 
-  // Pre-fill td task if provided from context
+  // Pre-fill td task if provided from context (e.g. from "Start Working" in task board)
   useEffect(() => {
     if (addSessionTdTaskId && tdEnabled) {
       setSelectedTdTaskId(addSessionTdTaskId)
+      // Auto-fill session name from task ID if empty
+      if (!sessionName) {
+        setSessionName(addSessionTdTaskId)
+      }
     }
   }, [addSessionTdTaskId, tdEnabled])
 
@@ -839,9 +843,16 @@ export function AddSessionScreen() {
                             )}
                           </div>
                         )}
-                        <p className="text-xs text-muted-foreground">
-                          Link this session to a td task for context tracking
-                        </p>
+                        {selectedTdTask?.description && (
+                          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                            {selectedTdTask.description}
+                          </p>
+                        )}
+                        {!selectedTdTask && (
+                          <p className="text-xs text-muted-foreground">
+                            Link this session to a td task for context tracking
+                          </p>
+                        )}
                       </div>
                     )}
 

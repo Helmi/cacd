@@ -32,7 +32,7 @@ import {
 import {getDefaultShell} from '../utils/platform.js';
 import {tdService} from './tdService.js';
 import {TdReader} from './tdReader.js';
-import {loadPromptTemplates, loadPromptTemplate} from '../utils/projectConfig.js';
+import {loadProjectConfig, loadPromptTemplates, loadPromptTemplate} from '../utils/projectConfig.js';
 
 // --- Clipboard Image Paste Constants ---
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -1182,16 +1182,28 @@ export class APIServer {
 					`API: Setting TD_SESSION_ID=${sessionId}, TD_TASK_ID=${tdTaskId}`,
 				);
 
-				// Auto-start the td task (set to in_progress)
-				try {
-					execFileSync('td', ['start', tdTaskId, '--session', sessionId, '-w', path], {
-						encoding: 'utf-8',
-						timeout: 5000,
-					});
-					logger.info(`API: Auto-started td task ${tdTaskId}`);
-				} catch (startErr) {
-					// Non-fatal: task might already be in_progress
-					logger.warn(`API: td start failed (may already be started): ${startErr}`);
+				// Respect project config for auto-start behavior
+				const projects = projectManager.getProjects();
+				const matchedProject = projects.find(
+					(p: {path: string}) => path.startsWith(p.path) || path.includes(`/.worktrees/${p.path.split('/').pop()}/`)
+				);
+				const projConfig = matchedProject ? loadProjectConfig(matchedProject.path) : null;
+				const autoStartEnabled = projConfig?.td?.autoStart !== false; // default: true
+
+				// Auto-start the td task (set to in_progress) unless disabled in config
+				if (autoStartEnabled) {
+					try {
+						execFileSync('td', ['start', tdTaskId, '--session', sessionId, '-w', path], {
+							encoding: 'utf-8',
+							timeout: 5000,
+						});
+						logger.info(`API: Auto-started td task ${tdTaskId}`);
+					} catch (startErr) {
+						// Non-fatal: task might already be in_progress
+						logger.warn(`API: td start failed (may already be started): ${startErr}`);
+					}
+				} else {
+					logger.info(`API: Auto-start disabled via .cacd config, skipping td start`);
 				}
 
 				// Write task context file to worktree
@@ -1235,14 +1247,11 @@ export class APIServer {
 								}
 							}
 
-							// Apply prompt template if provided
-							if (promptTemplate) {
-								const projects = projectManager.getProjects();
-								const project = projects.find(
-									(p: {path: string}) => path.startsWith(p.path) || path.includes(`/.worktrees/${p.path.split('/').pop()}/`)
-								);
-								if (project) {
-									const tmpl = loadPromptTemplate(project.path, promptTemplate);
+							// Apply prompt template (explicit or default from .cacd config)
+							const effectiveTemplate = promptTemplate || projConfig?.td?.defaultPrompt;
+							if (effectiveTemplate) {
+								if (matchedProject) {
+									const tmpl = loadPromptTemplate(matchedProject.path, effectiveTemplate);
 									if (tmpl?.content) {
 										// Simple variable substitution in prompt template
 										const rendered = tmpl.content
@@ -1319,12 +1328,17 @@ export class APIServer {
 			const availability = tdService.checkAvailability();
 			const project = coreService.getSelectedProject();
 			let projectState = null;
+			let projectConfig = null;
 
 			if (project) {
 				projectState = tdService.resolveProjectState(project.path);
+				const config = loadProjectConfig(project.path);
+				if (config?.td) {
+					projectConfig = config.td;
+				}
 			}
 
-			return {availability, projectState};
+			return {availability, projectState, projectConfig};
 		});
 
 		// TD issues list (for current project)
@@ -1489,6 +1503,27 @@ export class APIServer {
 				}
 			},
 		);
+
+		// In-review tasks (for notification polling)
+		this.app.get('/api/td/in-review', async (request, reply) => {
+			const project = coreService.getSelectedProject();
+			if (!project) {
+				return {issues: []};
+			}
+
+			const state = tdService.resolveProjectState(project.path);
+			if (!state.enabled || !state.dbPath) {
+				return {issues: []};
+			}
+
+			const reader = new TdReader(state.dbPath);
+			try {
+				const issues = reader.listIssues({status: 'in_review'});
+				return {issues};
+			} finally {
+				reader.close();
+			}
+		});
 
 		// --- Task List Names ---
 		this.app.get<{
@@ -1789,6 +1824,43 @@ export class APIServer {
 		coreService.on('sessionUpdated', notifyUpdate);
 		coreService.on('sessionCreated', notifyUpdate);
 		coreService.on('sessionDestroyed', notifyUpdate);
+
+		// TD review polling — detect tasks entering in_review and notify frontend
+		const knownReviewIds = new Set<string>();
+		const pollTdReviews = () => {
+			try {
+				const project = coreService.getSelectedProject();
+				if (!project) return;
+				const state = tdService.resolveProjectState(project.path);
+				if (!state.enabled || !state.dbPath) return;
+
+				const reader = new TdReader(state.dbPath);
+				try {
+					const reviewIssues = reader.listIssues({status: 'in_review'});
+					const newReviews = reviewIssues.filter(i => !knownReviewIds.has(i.id));
+					if (newReviews.length > 0) {
+						newReviews.forEach(i => knownReviewIds.add(i.id));
+						this.io?.emit('td_review_ready', {
+							issues: newReviews.map(i => ({id: i.id, title: i.title, priority: i.priority})),
+						});
+						logger.info(`API: ${newReviews.length} new task(s) ready for review`);
+					}
+					// Clean up IDs no longer in review
+					for (const id of knownReviewIds) {
+						if (!reviewIssues.some(i => i.id === id)) {
+							knownReviewIds.delete(id);
+						}
+					}
+				} finally {
+					reader.close();
+				}
+			} catch {
+				// Silent — td polling is best-effort
+			}
+		};
+		// Poll every 30 seconds, start after 5s
+		setTimeout(pollTdReviews, 5000);
+		setInterval(pollTdReviews, 30000);
 	}
 
 	/**

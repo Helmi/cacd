@@ -87,6 +87,7 @@ interface AppState {
   tdIssues: TdIssue[]
   tdBoardView: Record<string, TdIssue[]>
   taskBoardOpen: boolean
+  tdReviewNotifications: Array<{id: string; title: string; priority: string}>
 
   // Socket
   socket: Socket
@@ -170,6 +171,8 @@ interface AppActions {
   fetchTdBoard: () => Promise<void>
   openTaskBoard: () => void
   closeTaskBoard: () => void
+  dismissTdReviewNotification: (issueId: string) => void
+  dismissAllTdReviewNotifications: () => void
 
   // Error handling
   clearError: () => void
@@ -289,6 +292,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tdIssues, setTdIssues] = useState<TdIssue[]>([])
   const [tdBoardView, setTdBoardView] = useState<Record<string, TdIssue[]>>({})
   const [taskBoardOpen, setTaskBoardOpen] = useState(false)
+  const [tdReviewNotifications, setTdReviewNotifications] = useState<Array<{id: string; title: string; priority: string}>>([])
 
   // Apply theme to document
   useEffect(() => {
@@ -450,6 +454,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const openTaskBoard = useCallback(() => setTaskBoardOpen(true), [])
   const closeTaskBoard = useCallback(() => setTaskBoardOpen(false), [])
+  const dismissTdReviewNotification = useCallback((issueId: string) => {
+    setTdReviewNotifications(prev => prev.filter(n => n.id !== issueId))
+  }, [])
+  const dismissAllTdReviewNotifications = useCallback(() => {
+    setTdReviewNotifications([])
+  }, [])
 
   // Save (create or update) an agent
   const saveAgent = async (agent: AgentConfig): Promise<boolean> => {
@@ -536,6 +546,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Use debounced session fetch for socket events - prevents API storm
     // Only fetches sessions/state (2 calls), not full data (5 calls)
     socket.on('session_update', debouncedFetchSessionData)
+    socket.on('td_review_ready', (data: {issues: Array<{id: string; title: string; priority: string}>}) => {
+      setTdReviewNotifications(prev => {
+        const existingIds = new Set(prev.map(n => n.id))
+        const newOnes = data.issues.filter(i => !existingIds.has(i.id))
+        return newOnes.length > 0 ? [...prev, ...newOnes] : prev
+      })
+    })
 
     // Connect socket now that auth is complete (AppProvider only mounts after auth)
     socket.connect()
@@ -549,6 +566,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       socket.off('disconnect')
       socket.off('connect_error')
       socket.off('session_update')
+      socket.off('td_review_ready')
       debouncedFetchSessionData.cancel()
     }
   }, [fetchData, fetchAgents, debouncedFetchSessionData])
@@ -1145,6 +1163,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     fetchTdBoard,
     openTaskBoard,
     closeTaskBoard,
+    tdReviewNotifications,
+    dismissTdReviewNotification,
+    dismissAllTdReviewNotifications,
   }
 
   return <AppContext.Provider value={store}>{children}</AppContext.Provider>
