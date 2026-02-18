@@ -4,10 +4,10 @@ import { ThemeSelector } from '@/components/ThemeSelector'
 import { FontSelector } from '@/components/FontSelector'
 import { FontScaleControl } from '@/components/FontScaleControl'
 import { cn } from '@/lib/utils'
-import { PanelLeft, Settings, Zap, ListTodo } from 'lucide-react'
+import { PanelLeft, Settings, Zap, ListTodo, FolderCog } from 'lucide-react'
 
 export function Header() {
-  const { toggleSidebar, isDevMode, openSettings, tdStatus, taskBoardOpen, openTaskBoard, closeTaskBoard } = useAppStore()
+  const { toggleSidebar, isDevMode, openSettings, tdStatus, taskBoardOpen, openTaskBoard, closeTaskBoard, currentProject } = useAppStore()
 
   return (
     <header className="flex h-9 items-center justify-between border-b border-border bg-sidebar px-3 text-sm">
@@ -50,6 +50,18 @@ export function Header() {
         )}
 
         {/* Settings */}
+        {currentProject && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => openSettings('project')}
+            title="Project Settings"
+          >
+            <FolderCog className="h-3.5 w-3.5" />
+          </Button>
+        )}
+
         <Button
           variant="ghost"
           size="icon"

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react'
 import { io, Socket } from 'socket.io-client'
-import type { Session, Worktree, Project, ThemeType, FontType, ConnectionStatus, AppConfig, ChangedFile, AgentConfig, AgentsConfig, TdStatus, TdIssue } from './types'
+import type { Session, Worktree, Project, ThemeType, FontType, ConnectionStatus, AppConfig, ChangedFile, AgentConfig, AgentsConfig, TdStatus, TdIssue, ProjectConfig, TdPromptTemplate } from './types'
 import { mapBackendToFrontend, mapFrontendToBackend, getDefaultConfig } from './configMapper'
 
 // Debounce utility
@@ -56,7 +56,7 @@ interface AppState {
 
   // Settings Screen State
   settingsOpen: boolean
-  settingsSection: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td'
+  settingsSection: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td' | 'project'
 
   // File Diff Viewing State
   viewingFileDiff: { sessionId: string; file: ChangedFile; worktreePath: string } | null
@@ -88,6 +88,8 @@ interface AppState {
   tdBoardView: Record<string, TdIssue[]>
   taskBoardOpen: boolean
   tdReviewNotifications: Array<{id: string; title: string; priority: string}>
+  projectConfig: ProjectConfig | null
+  projectConfigPath: string | null
 
   // Socket
   socket: Socket
@@ -149,9 +151,9 @@ interface AppActions {
   closeAddWorktree: () => void
   openAddSession: (worktreePath?: string, projectPath?: string, tdTaskId?: string) => void
   closeAddSession: () => void
-  openSettings: (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td') => void
+  openSettings: (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td' | 'project') => void
   closeSettings: () => void
-  navigateSettings: (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td') => void
+  navigateSettings: (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td' | 'project') => void
 
   // Config
   updateConfig: (config: AppConfig) => Promise<boolean>
@@ -167,6 +169,12 @@ interface AppActions {
 
   // TD Integration
   fetchTdStatus: () => Promise<void>
+  fetchProjectConfig: () => Promise<void>
+  saveProjectConfig: (config: ProjectConfig) => Promise<boolean>
+  initializeTdProject: () => Promise<boolean>
+  fetchTdPrompts: (scope?: 'project' | 'global' | 'effective' | 'all') => Promise<TdPromptTemplate[]>
+  saveTdPrompt: (name: string, content: string, scope?: 'project' | 'global') => Promise<boolean>
+  deleteTdPrompt: (name: string, scope?: 'project' | 'global') => Promise<boolean>
   fetchTdIssues: (options?: { status?: string; type?: string; parentId?: string }) => Promise<void>
   fetchTdBoard: () => Promise<void>
   openTaskBoard: () => void
@@ -255,9 +263,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Settings screen state - load section from localStorage
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settingsSection, setSettingsSection] = useState<'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td'>(() => {
+  const [settingsSection, setSettingsSection] = useState<'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td' | 'project'>(() => {
     const saved = localStorage.getItem('cacd_settings_section')
-    if (saved === 'general' || saved === 'agents' || saved === 'status-hooks' || saved === 'worktree-hooks' || saved === 'td') {
+    if (saved === 'general' || saved === 'agents' || saved === 'status-hooks' || saved === 'worktree-hooks' || saved === 'td' || saved === 'project') {
       return saved
     }
     return 'general'
@@ -293,6 +301,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tdBoardView, setTdBoardView] = useState<Record<string, TdIssue[]>>({})
   const [taskBoardOpen, setTaskBoardOpen] = useState(false)
   const [tdReviewNotifications, setTdReviewNotifications] = useState<Array<{id: string; title: string; priority: string}>>([])
+  const [projectConfig, setProjectConfig] = useState<ProjectConfig | null>(null)
+  const [projectConfigPath, setProjectConfigPath] = useState<string | null>(null)
 
   // Apply theme to document
   useEffect(() => {
@@ -420,6 +430,127 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       console.error('Failed to fetch td status:', err)
+    }
+  }, [])
+
+  const fetchProjectConfig = useCallback(async () => {
+    try {
+      const res = await fetch('/api/project/config', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setProjectConfig(data.config || {})
+        setProjectConfigPath(data.configPath || null)
+      } else {
+        setProjectConfig(null)
+        setProjectConfigPath(null)
+      }
+    } catch (err) {
+      console.error('Failed to fetch project config:', err)
+      setProjectConfig(null)
+      setProjectConfigPath(null)
+    }
+  }, [])
+
+  const saveProjectConfigAction = useCallback(async (nextConfig: ProjectConfig): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/project/config', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: nextConfig }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || 'Failed to save project config')
+        return false
+      }
+
+      const data = await res.json().catch(() => ({}))
+      setProjectConfig(nextConfig)
+      setProjectConfigPath(data.configPath || null)
+      await fetchTdStatus()
+      return true
+    } catch (err) {
+      console.error('Failed to save project config:', err)
+      setError('Failed to save project config. Check your connection.')
+      return false
+    }
+  }, [fetchTdStatus])
+
+  const initializeTdProject = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/td/init', {
+        method: 'POST',
+        credentials: 'include',
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || 'Failed to initialize td')
+        return false
+      }
+
+      await Promise.all([fetchTdStatus(), fetchProjectConfig()])
+      return true
+    } catch (err) {
+      console.error('Failed to initialize td:', err)
+      setError('Failed to initialize td. Check your connection.')
+      return false
+    }
+  }, [fetchProjectConfig, fetchTdStatus])
+
+  const fetchTdPrompts = useCallback(async (scope: 'project' | 'global' | 'effective' | 'all' = 'project'): Promise<TdPromptTemplate[]> => {
+    try {
+      const res = await fetch(`/api/td/prompts?scope=${scope}`, { credentials: 'include' })
+      if (!res.ok) return []
+      const data = await res.json()
+      return data.templates || []
+    } catch (err) {
+      console.error('Failed to fetch td prompts:', err)
+      return []
+    }
+  }, [])
+
+  const saveTdPrompt = useCallback(async (name: string, content: string, scope: 'project' | 'global' = 'project'): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/td/prompts', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, content, scope }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || 'Failed to save prompt template')
+        return false
+      }
+      return true
+    } catch (err) {
+      console.error('Failed to save td prompt:', err)
+      setError('Failed to save prompt template. Check your connection.')
+      return false
+    }
+  }, [])
+
+  const deleteTdPrompt = useCallback(async (name: string, scope: 'project' | 'global' = 'project'): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/td/prompts/${encodeURIComponent(name)}?scope=${scope}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || 'Failed to delete prompt template')
+        return false
+      }
+      return true
+    } catch (err) {
+      console.error('Failed to delete td prompt:', err)
+      setError('Failed to delete prompt template. Check your connection.')
+      return false
     }
   }, [])
 
@@ -571,6 +702,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [fetchData, fetchAgents, debouncedFetchSessionData])
 
+  // Keep project-specific td/config state in sync with selected project
+  useEffect(() => {
+    if (!currentProject) {
+      setTdStatus(null)
+      setProjectConfig(null)
+      setProjectConfigPath(null)
+      return
+    }
+
+    fetchTdStatus()
+    fetchProjectConfig()
+  }, [currentProject?.path, fetchProjectConfig, fetchTdStatus])
+
   // Clean up stale sessions from sidebar preferences and tab state
   useEffect(() => {
     if (sessions.length > 0) {
@@ -619,8 +763,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setSelectedSessions([])
       await fetchData()
-      // Fetch td status for newly selected project
-      fetchTdStatus()
+      // Fetch project-specific state for newly selected project
+      await Promise.all([fetchTdStatus(), fetchProjectConfig()])
     } catch (e) {
       console.error(e)
       setError('Failed to select project. Check your connection.')
@@ -890,7 +1034,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAddSessionProjectPath(null)
     setAddSessionTdTaskId(null)
   }
-  const openSettings = (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td') => {
+  const openSettings = (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td' | 'project') => {
     if (section) {
       setSettingsSection(section)
       localStorage.setItem('cacd_settings_section', section)
@@ -898,7 +1042,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSettingsOpen(true)
   }
   const closeSettings = () => setSettingsOpen(false)
-  const navigateSettings = (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td') => {
+  const navigateSettings = (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td' | 'project') => {
     setSettingsSection(section)
     localStorage.setItem('cacd_settings_section', section)
   }
@@ -1158,7 +1302,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     tdIssues,
     tdBoardView,
     taskBoardOpen,
+    projectConfig,
+    projectConfigPath,
     fetchTdStatus,
+    fetchProjectConfig,
+    saveProjectConfig: saveProjectConfigAction,
+    initializeTdProject,
+    fetchTdPrompts,
+    saveTdPrompt,
+    deleteTdPrompt,
     fetchTdIssues,
     fetchTdBoard,
     openTaskBoard,

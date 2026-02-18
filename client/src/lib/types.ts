@@ -155,6 +155,8 @@ export interface TdAvailability {
 
 export interface TdProjectState {
   enabled: boolean
+  initialized: boolean
+  binaryAvailable: boolean
   todosDir: string | null
   dbPath: string | null
   tdRoot: string | null
@@ -221,7 +223,28 @@ export interface TdIssueWithChildren extends TdIssue {
 export interface TdPromptTemplate {
   name: string
   path: string
+  source?: 'project' | 'global'
+  effective?: boolean
+  overridden?: boolean
+  overridesGlobal?: boolean
   content?: string
+}
+
+export interface ProjectConfig {
+  scripts?: {
+    setup?: string
+    teardown?: string
+  }
+  td?: {
+    enabled?: boolean
+    autoStart?: boolean
+    defaultPrompt?: string
+  }
+  agentDefaults?: {
+    agentId?: string
+    options?: Record<string, boolean | string>
+  }
+  [key: string]: unknown
 }
 
 // Application configuration
