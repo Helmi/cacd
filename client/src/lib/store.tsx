@@ -52,6 +52,7 @@ interface AppState {
   addSessionOpen: boolean
   addSessionWorktreePath: string | null  // Pre-selected worktree context
   addSessionProjectPath: string | null  // Pre-selected project context
+  addSessionTdTaskId: string | null  // Pre-selected td task
 
   // Settings Screen State
   settingsOpen: boolean
@@ -145,7 +146,7 @@ interface AppActions {
   closeAddProject: () => void
   openAddWorktree: (projectPath?: string) => void
   closeAddWorktree: () => void
-  openAddSession: (worktreePath?: string, projectPath?: string) => void
+  openAddSession: (worktreePath?: string, projectPath?: string, tdTaskId?: string) => void
   closeAddSession: () => void
   openSettings: (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => void
   closeSettings: () => void
@@ -245,6 +246,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [addSessionOpen, setAddSessionOpen] = useState(false)
   const [addSessionWorktreePath, setAddSessionWorktreePath] = useState<string | null>(null)
   const [addSessionProjectPath, setAddSessionProjectPath] = useState<string | null>(null)
+  const [addSessionTdTaskId, setAddSessionTdTaskId] = useState<string | null>(null)
   const [viewingFileDiff, setViewingFileDiff] = useState<{ sessionId: string; file: ChangedFile; worktreePath: string } | null>(null)
   const [viewingFile, setViewingFile] = useState<{ worktreePath: string; filePath: string } | null>(null)
 
@@ -858,15 +860,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAddWorktreeOpen(false)
     setAddWorktreeProjectPath(null)
   }
-  const openAddSession = (worktreePath?: string, projectPath?: string) => {
+  const openAddSession = (worktreePath?: string, projectPath?: string, tdTaskId?: string) => {
     setAddSessionWorktreePath(worktreePath || null)
     setAddSessionProjectPath(projectPath || null)
+    setAddSessionTdTaskId(tdTaskId || null)
     setAddSessionOpen(true)
   }
   const closeAddSession = () => {
     setAddSessionOpen(false)
     setAddSessionWorktreePath(null)
     setAddSessionProjectPath(null)
+    setAddSessionTdTaskId(null)
   }
   const openSettings = (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => {
     if (section) {
@@ -1070,6 +1074,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addSessionOpen,
     addSessionWorktreePath,
     addSessionProjectPath,
+    addSessionTdTaskId,
     settingsOpen,
     settingsSection,
     viewingFileDiff,

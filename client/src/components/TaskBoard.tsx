@@ -115,7 +115,7 @@ function StatusColumn({ status, issues, onSelect }: {
 }
 
 export function TaskBoard() {
-  const { tdStatus, tdBoardView, fetchTdBoard, fetchTdIssues, tdIssues } = useAppStore()
+  const { tdStatus, tdBoardView, fetchTdBoard, fetchTdIssues, tdIssues, openAddSession, closeTaskBoard } = useAppStore()
   const [viewMode, setViewMode] = useState<ViewMode>('board')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<TdIssue[] | null>(null)
@@ -254,6 +254,10 @@ export function TaskBoard() {
           issueId={selectedIssueId}
           onClose={() => setSelectedIssueId(null)}
           onNavigate={setSelectedIssueId}
+          onStartWorking={(taskId) => {
+            closeTaskBoard()
+            openAddSession(undefined, undefined, taskId)
+          }}
         />
       )}
     </div>

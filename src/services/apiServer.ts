@@ -19,6 +19,7 @@ import {
 	getFileDiff,
 } from '../utils/gitStatus.js';
 import {randomUUID, randomBytes} from 'crypto';
+import {execFileSync} from 'child_process';
 import {writeFile, mkdir, readdir, unlink, stat} from 'fs/promises';
 import {tmpdir} from 'os';
 import {generateRandomPort, isDevMode} from '../constants/env.js';
@@ -1180,6 +1181,18 @@ export class APIServer {
 				logger.info(
 					`API: Setting TD_SESSION_ID=${sessionId}, TD_TASK_ID=${tdTaskId}`,
 				);
+
+				// Auto-start the td task (set to in_progress)
+				try {
+					execFileSync('td', ['start', tdTaskId, '--session', sessionId, '-w', path], {
+						encoding: 'utf-8',
+						timeout: 5000,
+					});
+					logger.info(`API: Auto-started td task ${tdTaskId}`);
+				} catch (startErr) {
+					// Non-fatal: task might already be in_progress
+					logger.warn(`API: td start failed (may already be started): ${startErr}`);
+				}
 
 				// Write task context file to worktree
 				try {

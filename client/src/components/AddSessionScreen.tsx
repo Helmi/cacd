@@ -28,6 +28,7 @@ export function AddSessionScreen() {
     closeAddSession,
     addSessionWorktreePath,
     addSessionProjectPath,
+    addSessionTdTaskId,
     createSessionWithAgent,
     createWorktree,
     fetchData,
@@ -269,6 +270,13 @@ export function AddSessionScreen() {
       .catch(() => setTdTasks([]))
       .finally(() => setLoadingTdTasks(false))
   }, [tdEnabled])
+
+  // Pre-fill td task if provided from context
+  useEffect(() => {
+    if (addSessionTdTaskId && tdEnabled) {
+      setSelectedTdTaskId(addSessionTdTaskId)
+    }
+  }, [addSessionTdTaskId, tdEnabled])
 
   // Fetch prompt templates when td is enabled
   useEffect(() => {

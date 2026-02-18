@@ -16,6 +16,7 @@ import {
   Layers,
   Clock,
   Loader2,
+  Play,
 } from 'lucide-react'
 
 const statusConfig: Record<string, { icon: typeof Circle; color: string; bg: string; label: string }> = {
@@ -106,9 +107,10 @@ interface TaskDetailModalProps {
   issueId: string
   onClose: () => void
   onNavigate?: (issueId: string) => void
+  onStartWorking?: (issueId: string) => void
 }
 
-export function TaskDetailModal({ issueId, onClose, onNavigate }: TaskDetailModalProps) {
+export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking }: TaskDetailModalProps) {
   const [issue, setIssue] = useState<TdIssueWithChildren | null>(null)
   const [loading, setLoading] = useState(true)
   const [isVisible, setIsVisible] = useState(false)
@@ -210,6 +212,21 @@ export function TaskDetailModal({ issueId, onClose, onNavigate }: TaskDetailModa
                   </span>
                 )}
               </div>
+
+              {/* Actions */}
+              {onStartWorking && issue.status !== 'closed' && (
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    onStartWorking(issue.id)
+                    handleClose()
+                  }}
+                >
+                  <Play className="h-3 w-3 mr-1.5" />
+                  Start Working
+                </Button>
+              )}
 
               {/* Labels */}
               {labels.length > 0 && (
