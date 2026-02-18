@@ -1113,6 +1113,7 @@ export class APIServer {
 				options?: Record<string, boolean | string>;
 				sessionName?: string;
 				taskListName?: string;
+				tdTaskId?: string;
 			};
 		}>('/api/session/create-with-agent', async (request, reply) => {
 			const {
@@ -1121,6 +1122,7 @@ export class APIServer {
 				options = {},
 				sessionName,
 				taskListName,
+				tdTaskId,
 			} = request.body;
 			logger.info(
 				`API: Creating session "${sessionName || 'unnamed'}" for ${path} with agent: ${agentId}`,
@@ -1156,16 +1158,26 @@ export class APIServer {
 			}
 			logger.info(`API: Spawning command: ${command} ${args.join(' ')}`);
 
-			// Build extra env for Claude task list (only for Claude agents)
-			let extraEnv: Record<string, string> | undefined;
+			// Build extra env for Claude task list and td integration
+			const extraEnv: Record<string, string> = {};
 			const isClaudeAgent =
 				agentId === 'claude' ||
 				agent.command === 'claude' ||
 				agent.detectionStrategy === 'claude';
 
 			if (taskListName && isClaudeAgent) {
-				extraEnv = {CLAUDE_TASK_LIST: taskListName};
+				extraEnv['CLAUDE_TASK_LIST'] = taskListName;
 				logger.info(`API: Setting CLAUDE_TASK_LIST=${taskListName}`);
+			}
+
+			// Set TD_SESSION_ID when session is linked to a td task
+			if (tdTaskId && tdService.isAvailable()) {
+				const sessionId = `ses_${randomUUID().slice(0, 6)}`;
+				extraEnv['TD_SESSION_ID'] = sessionId;
+				extraEnv['TD_TASK_ID'] = tdTaskId;
+				logger.info(
+					`API: Setting TD_SESSION_ID=${sessionId}, TD_TASK_ID=${tdTaskId}`,
+				);
 			}
 
 			// Create session with resolved command and args
@@ -1176,7 +1188,7 @@ export class APIServer {
 				agent.detectionStrategy,
 				sessionName,
 				agentId,
-				extraEnv,
+				Object.keys(extraEnv).length > 0 ? extraEnv : undefined,
 			);
 			const result = await Effect.runPromise(Effect.either(effect));
 

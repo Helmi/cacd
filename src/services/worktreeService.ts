@@ -1,5 +1,5 @@
 import {execSync, execFileSync} from 'child_process';
-import {existsSync, statSync, cpSync} from 'fs';
+import {existsSync, statSync, cpSync, writeFileSync} from 'fs';
 import path from 'path';
 import {Effect, Either} from 'effect';
 import {
@@ -19,6 +19,7 @@ import {
 	executeProjectTeardownHook,
 } from '../utils/hookExecutor.js';
 import {configurationManager} from './configurationManager.js';
+import {tdService} from './tdService.js';
 import {
 	loadProjectConfig,
 	buildHookEnvironment,
@@ -1031,6 +1032,34 @@ export class WorktreeService {
 					newWorktree,
 					absoluteGitRoot,
 					baseBranch,
+				);
+			}
+
+			// Write .td-root file if td is available for this project
+			const tdState = tdService.resolveProjectState(absoluteGitRoot);
+			if (tdState.enabled && tdState.tdRoot) {
+				yield* Effect.catchAll(
+					Effect.try({
+						try: () => {
+							writeFileSync(
+								path.join(resolvedPath, '.td-root'),
+								tdState.tdRoot + '\n',
+								'utf-8',
+							);
+						},
+						catch: (error: unknown) =>
+							new FileSystemError({
+								operation: 'write',
+								path: path.join(resolvedPath, '.td-root'),
+								cause: String(error),
+							}),
+					}),
+					(error: unknown) => {
+						warnings.push(
+							`Failed to write .td-root: ${error instanceof FileSystemError ? error.cause : error}`,
+						);
+						return Effect.succeed(undefined);
+					},
 				);
 			}
 
