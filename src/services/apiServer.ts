@@ -1468,6 +1468,28 @@ export class APIServer {
 			},
 		);
 
+		// Submit task for review
+		this.app.post<{Params: {id: string}}>(
+			'/api/td/issues/:id/review',
+			async (request, reply) => {
+				const {id} = request.params;
+				if (!tdService.isAvailable()) {
+					return reply.code(400).send({error: 'TD not available'});
+				}
+
+				try {
+					execFileSync('td', ['review', id], {
+						encoding: 'utf-8',
+						timeout: 5000,
+					});
+					return {success: true, message: `Task ${id} submitted for review`};
+				} catch (err) {
+					logger.warn(`API: td review failed for ${id}: ${err}`);
+					return reply.code(500).send({error: `Failed to submit for review: ${err}`});
+				}
+			},
+		);
+
 		// --- Task List Names ---
 		this.app.get<{
 			Querystring: {projectPath: string};

@@ -7,20 +7,22 @@ import {
   SettingsAgents,
   SettingsStatusHooks,
   SettingsWorktreeHooks,
+  SettingsTd,
 } from '@/components/settings'
-import { Settings, Bot, Bell, GitBranch, X, Loader2, ChevronRight } from 'lucide-react'
+import { Settings, Bot, Bell, GitBranch, X, Loader2, ChevronRight, ListTodo } from 'lucide-react'
 import { ThemeSelector } from '@/components/ThemeSelector'
 import { FontSelector } from '@/components/FontSelector'
 import { cn } from '@/lib/utils'
 import type { AppConfig, AgentConfig } from '@/lib/types'
 
-type SettingsSection = 'general' | 'agents' | 'status-hooks' | 'worktree-hooks'
+type SettingsSection = 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td'
 
 const NAV_ITEMS: { id: SettingsSection; label: string; icon: typeof Settings; description: string }[] = [
   { id: 'general', label: 'General', icon: Settings, description: 'Auto-approval, worktree defaults' },
   { id: 'agents', label: 'Agents', icon: Bot, description: 'Configure agent presets' },
   { id: 'status-hooks', label: 'Status Hooks', icon: Bell, description: 'Session status notifications' },
   { id: 'worktree-hooks', label: 'Worktree Hooks', icon: GitBranch, description: 'Lifecycle automation' },
+  { id: 'td', label: 'Task Management', icon: ListTodo, description: 'TD integration settings' },
 ]
 
 export function SettingsScreen() {
@@ -160,6 +162,8 @@ export function SettingsScreen() {
         return <SettingsStatusHooks localConfig={localConfig} setLocalConfig={setLocalConfig} />
       case 'worktree-hooks':
         return <SettingsWorktreeHooks localConfig={localConfig} setLocalConfig={setLocalConfig} />
+      case 'td':
+        return <SettingsTd />
       default:
         return null
     }

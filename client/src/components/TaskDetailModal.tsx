@@ -17,6 +17,7 @@ import {
   Clock,
   Loader2,
   Play,
+  Send,
 } from 'lucide-react'
 
 const statusConfig: Record<string, { icon: typeof Circle; color: string; bg: string; label: string }> = {
@@ -114,6 +115,7 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking }
   const [issue, setIssue] = useState<TdIssueWithChildren | null>(null)
   const [loading, setLoading] = useState(true)
   const [isVisible, setIsVisible] = useState(false)
+  const [submittingReview, setSubmittingReview] = useState(false)
 
   // Animate in
   useEffect(() => {
@@ -214,19 +216,47 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking }
               </div>
 
               {/* Actions */}
-              {onStartWorking && issue.status !== 'closed' && (
-                <Button
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    onStartWorking(issue.id)
-                    handleClose()
-                  }}
-                >
-                  <Play className="h-3 w-3 mr-1.5" />
-                  Start Working
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {onStartWorking && issue.status !== 'closed' && issue.status !== 'in_review' && (
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      onStartWorking(issue.id)
+                      handleClose()
+                    }}
+                  >
+                    <Play className="h-3 w-3 mr-1.5" />
+                    Start Working
+                  </Button>
+                )}
+                {issue.status === 'in_progress' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    disabled={submittingReview}
+                    onClick={async () => {
+                      setSubmittingReview(true)
+                      try {
+                        const res = await fetch(`/api/td/issues/${issue.id}/review`, {
+                          method: 'POST',
+                          credentials: 'include',
+                        })
+                        if (res.ok) {
+                          // Refresh issue to show updated status
+                          const data = await fetch(`/api/td/issues/${issue.id}`, { credentials: 'include' }).then(r => r.json())
+                          if (data.issue) setIssue(data.issue)
+                        }
+                      } catch { /* silent */ }
+                      setSubmittingReview(false)
+                    }}
+                  >
+                    <Send className="h-3 w-3 mr-1.5" />
+                    {submittingReview ? 'Submitting...' : 'Submit for Review'}
+                  </Button>
+                )}
+              </div>
 
               {/* Labels */}
               {labels.length > 0 && (

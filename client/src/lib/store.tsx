@@ -56,7 +56,7 @@ interface AppState {
 
   // Settings Screen State
   settingsOpen: boolean
-  settingsSection: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks'
+  settingsSection: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td'
 
   // File Diff Viewing State
   viewingFileDiff: { sessionId: string; file: ChangedFile; worktreePath: string } | null
@@ -148,9 +148,9 @@ interface AppActions {
   closeAddWorktree: () => void
   openAddSession: (worktreePath?: string, projectPath?: string, tdTaskId?: string) => void
   closeAddSession: () => void
-  openSettings: (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => void
+  openSettings: (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td') => void
   closeSettings: () => void
-  navigateSettings: (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => void
+  navigateSettings: (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td') => void
 
   // Config
   updateConfig: (config: AppConfig) => Promise<boolean>
@@ -252,9 +252,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Settings screen state - load section from localStorage
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settingsSection, setSettingsSection] = useState<'general' | 'agents' | 'status-hooks' | 'worktree-hooks'>(() => {
+  const [settingsSection, setSettingsSection] = useState<'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td'>(() => {
     const saved = localStorage.getItem('cacd_settings_section')
-    if (saved === 'general' || saved === 'agents' || saved === 'status-hooks' || saved === 'worktree-hooks') {
+    if (saved === 'general' || saved === 'agents' || saved === 'status-hooks' || saved === 'worktree-hooks' || saved === 'td') {
       return saved
     }
     return 'general'
@@ -872,7 +872,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAddSessionProjectPath(null)
     setAddSessionTdTaskId(null)
   }
-  const openSettings = (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => {
+  const openSettings = (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td') => {
     if (section) {
       setSettingsSection(section)
       localStorage.setItem('cacd_settings_section', section)
@@ -880,7 +880,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSettingsOpen(true)
   }
   const closeSettings = () => setSettingsOpen(false)
-  const navigateSettings = (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => {
+  const navigateSettings = (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td') => {
     setSettingsSection(section)
     localStorage.setItem('cacd_settings_section', section)
   }
