@@ -29,6 +29,9 @@ import {
 	validatePathForBrowser,
 } from '../utils/pathValidation.js';
 import {getDefaultShell} from '../utils/platform.js';
+import {tdService} from './tdService.js';
+import {TdReader} from './tdReader.js';
+import {loadPromptTemplates} from '../utils/projectConfig.js';
 
 // --- Clipboard Image Paste Constants ---
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -1206,6 +1209,162 @@ export class APIServer {
 				agentId: session.agentId,
 			};
 		});
+
+		// --- TD Integration ---
+
+		// TD availability check
+		this.app.get('/api/td/status', async () => {
+			const availability = tdService.checkAvailability();
+			const project = coreService.getSelectedProject();
+			let projectState = null;
+
+			if (project) {
+				projectState = tdService.resolveProjectState(project.path);
+			}
+
+			return {availability, projectState};
+		});
+
+		// TD issues list (for current project)
+		this.app.get<{
+			Querystring: {status?: string; type?: string; parentId?: string};
+		}>('/api/td/issues', async (request, reply) => {
+			const project = coreService.getSelectedProject();
+			if (!project) {
+				return reply.code(400).send({error: 'No project selected'});
+			}
+
+			const state = tdService.resolveProjectState(project.path);
+			if (!state.enabled || !state.dbPath) {
+				return reply
+					.code(404)
+					.send({error: 'TD not available for this project'});
+			}
+
+			const reader = new TdReader(state.dbPath);
+			try {
+				const issues = reader.listIssues({
+					status: request.query.status,
+					type: request.query.type,
+					parentId: request.query.parentId,
+				});
+				return {issues};
+			} finally {
+				reader.close();
+			}
+		});
+
+		// TD single issue with details
+		this.app.get<{Params: {id: string}}>(
+			'/api/td/issues/:id',
+			async (request, reply) => {
+				const project = coreService.getSelectedProject();
+				if (!project) {
+					return reply.code(400).send({error: 'No project selected'});
+				}
+
+				const state = tdService.resolveProjectState(project.path);
+				if (!state.enabled || !state.dbPath) {
+					return reply
+						.code(404)
+						.send({error: 'TD not available for this project'});
+				}
+
+				const reader = new TdReader(state.dbPath);
+				try {
+					const issue = reader.getIssueWithDetails(request.params.id);
+					if (!issue) {
+						return reply.code(404).send({error: 'Issue not found'});
+					}
+					return {issue};
+				} finally {
+					reader.close();
+				}
+			},
+		);
+
+		// TD board view (grouped by status)
+		this.app.get('/api/td/board', async (request, reply) => {
+			const project = coreService.getSelectedProject();
+			if (!project) {
+				return reply.code(400).send({error: 'No project selected'});
+			}
+
+			const state = tdService.resolveProjectState(project.path);
+			if (!state.enabled || !state.dbPath) {
+				return reply
+					.code(404)
+					.send({error: 'TD not available for this project'});
+			}
+
+			const reader = new TdReader(state.dbPath);
+			try {
+				return {board: reader.getBoard()};
+			} finally {
+				reader.close();
+			}
+		});
+
+		// TD search issues
+		this.app.get<{
+			Querystring: {q: string};
+		}>('/api/td/search', async (request, reply) => {
+			const {q} = request.query;
+			if (!q) {
+				return reply.code(400).send({error: 'Search query required'});
+			}
+
+			const project = coreService.getSelectedProject();
+			if (!project) {
+				return reply.code(400).send({error: 'No project selected'});
+			}
+
+			const state = tdService.resolveProjectState(project.path);
+			if (!state.enabled || !state.dbPath) {
+				return reply
+					.code(404)
+					.send({error: 'TD not available for this project'});
+			}
+
+			const reader = new TdReader(state.dbPath);
+			try {
+				return {issues: reader.searchIssues(q)};
+			} finally {
+				reader.close();
+			}
+		});
+
+		// Prompt templates for current project
+		this.app.get('/api/td/prompts', async (request, reply) => {
+			const project = coreService.getSelectedProject();
+			if (!project) {
+				return reply.code(400).send({error: 'No project selected'});
+			}
+
+			const templates = loadPromptTemplates(project.path);
+			return {templates: templates.map(t => ({name: t.name, path: t.path}))};
+		});
+
+		// Get specific prompt template content
+		this.app.get<{Params: {name: string}}>(
+			'/api/td/prompts/:name',
+			async (request, reply) => {
+				const project = coreService.getSelectedProject();
+				if (!project) {
+					return reply.code(400).send({error: 'No project selected'});
+				}
+
+				const templates = loadPromptTemplates(project.path);
+				const template = templates.find(
+					t => t.name === request.params.name,
+				);
+				if (!template) {
+					return reply.code(404).send({error: 'Template not found'});
+				}
+
+				return {template};
+			},
+		);
 
 		// --- Task List Names ---
 		this.app.get<{
