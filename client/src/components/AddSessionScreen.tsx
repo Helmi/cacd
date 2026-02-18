@@ -40,6 +40,7 @@ export function AddSessionScreen() {
     defaultAgentId,
     openAddProject,
     tdStatus,
+    fetchTdPrompts,
   } = useAppStore()
 
   // Animation state
@@ -288,11 +289,10 @@ export function AddSessionScreen() {
       setPromptTemplates([])
       return
     }
-    fetch('/api/td/prompts', { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => setPromptTemplates(data.templates || []))
+    fetchTdPrompts('effective')
+      .then(data => setPromptTemplates(data))
       .catch(() => setPromptTemplates([]))
-  }, [tdEnabled])
+  }, [fetchTdPrompts, tdEnabled])
 
   // Filter td tasks by search
   const filteredTdTasks = useMemo(() => {
@@ -876,6 +876,11 @@ export function AddSessionScreen() {
                                 <div className="flex items-center gap-2">
                                   <FileText className="h-3 w-3" />
                                   {t.name}
+                                  {t.source && (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      ({t.source})
+                                    </span>
+                                  )}
                                 </div>
                               </SelectItem>
                             ))}

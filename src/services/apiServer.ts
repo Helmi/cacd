@@ -32,7 +32,17 @@ import {
 import {getDefaultShell} from '../utils/platform.js';
 import {tdService} from './tdService.js';
 import {TdReader} from './tdReader.js';
-import {loadProjectConfig, loadPromptTemplates, loadPromptTemplate} from '../utils/projectConfig.js';
+import {
+	loadProjectConfig,
+	getProjectConfigPath,
+	saveProjectConfig,
+	loadPromptTemplatesByScope,
+	loadPromptTemplateByScope,
+	savePromptTemplateByScope,
+	deletePromptTemplateByScope,
+	type PromptScope,
+	type ProjectConfig,
+} from '../utils/projectConfig.js';
 
 // --- Clipboard Image Paste Constants ---
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -203,6 +213,29 @@ export class APIServer {
 	}
 
 	private setupRoutes() {
+		const resolveSelectedProjectTdContext = () => {
+			const project = coreService.getSelectedProject();
+			if (!project) {
+				return {
+					project: null,
+					projectConfig: null as ProjectConfig | null,
+					projectState: null as ReturnType<typeof tdService.resolveProjectState> | null,
+				};
+			}
+
+			const projectConfig = loadProjectConfig(project.path);
+			const rawProjectState = tdService.resolveProjectState(project.path);
+			const projectState =
+				projectConfig?.td?.enabled === false
+					? {
+							...rawProjectState,
+							enabled: false,
+					  }
+					: rawProjectState;
+
+			return {project, projectConfig, projectState};
+		};
+
 		// --- Authentication Routes (public) ---
 
 		// Check auth status - returns whether user has valid session
@@ -442,6 +475,43 @@ export class APIServer {
 				await coreService.selectProject(gitProject);
 
 				return {success: true};
+			},
+		);
+
+		this.app.get('/api/project/config', async (request, reply) => {
+			const project = coreService.getSelectedProject();
+			if (!project) {
+				return reply.code(400).send({error: 'No project selected'});
+			}
+
+			const config = loadProjectConfig(project.path) || {};
+			const configPath = getProjectConfigPath(project.path);
+			return {config, configPath};
+		});
+
+		this.app.post<{Body: {config: Record<string, unknown>}}>(
+			'/api/project/config',
+			async (request, reply) => {
+				const project = coreService.getSelectedProject();
+				if (!project) {
+					return reply.code(400).send({error: 'No project selected'});
+				}
+
+				const nextConfig = request.body?.config;
+				if (!nextConfig || typeof nextConfig !== 'object') {
+					return reply.code(400).send({error: 'config object is required'});
+				}
+
+				try {
+					const configPath = saveProjectConfig(
+						project.path,
+						nextConfig as ProjectConfig,
+					);
+					return {success: true, configPath};
+				} catch (error) {
+					logger.warn(`API: Failed to save project config: ${error}`);
+					return reply.code(500).send({error: 'Failed to save project config'});
+				}
 			},
 		);
 
@@ -1188,10 +1258,11 @@ export class APIServer {
 					(p: {path: string}) => path.startsWith(p.path) || path.includes(`/.worktrees/${p.path.split('/').pop()}/`)
 				);
 				const projConfig = matchedProject ? loadProjectConfig(matchedProject.path) : null;
+				const tdConfigEnabled = projConfig?.td?.enabled !== false;
 				const autoStartEnabled = projConfig?.td?.autoStart !== false; // default: true
 
 				// Auto-start the td task (set to in_progress) unless disabled in config
-				if (autoStartEnabled) {
+				if (autoStartEnabled && tdConfigEnabled) {
 					try {
 						execFileSync('td', ['start', tdTaskId, '--session', sessionId, '-w', path], {
 							encoding: 'utf-8',
@@ -1208,70 +1279,83 @@ export class APIServer {
 
 				// Write task context file to worktree
 				try {
-					const tdState = tdService.resolveProjectState(path);
-					if (tdState.enabled && tdState.tdRoot) {
-						const reader = new TdReader(tdState.tdRoot);
-						const taskDetail = reader.getIssueWithDetails(tdTaskId);
-						if (taskDetail) {
-							const lines: string[] = [
-								`# Task: ${taskDetail.id}`,
-								'',
-								`**${taskDetail.title}**`,
-								'',
-								`Status: ${taskDetail.status} | Priority: ${taskDetail.priority} | Type: ${taskDetail.type}`,
-								'',
-							];
-							if (taskDetail.description) {
-								lines.push('## Description', '', taskDetail.description, '');
-							}
-							if (taskDetail.acceptance) {
-								lines.push('## Acceptance Criteria', '', taskDetail.acceptance, '');
-							}
-							if (taskDetail.handoffs?.length > 0) {
-								const latest = taskDetail.handoffs[0]!;
-								lines.push('## Latest Handoff', '');
-								if (latest.done.length > 0) {
-									lines.push('### Done');
-									latest.done.forEach(item => lines.push(`- [x] ${item}`));
-									lines.push('');
-								}
-								if (latest.remaining.length > 0) {
-									lines.push('### Remaining');
-									latest.remaining.forEach(item => lines.push(`- [ ] ${item}`));
-									lines.push('');
-								}
-								if (latest.uncertain.length > 0) {
-									lines.push('### Uncertain');
-									latest.uncertain.forEach(item => lines.push(`- ??? ${item}`));
-									lines.push('');
-								}
-							}
+					const rawTdState = tdService.resolveProjectState(path);
+					const tdState =
+						projConfig?.td?.enabled === false
+							? {...rawTdState, enabled: false}
+							: rawTdState;
 
-							// Apply prompt template (explicit or default from .cacd config)
-							const effectiveTemplate = promptTemplate || projConfig?.td?.defaultPrompt;
-							if (effectiveTemplate) {
-								if (matchedProject) {
-									const tmpl = loadPromptTemplate(matchedProject.path, effectiveTemplate);
-									if (tmpl?.content) {
-										// Simple variable substitution in prompt template
-										const rendered = tmpl.content
-											.replace(/\{\{task\.id\}\}/g, taskDetail.id)
-											.replace(/\{\{task\.title\}\}/g, taskDetail.title)
-											.replace(/\{\{task\.description\}\}/g, taskDetail.description || '')
-											.replace(/\{\{task\.status\}\}/g, taskDetail.status)
-											.replace(/\{\{task\.priority\}\}/g, taskDetail.priority)
-											.replace(/\{\{task\.acceptance\}\}/g, taskDetail.acceptance || '');
-										lines.push('## Instructions', '', rendered, '');
+					if (tdState.enabled && tdState.dbPath) {
+						const reader = new TdReader(tdState.dbPath);
+						try {
+							const taskDetail = reader.getIssueWithDetails(tdTaskId);
+							if (taskDetail) {
+								const lines: string[] = [
+									`# Task: ${taskDetail.id}`,
+									'',
+									`**${taskDetail.title}**`,
+									'',
+									`Status: ${taskDetail.status} | Priority: ${taskDetail.priority} | Type: ${taskDetail.type}`,
+									'',
+								];
+								if (taskDetail.description) {
+									lines.push('## Description', '', taskDetail.description, '');
+								}
+								if (taskDetail.acceptance) {
+									lines.push('## Acceptance Criteria', '', taskDetail.acceptance, '');
+								}
+								if (taskDetail.handoffs?.length > 0) {
+									const latest = taskDetail.handoffs[0]!;
+									lines.push('## Latest Handoff', '');
+									if (latest.done.length > 0) {
+										lines.push('### Done');
+										latest.done.forEach(item => lines.push(`- [x] ${item}`));
+										lines.push('');
+									}
+									if (latest.remaining.length > 0) {
+										lines.push('### Remaining');
+										latest.remaining.forEach(item => lines.push(`- [ ] ${item}`));
+										lines.push('');
+									}
+									if (latest.uncertain.length > 0) {
+										lines.push('### Uncertain');
+										latest.uncertain.forEach(item => lines.push(`- ??? ${item}`));
+										lines.push('');
 									}
 								}
-							}
 
-							await writeFile(
-								`${path}/.td-task-context.md`,
-								lines.join('\n'),
-								'utf-8'
-							);
-							logger.info(`API: Wrote .td-task-context.md to ${path}`);
+								// Apply prompt template (explicit or default from .cacd config)
+								const effectiveTemplate = promptTemplate || projConfig?.td?.defaultPrompt;
+								if (effectiveTemplate) {
+									if (matchedProject) {
+										const tmpl = loadPromptTemplateByScope(
+											matchedProject.path,
+											'effective',
+											effectiveTemplate,
+										);
+										if (tmpl?.content) {
+											// Simple variable substitution in prompt template
+											const rendered = tmpl.content
+												.replace(/\{\{task\.id\}\}/g, taskDetail.id)
+												.replace(/\{\{task\.title\}\}/g, taskDetail.title)
+												.replace(/\{\{task\.description\}\}/g, taskDetail.description || '')
+												.replace(/\{\{task\.status\}\}/g, taskDetail.status)
+												.replace(/\{\{task\.priority\}\}/g, taskDetail.priority)
+												.replace(/\{\{task\.acceptance\}\}/g, taskDetail.acceptance || '');
+											lines.push('## Instructions', '', rendered, '');
+										}
+									}
+								}
+
+								await writeFile(
+									`${path}/.td-task-context.md`,
+									lines.join('\n'),
+									'utf-8'
+								);
+								logger.info(`API: Wrote .td-task-context.md to ${path}`);
+							}
+						} finally {
+							reader.close();
 						}
 					}
 				} catch (err) {
@@ -1327,38 +1411,76 @@ export class APIServer {
 		// TD availability check
 		this.app.get('/api/td/status', async () => {
 			const availability = tdService.checkAvailability();
-			const project = coreService.getSelectedProject();
-			let projectState = null;
-			let projectConfig = null;
+			const {projectConfig, projectState} = resolveSelectedProjectTdContext();
+			return {
+				availability,
+				projectState,
+				projectConfig: projectConfig?.td || null,
+			};
+		});
 
-			if (project) {
-				projectState = tdService.resolveProjectState(project.path);
-				const config = loadProjectConfig(project.path);
-				if (config?.td) {
-					projectConfig = config.td;
-				}
+		// Initialize td in current project
+		this.app.post('/api/td/init', async (request, reply) => {
+			const {project, projectConfig, projectState} = resolveSelectedProjectTdContext();
+			if (!project || !projectState) {
+				return reply.code(400).send({error: 'No project selected'});
 			}
 
-			return {availability, projectState, projectConfig};
+			const availability = tdService.checkAvailability();
+			if (!availability.binaryAvailable) {
+				return reply.code(400).send({error: 'TD binary not available'});
+			}
+
+			if (projectState.initialized) {
+				return {
+					success: true,
+					alreadyInitialized: true,
+					projectState,
+					projectConfig: projectConfig?.td || null,
+				};
+			}
+
+			try {
+				execFileSync('td', ['init'], {
+					cwd: project.path,
+					encoding: 'utf-8',
+					timeout: 10000,
+				});
+			} catch (error) {
+				logger.warn(`API: td init failed for ${project.path}: ${error}`);
+				return reply.code(500).send({error: `Failed to initialize td: ${error}`});
+			}
+
+			const refreshedRawState = tdService.resolveProjectState(project.path);
+			const refreshedState =
+				projectConfig?.td?.enabled === false
+					? {...refreshedRawState, enabled: false}
+					: refreshedRawState;
+
+			return {
+				success: true,
+				alreadyInitialized: false,
+				projectState: refreshedState,
+				projectConfig: projectConfig?.td || null,
+			};
 		});
 
 		// TD issues list (for current project)
 		this.app.get<{
 			Querystring: {status?: string; type?: string; parentId?: string};
 		}>('/api/td/issues', async (request, reply) => {
-			const project = coreService.getSelectedProject();
-			if (!project) {
+			const {project, projectState} = resolveSelectedProjectTdContext();
+			if (!project || !projectState) {
 				return reply.code(400).send({error: 'No project selected'});
 			}
 
-			const state = tdService.resolveProjectState(project.path);
-			if (!state.enabled || !state.dbPath) {
+			if (!projectState.enabled || !projectState.dbPath) {
 				return reply
 					.code(404)
 					.send({error: 'TD not available for this project'});
 			}
 
-			const reader = new TdReader(state.dbPath);
+			const reader = new TdReader(projectState.dbPath);
 			try {
 				const issues = reader.listIssues({
 					status: request.query.status,
@@ -1375,19 +1497,18 @@ export class APIServer {
 		this.app.get<{Params: {id: string}}>(
 			'/api/td/issues/:id',
 			async (request, reply) => {
-				const project = coreService.getSelectedProject();
-				if (!project) {
+				const {project, projectState} = resolveSelectedProjectTdContext();
+				if (!project || !projectState) {
 					return reply.code(400).send({error: 'No project selected'});
 				}
 
-				const state = tdService.resolveProjectState(project.path);
-				if (!state.enabled || !state.dbPath) {
+				if (!projectState.enabled || !projectState.dbPath) {
 					return reply
 						.code(404)
 						.send({error: 'TD not available for this project'});
 				}
 
-				const reader = new TdReader(state.dbPath);
+				const reader = new TdReader(projectState.dbPath);
 				try {
 					const issue = reader.getIssueWithDetails(request.params.id);
 					if (!issue) {
@@ -1402,19 +1523,18 @@ export class APIServer {
 
 		// TD board view (grouped by status)
 		this.app.get('/api/td/board', async (request, reply) => {
-			const project = coreService.getSelectedProject();
-			if (!project) {
+			const {project, projectState} = resolveSelectedProjectTdContext();
+			if (!project || !projectState) {
 				return reply.code(400).send({error: 'No project selected'});
 			}
 
-			const state = tdService.resolveProjectState(project.path);
-			if (!state.enabled || !state.dbPath) {
+			if (!projectState.enabled || !projectState.dbPath) {
 				return reply
 					.code(404)
 					.send({error: 'TD not available for this project'});
 			}
 
-			const reader = new TdReader(state.dbPath);
+			const reader = new TdReader(projectState.dbPath);
 			try {
 				return {board: reader.getBoard()};
 			} finally {
@@ -1431,19 +1551,18 @@ export class APIServer {
 				return reply.code(400).send({error: 'Search query required'});
 			}
 
-			const project = coreService.getSelectedProject();
-			if (!project) {
+			const {project, projectState} = resolveSelectedProjectTdContext();
+			if (!project || !projectState) {
 				return reply.code(400).send({error: 'No project selected'});
 			}
 
-			const state = tdService.resolveProjectState(project.path);
-			if (!state.enabled || !state.dbPath) {
+			if (!projectState.enabled || !projectState.dbPath) {
 				return reply
 					.code(404)
 					.send({error: 'TD not available for this project'});
 			}
 
-			const reader = new TdReader(state.dbPath);
+			const reader = new TdReader(projectState.dbPath);
 			try {
 				return {issues: reader.searchIssues(q)};
 			} finally {
@@ -1451,29 +1570,80 @@ export class APIServer {
 			}
 		});
 
-		// Prompt templates for current project
-		this.app.get('/api/td/prompts', async (request, reply) => {
-			const project = coreService.getSelectedProject();
+		// Prompt templates by scope (project/global/effective/all)
+		this.app.get<{
+			Querystring: {scope?: PromptScope};
+		}>('/api/td/prompts', async (request, reply) => {
+			const scope = (request.query.scope || 'project') as PromptScope;
+			if (!['project', 'global', 'effective', 'all'].includes(scope)) {
+				return reply.code(400).send({error: 'Invalid prompt scope'});
+			}
+
+			if (scope === 'global') {
+				const templates = loadPromptTemplatesByScope('', 'global');
+				return {
+					templates: templates.map(t => ({
+						name: t.name,
+						path: t.path,
+						source: t.source,
+						effective: t.effective,
+						overridden: t.overridden,
+						overridesGlobal: t.overridesGlobal,
+					})),
+				};
+			}
+
+			const {project} = resolveSelectedProjectTdContext();
 			if (!project) {
 				return reply.code(400).send({error: 'No project selected'});
 			}
 
-			const templates = loadPromptTemplates(project.path);
-			return {templates: templates.map(t => ({name: t.name, path: t.path}))};
+			const templates = loadPromptTemplatesByScope(project.path, scope);
+			return {
+				templates: templates.map(t => ({
+					name: t.name,
+					path: t.path,
+					source: t.source,
+					effective: t.effective,
+					overridden: t.overridden,
+					overridesGlobal: t.overridesGlobal,
+				})),
+			};
 		});
 
 		// Get specific prompt template content
-		this.app.get<{Params: {name: string}}>(
+		this.app.get<{
+			Params: {name: string};
+			Querystring: {scope?: 'project' | 'global' | 'effective'};
+		}>(
 			'/api/td/prompts/:name',
 			async (request, reply) => {
-				const project = coreService.getSelectedProject();
+				const scope = request.query.scope || 'project';
+				if (!['project', 'global', 'effective'].includes(scope)) {
+					return reply.code(400).send({error: 'Invalid prompt scope'});
+				}
+
+				if (scope === 'global') {
+					const template = loadPromptTemplateByScope(
+						'',
+						'global',
+						request.params.name,
+					);
+					if (!template) {
+						return reply.code(404).send({error: 'Template not found'});
+					}
+					return {template};
+				}
+
+				const {project} = resolveSelectedProjectTdContext();
 				if (!project) {
 					return reply.code(400).send({error: 'No project selected'});
 				}
 
-				const templates = loadPromptTemplates(project.path);
-				const template = templates.find(
-					t => t.name === request.params.name,
+				const template = loadPromptTemplateByScope(
+					project.path,
+					scope,
+					request.params.name,
 				);
 				if (!template) {
 					return reply.code(404).send({error: 'Template not found'});
@@ -1482,6 +1652,82 @@ export class APIServer {
 				return {template};
 			},
 		);
+
+		// Upsert prompt template in selected scope
+		this.app.post<{
+			Body: {
+				scope?: 'project' | 'global';
+				name: string;
+				content: string;
+			};
+		}>('/api/td/prompts', async (request, reply) => {
+			const scope = request.body.scope || 'project';
+			if (!['project', 'global'].includes(scope)) {
+				return reply.code(400).send({error: 'Invalid prompt scope'});
+			}
+
+			if (!request.body.name || typeof request.body.name !== 'string') {
+				return reply.code(400).send({error: 'Prompt name is required'});
+			}
+
+			if (typeof request.body.content !== 'string') {
+				return reply.code(400).send({error: 'Prompt content is required'});
+			}
+
+			let projectPath = '';
+			if (scope === 'project') {
+				const {project} = resolveSelectedProjectTdContext();
+				if (!project) {
+					return reply.code(400).send({error: 'No project selected'});
+				}
+				projectPath = project.path;
+			}
+
+			try {
+				const template = savePromptTemplateByScope(
+					projectPath,
+					scope,
+					request.body.name,
+					request.body.content,
+				);
+				return {success: true, template};
+			} catch (error) {
+				return reply
+					.code(400)
+					.send({error: `Failed to save prompt template: ${error}`});
+			}
+		});
+
+		// Delete prompt template from selected scope
+		this.app.delete<{
+			Params: {name: string};
+			Querystring: {scope?: 'project' | 'global'};
+		}>('/api/td/prompts/:name', async (request, reply) => {
+			const scope = request.query.scope || 'project';
+			if (!['project', 'global'].includes(scope)) {
+				return reply.code(400).send({error: 'Invalid prompt scope'});
+			}
+
+			let projectPath = '';
+			if (scope === 'project') {
+				const {project} = resolveSelectedProjectTdContext();
+				if (!project) {
+					return reply.code(400).send({error: 'No project selected'});
+				}
+				projectPath = project.path;
+			}
+
+			const deleted = deletePromptTemplateByScope(
+				projectPath,
+				scope,
+				request.params.name,
+			);
+			if (!deleted) {
+				return reply.code(404).send({error: 'Template not found'});
+			}
+
+			return {success: true};
+		});
 
 		// Submit task for review
 		this.app.post<{Params: {id: string}}>(
@@ -1507,17 +1753,16 @@ export class APIServer {
 
 		// In-review tasks (for notification polling)
 		this.app.get('/api/td/in-review', async (request, reply) => {
-			const project = coreService.getSelectedProject();
-			if (!project) {
+			const {project, projectState} = resolveSelectedProjectTdContext();
+			if (!project || !projectState) {
 				return {issues: []};
 			}
 
-			const state = tdService.resolveProjectState(project.path);
-			if (!state.enabled || !state.dbPath) {
+			if (!projectState.enabled || !projectState.dbPath) {
 				return {issues: []};
 			}
 
-			const reader = new TdReader(state.dbPath);
+			const reader = new TdReader(projectState.dbPath);
 			try {
 				const issues = reader.listIssues({status: 'in_review'});
 				return {issues};
@@ -1832,7 +2077,12 @@ export class APIServer {
 			try {
 				const project = coreService.getSelectedProject();
 				if (!project) return;
-				const state = tdService.resolveProjectState(project.path);
+				const rawState = tdService.resolveProjectState(project.path);
+				const projectConfig = loadProjectConfig(project.path);
+				const state =
+					projectConfig?.td?.enabled === false
+						? {...rawState, enabled: false}
+						: rawState;
 				if (!state.enabled || !state.dbPath) return;
 
 				const reader = new TdReader(state.dbPath);

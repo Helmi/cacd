@@ -16,6 +16,10 @@ export interface TdAvailability {
 export interface TdProjectState {
 	/** Whether td is available for this project */
 	enabled: boolean;
+	/** Whether the project has a valid .todos/ state */
+	initialized: boolean;
+	/** Whether td binary is available on this machine */
+	binaryAvailable: boolean;
 	/** Path to .todos/ directory (resolved from .td-root or direct) */
 	todosDir: string | null;
 	/** Path to the issues.db SQLite database */
@@ -112,14 +116,15 @@ class TdService {
 	 * pointing back to the main project.
 	 */
 	resolveProjectState(projectPath: string): TdProjectState {
+		const binaryAvailable = this.isAvailable();
 		const disabled: TdProjectState = {
 			enabled: false,
+			initialized: false,
+			binaryAvailable,
 			todosDir: null,
 			dbPath: null,
 			tdRoot: null,
 		};
-
-		if (!this.isAvailable()) return disabled;
 
 		const resolved = path.resolve(projectPath);
 
@@ -130,7 +135,8 @@ class TdService {
 				const tdRootContent = readFileSync(tdRootFile, 'utf-8').trim();
 				if (tdRootContent) {
 					const tdRoot = path.resolve(resolved, tdRootContent);
-					return this.checkTodosDir(tdRoot);
+					const tdRootResult = this.checkTodosDir(tdRoot, binaryAvailable);
+					if (tdRootResult.initialized) return tdRootResult;
 				}
 			} catch {
 				logger.warn(`[TdService] Failed to read .td-root at ${tdRootFile}`);
@@ -138,14 +144,14 @@ class TdService {
 		}
 
 		// 2. Check for .todos/ in the given path
-		const directResult = this.checkTodosDir(resolved);
-		if (directResult.enabled) return directResult;
+		const directResult = this.checkTodosDir(resolved, binaryAvailable);
+		if (directResult.initialized) return directResult;
 
 		// 3. Walk up to find .todos/ (max 10 levels to avoid infinite loops)
 		let current = path.dirname(resolved);
 		for (let i = 0; i < 10; i++) {
-			const parentResult = this.checkTodosDir(current);
-			if (parentResult.enabled) return parentResult;
+			const parentResult = this.checkTodosDir(current, binaryAvailable);
+			if (parentResult.initialized) return parentResult;
 
 			const parent = path.dirname(current);
 			if (parent === current) break; // reached filesystem root
@@ -180,7 +186,10 @@ class TdService {
 		this.availability = null;
 	}
 
-	private checkTodosDir(rootPath: string): TdProjectState {
+	private checkTodosDir(
+		rootPath: string,
+		binaryAvailable: boolean,
+	): TdProjectState {
 		const todosDir = path.join(rootPath, '.todos');
 		const dbPath = path.join(todosDir, 'issues.db');
 
@@ -189,7 +198,9 @@ class TdService {
 				const stats = statSync(dbPath);
 				if (stats.isFile() && stats.size > 0) {
 					return {
-						enabled: true,
+						enabled: binaryAvailable,
+						initialized: true,
+						binaryAvailable,
 						todosDir,
 						dbPath,
 						tdRoot: rootPath,
@@ -202,6 +213,8 @@ class TdService {
 
 		return {
 			enabled: false,
+			initialized: false,
+			binaryAvailable,
 			todosDir: null,
 			dbPath: null,
 			tdRoot: null,

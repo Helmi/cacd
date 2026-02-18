@@ -8,21 +8,23 @@ import {
   SettingsStatusHooks,
   SettingsWorktreeHooks,
   SettingsTd,
+  SettingsProject,
 } from '@/components/settings'
-import { Settings, Bot, Bell, GitBranch, X, Loader2, ChevronRight, ListTodo } from 'lucide-react'
+import { Settings, Bot, Bell, GitBranch, X, Loader2, ChevronRight, ListTodo, FolderCog } from 'lucide-react'
 import { ThemeSelector } from '@/components/ThemeSelector'
 import { FontSelector } from '@/components/FontSelector'
 import { cn } from '@/lib/utils'
 import type { AppConfig, AgentConfig } from '@/lib/types'
 
-type SettingsSection = 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td'
+type SettingsSection = 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td' | 'project'
 
 const NAV_ITEMS: { id: SettingsSection; label: string; icon: typeof Settings; description: string }[] = [
   { id: 'general', label: 'General', icon: Settings, description: 'Auto-approval, worktree defaults' },
   { id: 'agents', label: 'Agents', icon: Bot, description: 'Configure agent presets' },
   { id: 'status-hooks', label: 'Status Hooks', icon: Bell, description: 'Session status notifications' },
   { id: 'worktree-hooks', label: 'Worktree Hooks', icon: GitBranch, description: 'Lifecycle automation' },
-  { id: 'td', label: 'Task Management', icon: ListTodo, description: 'TD integration settings' },
+  { id: 'td', label: 'TD Global', icon: ListTodo, description: 'Global td and prompt settings' },
+  { id: 'project', label: 'Project', icon: FolderCog, description: 'Project-specific td and config' },
 ]
 
 export function SettingsScreen() {
@@ -164,6 +166,8 @@ export function SettingsScreen() {
         return <SettingsWorktreeHooks localConfig={localConfig} setLocalConfig={setLocalConfig} />
       case 'td':
         return <SettingsTd />
+      case 'project':
+        return <SettingsProject />
       default:
         return null
     }
@@ -171,6 +175,7 @@ export function SettingsScreen() {
 
   // Get current nav item for mobile header
   const currentNavItem = NAV_ITEMS.find(item => item.id === settingsSection)
+  const showGlobalSave = settingsSection !== 'td' && settingsSection !== 'project'
 
   return (
     <>
@@ -331,15 +336,17 @@ export function SettingsScreen() {
           >
             Cancel
           </Button>
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={saving || configLoading}
-            className="h-8 px-4 text-sm"
-          >
-            {saving && <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />}
-            {saving ? 'Saving...' : 'Save Changes'}
-          </Button>
+          {showGlobalSave && (
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={saving || configLoading}
+              className="h-8 px-4 text-sm"
+            >
+              {saving && <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />}
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          )}
         </footer>
       </div>
     </>

@@ -105,7 +105,34 @@ describe('TdService', () => {
 			const result = tdService.resolveProjectState('/some/project');
 
 			expect(result.enabled).toBe(false);
+			expect(result.initialized).toBe(false);
+			expect(result.binaryAvailable).toBe(false);
 			expect(result.dbPath).toBeNull();
+		});
+
+		it('should detect initialized project even when td binary is not available', () => {
+			mockedExecFileSync.mockImplementation(() => {
+				throw new Error('not found');
+			});
+
+			mockedExistsSync.mockImplementation((p: unknown) => {
+				const s = String(p);
+				if (s.endsWith('.td-root')) return false;
+				if (s === '/project/.todos') return true;
+				if (s === '/project/.todos/issues.db') return true;
+				return false;
+			});
+
+			mockedStatSync.mockReturnValue({
+				isFile: () => true,
+				size: 512,
+			} as never);
+
+			const result = tdService.resolveProjectState('/project');
+			expect(result.initialized).toBe(true);
+			expect(result.enabled).toBe(false);
+			expect(result.binaryAvailable).toBe(false);
+			expect(result.tdRoot).toBe('/project');
 		});
 
 		it('should resolve via .td-root file', () => {
@@ -134,6 +161,8 @@ describe('TdService', () => {
 			const result = tdService.resolveProjectState('/worktree');
 
 			expect(result.enabled).toBe(true);
+			expect(result.initialized).toBe(true);
+			expect(result.binaryAvailable).toBe(true);
 			expect(result.tdRoot).toBe('/main/project');
 			expect(result.dbPath).toBe(
 				path.join('/main/project', '.todos', 'issues.db'),
@@ -162,6 +191,8 @@ describe('TdService', () => {
 			const result = tdService.resolveProjectState('/project');
 
 			expect(result.enabled).toBe(true);
+			expect(result.initialized).toBe(true);
+			expect(result.binaryAvailable).toBe(true);
 			expect(result.tdRoot).toBe('/project');
 		});
 
@@ -176,6 +207,8 @@ describe('TdService', () => {
 			const result = tdService.resolveProjectState('/empty/project');
 
 			expect(result.enabled).toBe(false);
+			expect(result.initialized).toBe(false);
+			expect(result.binaryAvailable).toBe(true);
 		});
 	});
 
