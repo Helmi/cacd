@@ -22,7 +22,7 @@ import {ProcessError, ConfigError} from '../types/errors.js';
 import {autoApprovalVerifier} from './autoApprovalVerifier.js';
 import {logger} from '../utils/logger.js';
 import {Mutex, createInitialSessionStateData} from '../utils/mutex.js';
-import {getPtyEnv} from '../utils/platform.js';
+import {getDefaultShell, getPtyEnv} from '../utils/platform.js';
 const {Terminal} = pkg;
 const execAsync = promisify(exec);
 const TERMINAL_CONTENT_MAX_LINES = 300;
@@ -103,6 +103,56 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		const pty = spawn(command, args, spawnOptions);
 		logger.info(`[SessionManager] Spawned PID: ${pty.pid}`);
 		return pty;
+	}
+
+	private isPowerShell(shellCommand: string): boolean {
+		const normalized = shellCommand.toLowerCase();
+		return (
+			normalized.includes('powershell') ||
+			normalized.endsWith('pwsh') ||
+			normalized.endsWith('pwsh.exe')
+		);
+	}
+
+	private quotePosix(value: string): string {
+		return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+	}
+
+	private quotePowerShell(value: string): string {
+		return `'${value.replace(/'/g, "''")}'`;
+	}
+
+	private buildBootstrapCommand(
+		shellCommand: string,
+		command: string,
+		args: string[],
+	): string {
+		if (this.isPowerShell(shellCommand)) {
+			const escapedCommand = this.quotePowerShell(command);
+			const escapedArgs = args.map(arg => this.quotePowerShell(arg));
+			return ['&', escapedCommand, ...escapedArgs].join(' ');
+		}
+
+		const escapedCommand = this.quotePosix(command);
+		const escapedArgs = args.map(arg => this.quotePosix(arg));
+		return [escapedCommand, ...escapedArgs].join(' ');
+	}
+
+	private bootstrapCommandInShell(
+		shellProcess: IPty,
+		shellCommand: string,
+		command: string,
+		args: string[],
+	): void {
+		const bootstrapCommand = this.buildBootstrapCommand(
+			shellCommand,
+			command,
+			args,
+		);
+		logger.info(
+			`[SessionManager] Bootstrapping shell with: ${command} ${args.join(' ')}`,
+		);
+		shellProcess.write(`${bootstrapCommand}\r`);
 	}
 
 	detectTerminalState(session: Session): SessionState {
@@ -472,6 +522,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	 * @param sessionName - Optional custom session name
 	 * @param agentId - Optional agent ID
 	 * @param extraEnv - Optional extra environment variables to pass to the process
+	 * @param agentKind - Agent kind (`agent` or `terminal`)
 	 */
 	createSessionWithAgentEffect(
 		worktreePath: string,
@@ -481,21 +532,23 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		sessionName?: string,
 		agentId?: string,
 		extraEnv?: Record<string, string>,
+		agentKind: 'agent' | 'terminal' = 'agent',
 	): Effect.Effect<Session, ProcessError, never> {
 		return Effect.tryPromise({
 			try: async () => {
-				// Spawn the process with optional extra env
-				const ptyProcess = await this.spawn(
-					command,
-					args,
+				// Spawn a persistent shell first; agent command runs inside it.
+				const shellCommand = getDefaultShell();
+				const shellProcess = await this.spawn(
+					shellCommand,
+					[],
 					worktreePath,
 					extraEnv,
 				);
 
-				// Create session without fallback config (agents don't use fallback)
+				// Create session without fallback config (agent sessions don't use fallback)
 				const session = this.createSessionInternal(
 					worktreePath,
-					ptyProcess,
+					shellProcess,
 					undefined, // No legacy commandConfig
 					{
 						isPrimaryCommand: true,
@@ -504,6 +557,12 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 						agentId: agentId,
 					},
 				);
+
+				// Terminal-kind sessions are plain interactive shells.
+				// Agent-kind sessions execute one bootstrap command, then return to shell prompt on exit.
+				if (agentKind !== 'terminal') {
+					this.bootstrapCommandInShell(shellProcess, shellCommand, command, args);
+				}
 
 				return session;
 			},

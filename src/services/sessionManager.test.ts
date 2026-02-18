@@ -4,6 +4,7 @@ import {spawn, IPty} from 'node-pty';
 import {EventEmitter} from 'events';
 import {Session, DevcontainerConfig} from '../types/index.js';
 import {exec} from 'child_process';
+import {getDefaultShell} from '../utils/platform.js';
 
 // Mock node-pty
 vi.mock('node-pty', () => ({
@@ -431,6 +432,64 @@ describe('SessionManager', () => {
 			).rejects.toThrow('spawn failed');
 		});
 	});
+
+	describe('createSessionWithAgentEffect', () => {
+			it('should spawn a persistent shell and bootstrap the agent command', async () => {
+				vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
+
+				await Effect.runPromise(
+					sessionManager.createSessionWithAgentEffect(
+						'/test/worktree',
+						'claude',
+						['--resume'],
+						'claude',
+						'Agent Session',
+						'claude',
+						{TEST_ENV: '1'},
+						'agent',
+					),
+				);
+
+				expect(spawn).toHaveBeenCalledWith(
+					getDefaultShell(),
+					[],
+					expect.objectContaining({
+						cwd: '/test/worktree',
+						env: expect.objectContaining({TEST_ENV: '1'}),
+					}),
+				);
+
+				expect(mockPty.write).toHaveBeenCalledTimes(1);
+				const bootstrapCommand = mockPty.write.mock.calls[0]?.[0] as string;
+				expect(bootstrapCommand).toContain('claude');
+				expect(bootstrapCommand).toContain('--resume');
+				expect(bootstrapCommand.endsWith('\r')).toBe(true);
+			});
+
+			it('should keep terminal sessions as plain shells without bootstrap command', async () => {
+				vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
+
+				await Effect.runPromise(
+					sessionManager.createSessionWithAgentEffect(
+						'/test/worktree',
+						'ignored-for-terminal-kind',
+						['--ignored'],
+						undefined,
+						undefined,
+						'terminal',
+						undefined,
+						'terminal',
+					),
+				);
+
+				expect(spawn).toHaveBeenCalledWith(
+					getDefaultShell(),
+					[],
+					expect.objectContaining({cwd: '/test/worktree'}),
+				);
+				expect(mockPty.write).not.toHaveBeenCalled();
+			});
+		});
 
 	describe('session lifecycle', () => {
 		it('should destroy session and clean up resources', async () => {
