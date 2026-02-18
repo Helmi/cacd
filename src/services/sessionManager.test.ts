@@ -431,9 +431,9 @@ describe('SessionManager', () => {
 				),
 			).rejects.toThrow('spawn failed');
 		});
-		});
+	});
 
-		describe('createSessionWithAgentEffect', () => {
+	describe('createSessionWithAgentEffect', () => {
 			it('should spawn a persistent shell and bootstrap the agent command', async () => {
 				vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
 
@@ -491,7 +491,7 @@ describe('SessionManager', () => {
 			});
 		});
 
-		describe('session lifecycle', () => {
+	describe('session lifecycle', () => {
 		it('should destroy session and clean up resources', async () => {
 			// Setup
 			vi.mocked(configurationManager.getDefaultPreset).mockReturnValue({
