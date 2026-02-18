@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react'
 import { io, Socket } from 'socket.io-client'
-import type { Session, Worktree, Project, ThemeType, FontType, ConnectionStatus, AppConfig, ChangedFile, AgentConfig, AgentsConfig } from './types'
+import type { Session, Worktree, Project, ThemeType, FontType, ConnectionStatus, AppConfig, ChangedFile, AgentConfig, AgentsConfig, TdStatus, TdIssue } from './types'
 import { mapBackendToFrontend, mapFrontendToBackend, getDefaultConfig } from './configMapper'
 
 // Debounce utility
@@ -81,6 +81,11 @@ interface AppState {
   // Error handling
   error: string | null
 
+  // TD Integration
+  tdStatus: TdStatus | null
+  tdIssues: TdIssue[]
+  tdBoardView: Record<string, TdIssue[]>
+
   // Socket
   socket: Socket
 }
@@ -156,6 +161,11 @@ interface AppActions {
   // File viewing (from file browser)
   openFile: (worktreePath: string, filePath: string) => void
   closeFile: () => void
+
+  // TD Integration
+  fetchTdStatus: () => Promise<void>
+  fetchTdIssues: (options?: { status?: string; type?: string; parentId?: string }) => Promise<void>
+  fetchTdBoard: () => Promise<void>
 
   // Error handling
   clearError: () => void
@@ -268,6 +278,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Error state
   const [error, setError] = useState<string | null>(null)
+
+  // TD Integration state
+  const [tdStatus, setTdStatus] = useState<TdStatus | null>(null)
+  const [tdIssues, setTdIssues] = useState<TdIssue[]>([])
+  const [tdBoardView, setTdBoardView] = useState<Record<string, TdIssue[]>>({})
 
   // Apply theme to document
   useEffect(() => {
@@ -382,6 +397,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error('Failed to fetch agents:', err)
     } finally {
       setAgentsLoading(false)
+    }
+  }, [])
+
+  // TD Integration fetchers
+  const fetchTdStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/td/status', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setTdStatus(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch td status:', err)
+    }
+  }, [])
+
+  const fetchTdIssues = useCallback(async (options?: { status?: string; type?: string; parentId?: string }) => {
+    try {
+      const params = new URLSearchParams()
+      if (options?.status) params.set('status', options.status)
+      if (options?.type) params.set('type', options.type)
+      if (options?.parentId) params.set('parentId', options.parentId)
+      const qs = params.toString()
+      const res = await fetch(`/api/td/issues${qs ? `?${qs}` : ''}`, { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setTdIssues(data.issues)
+      }
+    } catch (err) {
+      console.error('Failed to fetch td issues:', err)
+    }
+  }, [])
+
+  const fetchTdBoard = useCallback(async () => {
+    try {
+      const res = await fetch('/api/td/board', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setTdBoardView(data.board)
+      }
+    } catch (err) {
+      console.error('Failed to fetch td board:', err)
     }
   }, [])
 
@@ -535,6 +592,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setSelectedSessions([])
       await fetchData()
+      // Fetch td status for newly selected project
+      fetchTdStatus()
     } catch (e) {
       console.error(e)
       setError('Failed to select project. Check your connection.')
@@ -1062,6 +1121,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveAgent,
     deleteAgent: deleteAgentAction,
     setDefaultAgentId: setDefaultAgentIdAction,
+    // TD Integration
+    tdStatus,
+    tdIssues,
+    tdBoardView,
+    fetchTdStatus,
+    fetchTdIssues,
+    fetchTdBoard,
   }
 
   return <AppContext.Provider value={store}>{children}</AppContext.Provider>
