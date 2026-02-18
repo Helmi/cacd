@@ -18,10 +18,10 @@ import {
   ListTodo,
   Circle,
   CircleDot,
-  CheckCircle2,
+  FileText,
 } from 'lucide-react'
 import { cn, generateWorktreePath as generatePath } from '@/lib/utils'
-import type { AgentConfig, TdIssue } from '@/lib/types'
+import type { AgentConfig, TdIssue, TdPromptTemplate } from '@/lib/types'
 
 export function AddSessionScreen() {
   const {
@@ -65,6 +65,10 @@ export function AddSessionScreen() {
   const [loadingTdTasks, setLoadingTdTasks] = useState(false)
   const tdTaskDropdownRef = useRef<HTMLDivElement>(null)
   const tdTaskInputRef = useRef<HTMLInputElement>(null)
+
+  // Prompt template state
+  const [promptTemplates, setPromptTemplates] = useState<TdPromptTemplate[]>([])
+  const [selectedPromptTemplate, setSelectedPromptTemplate] = useState<string>('')
 
   // Task list state (Claude-specific)
   const [taskListName, setTaskListName] = useState('')
@@ -266,6 +270,18 @@ export function AddSessionScreen() {
       .finally(() => setLoadingTdTasks(false))
   }, [tdEnabled])
 
+  // Fetch prompt templates when td is enabled
+  useEffect(() => {
+    if (!tdEnabled) {
+      setPromptTemplates([])
+      return
+    }
+    fetch('/api/td/prompts', { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setPromptTemplates(data.templates || []))
+      .catch(() => setPromptTemplates([]))
+  }, [tdEnabled])
+
   // Filter td tasks by search
   const filteredTdTasks = useMemo(() => {
     if (!tdTaskSearch) return tdTasks
@@ -452,7 +468,8 @@ export function AddSessionScreen() {
         agentOptions,
         sessionName || undefined,
         taskListName || undefined,
-        selectedTdTaskId || undefined
+        selectedTdTaskId || undefined,
+        selectedPromptTemplate || undefined
       )
 
       if (success) {
@@ -816,6 +833,37 @@ export function AddSessionScreen() {
                         )}
                         <p className="text-xs text-muted-foreground">
                           Link this session to a td task for context tracking
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Prompt Template (when td enabled + task selected) */}
+                    {tdEnabled && selectedTdTaskId && promptTemplates.length > 0 && (
+                      <div className="space-y-2">
+                        <Label>Prompt Template</Label>
+                        <Select
+                          value={selectedPromptTemplate || '__none__'}
+                          onValueChange={(v) => setSelectedPromptTemplate(v === '__none__' ? '' : v)}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue placeholder="None (default context only)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">
+                              None
+                            </SelectItem>
+                            {promptTemplates.map(t => (
+                              <SelectItem key={t.name} value={t.name}>
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-3 w-3" />
+                                  {t.name}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Apply a prompt template with task context
                         </p>
                       </div>
                     )}

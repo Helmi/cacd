@@ -31,7 +31,7 @@ import {
 import {getDefaultShell} from '../utils/platform.js';
 import {tdService} from './tdService.js';
 import {TdReader} from './tdReader.js';
-import {loadPromptTemplates} from '../utils/projectConfig.js';
+import {loadPromptTemplates, loadPromptTemplate} from '../utils/projectConfig.js';
 
 // --- Clipboard Image Paste Constants ---
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -1114,6 +1114,7 @@ export class APIServer {
 				sessionName?: string;
 				taskListName?: string;
 				tdTaskId?: string;
+				promptTemplate?: string;
 			};
 		}>('/api/session/create-with-agent', async (request, reply) => {
 			const {
@@ -1123,6 +1124,7 @@ export class APIServer {
 				sessionName,
 				taskListName,
 				tdTaskId,
+				promptTemplate,
 			} = request.body;
 			logger.info(
 				`API: Creating session "${sessionName || 'unnamed'}" for ${path} with agent: ${agentId}`,
@@ -1178,6 +1180,81 @@ export class APIServer {
 				logger.info(
 					`API: Setting TD_SESSION_ID=${sessionId}, TD_TASK_ID=${tdTaskId}`,
 				);
+
+				// Write task context file to worktree
+				try {
+					const tdState = tdService.resolveProjectState(path);
+					if (tdState.enabled && tdState.tdRoot) {
+						const reader = new TdReader(tdState.tdRoot);
+						const taskDetail = reader.getIssueWithDetails(tdTaskId);
+						if (taskDetail) {
+							const lines: string[] = [
+								`# Task: ${taskDetail.id}`,
+								'',
+								`**${taskDetail.title}**`,
+								'',
+								`Status: ${taskDetail.status} | Priority: ${taskDetail.priority} | Type: ${taskDetail.type}`,
+								'',
+							];
+							if (taskDetail.description) {
+								lines.push('## Description', '', taskDetail.description, '');
+							}
+							if (taskDetail.acceptance) {
+								lines.push('## Acceptance Criteria', '', taskDetail.acceptance, '');
+							}
+							if (taskDetail.handoffs?.length > 0) {
+								const latest = taskDetail.handoffs[0]!;
+								lines.push('## Latest Handoff', '');
+								if (latest.done.length > 0) {
+									lines.push('### Done');
+									latest.done.forEach(item => lines.push(`- [x] ${item}`));
+									lines.push('');
+								}
+								if (latest.remaining.length > 0) {
+									lines.push('### Remaining');
+									latest.remaining.forEach(item => lines.push(`- [ ] ${item}`));
+									lines.push('');
+								}
+								if (latest.uncertain.length > 0) {
+									lines.push('### Uncertain');
+									latest.uncertain.forEach(item => lines.push(`- ??? ${item}`));
+									lines.push('');
+								}
+							}
+
+							// Apply prompt template if provided
+							if (promptTemplate) {
+								const projects = projectManager.getProjects();
+								const project = projects.find(
+									(p: {path: string}) => path.startsWith(p.path) || path.includes(`/.worktrees/${p.path.split('/').pop()}/`)
+								);
+								if (project) {
+									const tmpl = loadPromptTemplate(project.path, promptTemplate);
+									if (tmpl?.content) {
+										// Simple variable substitution in prompt template
+										const rendered = tmpl.content
+											.replace(/\{\{task\.id\}\}/g, taskDetail.id)
+											.replace(/\{\{task\.title\}\}/g, taskDetail.title)
+											.replace(/\{\{task\.description\}\}/g, taskDetail.description || '')
+											.replace(/\{\{task\.status\}\}/g, taskDetail.status)
+											.replace(/\{\{task\.priority\}\}/g, taskDetail.priority)
+											.replace(/\{\{task\.acceptance\}\}/g, taskDetail.acceptance || '');
+										lines.push('## Instructions', '', rendered, '');
+									}
+								}
+							}
+
+							await writeFile(
+								`${path}/.td-task-context.md`,
+								lines.join('\n'),
+								'utf-8'
+							);
+							logger.info(`API: Wrote .td-task-context.md to ${path}`);
+						}
+					}
+				} catch (err) {
+					logger.warn(`API: Failed to write task context: ${err}`);
+				}
 			}
 
 			// Create session with resolved command and args
