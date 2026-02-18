@@ -19,3 +19,14 @@ TODO.md
 temp/
 docs.archive/
 .npmrc
+.todos/
+
+# Sidecar worktree state files
+.sidecar/
+.sidecar-agent
+.sidecar-task
+.sidecar-pr
+.sidecar-start.sh
+.sidecar-base
+.td-root
+.sidecar-*
