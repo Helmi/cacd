@@ -1,5 +1,10 @@
 # CA⚡CD - Coding Agent Control Desk - Repository Guidelines
 
+## MANDATORY: Use td for Task Management
+
+You must run td usage --new-session at conversation start (or after /clear) to see current work.
+Use td usage -q for subsequent reads.
+
 **Coding Agent Control Desk (CACD)** is a hard fork of the original `ccmanager` project.
 **Primary Goal:** Evolve the tool into a comprehensive control plane for AI agents, featuring a robust WebUI alongside the original TUI, and significantly extending the feature set beyond simple session management.
 
@@ -156,9 +161,24 @@ GitHub Actions handles npm publish and GitHub release creation.
 
 **IMPORTANT:** Never execute release commands autonomously.
 
-When significant work is completed (features, bug fixes, milestones), proactively suggest a release to the user:
-- Mention the current version and what the next version should be
-- Offer to run `bun run release:dry` first to preview
+**When to suggest a release:**
+- After an **epic is completed** and merged → suggest **minor** bump (e.g., 0.3.0 → 0.4.0)
+- After **bug fixes only** are merged → suggest **patch** bump (e.g., 0.4.0 → 0.4.1)
+- After a **breaking change** (API, config format, CLI interface change) → suggest **minor** bump (pre-1.0) or **major** bump (post-1.0)
+- When **multiple features/fixes accumulate** without a release → proactively suggest cutting one
 
-**Only execute release commands after explicit user confirmation.** Example:
-> "We've completed the versioning feature. Ready to release 0.2.0? Want me to run `bun run release:dry` first?"
+**When NOT to suggest:**
+- Work is still in progress or known to be flaky
+- Only chore/docs commits since last release
+- User explicitly deferred a release
+
+**How to suggest:**
+1. State current version and proposed next version with reasoning
+2. Summarize what's in the release (features, fixes)
+3. Offer `bun run release:dry` first to preview
+4. **Only execute after explicit user confirmation**
+
+Example:
+> "TD Integration epic is done and persistent sessions merged. That's v0.4.0 material (two features). Want me to dry-run it first?"
+
+**Changelog quality:** After `standard-version` generates CHANGELOG.md, review it. Rewrite vague commit messages into user-facing descriptions if needed before the release commit.
