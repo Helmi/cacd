@@ -1288,6 +1288,7 @@ export class APIServer {
 				sessionName,
 				agentId,
 				Object.keys(extraEnv).length > 0 ? extraEnv : undefined,
+				agent.kind,
 			);
 			const result = await Effect.runPromise(Effect.either(effect));
 
