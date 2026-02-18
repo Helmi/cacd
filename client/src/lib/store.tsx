@@ -85,6 +85,7 @@ interface AppState {
   tdStatus: TdStatus | null
   tdIssues: TdIssue[]
   tdBoardView: Record<string, TdIssue[]>
+  taskBoardOpen: boolean
 
   // Socket
   socket: Socket
@@ -166,6 +167,8 @@ interface AppActions {
   fetchTdStatus: () => Promise<void>
   fetchTdIssues: (options?: { status?: string; type?: string; parentId?: string }) => Promise<void>
   fetchTdBoard: () => Promise<void>
+  openTaskBoard: () => void
+  closeTaskBoard: () => void
 
   // Error handling
   clearError: () => void
@@ -283,6 +286,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tdStatus, setTdStatus] = useState<TdStatus | null>(null)
   const [tdIssues, setTdIssues] = useState<TdIssue[]>([])
   const [tdBoardView, setTdBoardView] = useState<Record<string, TdIssue[]>>({})
+  const [taskBoardOpen, setTaskBoardOpen] = useState(false)
 
   // Apply theme to document
   useEffect(() => {
@@ -441,6 +445,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error('Failed to fetch td board:', err)
     }
   }, [])
+
+  const openTaskBoard = useCallback(() => setTaskBoardOpen(true), [])
+  const closeTaskBoard = useCallback(() => setTaskBoardOpen(false), [])
 
   // Save (create or update) an agent
   const saveAgent = async (agent: AgentConfig): Promise<boolean> => {
@@ -1125,9 +1132,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     tdStatus,
     tdIssues,
     tdBoardView,
+    taskBoardOpen,
     fetchTdStatus,
     fetchTdIssues,
     fetchTdBoard,
+    openTaskBoard,
+    closeTaskBoard,
   }
 
   return <AppContext.Provider value={store}>{children}</AppContext.Provider>

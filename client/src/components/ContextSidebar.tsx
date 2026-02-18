@@ -10,6 +10,7 @@ import { StatusIndicator, statusLabels } from '@/components/StatusIndicator'
 import { AgentIcon, getLegacyAgentIconProps } from '@/components/AgentIcon'
 import { FileBrowser } from '@/components/FileBrowser'
 import { mapSessionState, ChangedFile } from '@/lib/types'
+import { TaskContextCard } from '@/components/TaskContextCard'
 import { X, GitBranch, Folder, Copy, Check, FileText, FilePlus, FileX, FileEdit, FileQuestion, GitCommit, FolderTree, Pencil } from 'lucide-react'
 import { cn, formatPath, copyToClipboard } from '@/lib/utils'
 
@@ -239,6 +240,9 @@ export function ContextSidebar() {
               </TooltipContent>
             </Tooltip>
           </div>
+
+          {/* Task Context (only when td is enabled) */}
+          <TaskContextCard worktreePath={session.path} />
 
           {/* Divider */}
           <div className="border-t border-border" />
