@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { TaskDetailModal } from '@/components/TaskDetailModal'
 import {
   ListTodo,
   LayoutGrid,
@@ -16,7 +17,6 @@ import {
   CheckCircle2,
   PauseCircle,
   AlertCircle,
-  ChevronRight,
   Layers,
   Tag,
 } from 'lucide-react'
@@ -120,7 +120,6 @@ export function TaskBoard() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<TdIssue[] | null>(null)
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null)
-  const [selectedIssue, setSelectedIssue] = useState<TdIssue | null>(null)
 
   // Fetch board data on mount
   useEffect(() => {
@@ -146,26 +145,6 @@ export function TaskBoard() {
       // Silent fail
     }
   }, [searchQuery])
-
-  // Fetch selected issue details
-  useEffect(() => {
-    if (!selectedIssueId) {
-      setSelectedIssue(null)
-      return
-    }
-    const fetchDetail = async () => {
-      try {
-        const res = await fetch(`/api/td/issues/${selectedIssueId}`, { credentials: 'include' })
-        if (res.ok) {
-          const data = await res.json()
-          setSelectedIssue(data.issue)
-        }
-      } catch {
-        // Silent fail
-      }
-    }
-    fetchDetail()
-  }, [selectedIssueId])
 
   if (!tdStatus?.projectState?.enabled) {
     return (
@@ -269,57 +248,13 @@ export function TaskBoard() {
         </ScrollArea>
       )}
 
-      {/* Issue Detail Panel (slide-up) */}
-      {selectedIssue && (
-        <div className="border-t border-border bg-card p-3 space-y-2 max-h-[40%] overflow-y-auto shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-muted-foreground">{selectedIssue.id}</span>
-              <span className={cn(
-                'text-[10px] rounded-full px-2 py-0.5',
-                selectedIssue.status === 'in_progress' && 'bg-blue-500/20 text-blue-400',
-                selectedIssue.status === 'open' && 'bg-muted/50 text-muted-foreground',
-                selectedIssue.status === 'in_review' && 'bg-purple-500/20 text-purple-400',
-                selectedIssue.status === 'closed' && 'bg-green-500/20 text-green-400',
-                selectedIssue.status === 'blocked' && 'bg-red-500/20 text-red-400',
-              )}>
-                {selectedIssue.status.replace('_', ' ')}
-              </span>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5"
-              onClick={() => setSelectedIssueId(null)}
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-          <h3 className="text-sm font-medium">{selectedIssue.title}</h3>
-          {selectedIssue.description && (
-            <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
-              {selectedIssue.description}
-            </p>
-          )}
-          {(selectedIssue as any).children?.length > 0 && (
-            <div className="space-y-1">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Subtasks
-              </span>
-              {(selectedIssue as any).children.map((child: TdIssue) => (
-                <button
-                  key={child.id}
-                  onClick={() => setSelectedIssueId(child.id)}
-                  className="flex items-center gap-1.5 w-full text-left text-xs hover:bg-accent/50 rounded px-1.5 py-1"
-                >
-                  <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                  <span className="font-mono text-muted-foreground">{child.id}</span>
-                  <span className="truncate flex-1">{child.title}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Task Detail Modal */}
+      {selectedIssueId && (
+        <TaskDetailModal
+          issueId={selectedIssueId}
+          onClose={() => setSelectedIssueId(null)}
+          onNavigate={setSelectedIssueId}
+        />
       )}
     </div>
   )

@@ -15,9 +15,13 @@ import {
   Folder,
   Plus,
   AlertTriangle,
+  ListTodo,
+  Circle,
+  CircleDot,
+  CheckCircle2,
 } from 'lucide-react'
 import { cn, generateWorktreePath as generatePath } from '@/lib/utils'
-import type { AgentConfig } from '@/lib/types'
+import type { AgentConfig, TdIssue } from '@/lib/types'
 
 export function AddSessionScreen() {
   const {
@@ -34,6 +38,7 @@ export function AddSessionScreen() {
     agents,
     defaultAgentId,
     openAddProject,
+    tdStatus,
   } = useAppStore()
 
   // Animation state
@@ -51,6 +56,15 @@ export function AddSessionScreen() {
   const [loadingBranches, setLoadingBranches] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // TD task linking state
+  const [selectedTdTaskId, setSelectedTdTaskId] = useState<string>('')
+  const [tdTasks, setTdTasks] = useState<TdIssue[]>([])
+  const [tdTaskSearch, setTdTaskSearch] = useState('')
+  const [showTdTaskDropdown, setShowTdTaskDropdown] = useState(false)
+  const [loadingTdTasks, setLoadingTdTasks] = useState(false)
+  const tdTaskDropdownRef = useRef<HTMLDivElement>(null)
+  const tdTaskInputRef = useRef<HTMLInputElement>(null)
 
   // Task list state (Claude-specific)
   const [taskListName, setTaskListName] = useState('')
@@ -237,6 +251,51 @@ export function AddSessionScreen() {
     }
   }, [showTaskListDropdown])
 
+  // Fetch td tasks when td is enabled
+  const tdEnabled = !!tdStatus?.projectState?.enabled
+  useEffect(() => {
+    if (!tdEnabled) {
+      setTdTasks([])
+      return
+    }
+    setLoadingTdTasks(true)
+    fetch('/api/td/issues?status=open,in_progress', { credentials: 'include' })
+      .then(res => res.json())
+      .then(data => setTdTasks(data.issues || []))
+      .catch(() => setTdTasks([]))
+      .finally(() => setLoadingTdTasks(false))
+  }, [tdEnabled])
+
+  // Filter td tasks by search
+  const filteredTdTasks = useMemo(() => {
+    if (!tdTaskSearch) return tdTasks
+    const q = tdTaskSearch.toLowerCase()
+    return tdTasks.filter(t =>
+      t.id.toLowerCase().includes(q) || t.title.toLowerCase().includes(q)
+    )
+  }, [tdTasks, tdTaskSearch])
+
+  // Close td task dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        tdTaskDropdownRef.current &&
+        !tdTaskDropdownRef.current.contains(event.target as Node) &&
+        tdTaskInputRef.current &&
+        !tdTaskInputRef.current.contains(event.target as Node)
+      ) {
+        setShowTdTaskDropdown(false)
+      }
+    }
+    if (showTdTaskDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showTdTaskDropdown])
+
+  // Get selected td task for display
+  const selectedTdTask = tdTasks.find(t => t.id === selectedTdTaskId)
+
   // Generate default session name
   const generateDefaultSessionName = (agent: AgentConfig | undefined): string => {
     if (!agent) return `Session-${Date.now().toString(36).slice(-4)}`
@@ -392,7 +451,8 @@ export function AddSessionScreen() {
         selectedAgentId,
         agentOptions,
         sessionName || undefined,
-        taskListName || undefined
+        taskListName || undefined,
+        selectedTdTaskId || undefined
       )
 
       if (success) {
@@ -676,6 +736,89 @@ export function AddSessionScreen() {
                         A name to identify this session
                       </p>
                     </div>
+
+                    {/* TD Task Link */}
+                    {tdEnabled && (
+                      <div className="space-y-2">
+                        <Label>Link to Task</Label>
+                        {selectedTdTask ? (
+                          <div className="flex items-center gap-2 rounded border border-border bg-card p-2">
+                            {selectedTdTask.status === 'in_progress' ? (
+                              <CircleDot className="h-3 w-3 text-blue-500 shrink-0" />
+                            ) : (
+                              <Circle className="h-3 w-3 text-muted-foreground shrink-0" />
+                            )}
+                            <span className="text-[10px] font-mono text-muted-foreground shrink-0">{selectedTdTask.id}</span>
+                            <span className="text-xs truncate flex-1">{selectedTdTask.title}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 shrink-0"
+                              onClick={() => { setSelectedTdTaskId(''); setTdTaskSearch('') }}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <Input
+                              ref={tdTaskInputRef}
+                              value={tdTaskSearch}
+                              onChange={(e) => { setTdTaskSearch(e.target.value); setShowTdTaskDropdown(true) }}
+                              onFocus={() => setShowTdTaskDropdown(true)}
+                              placeholder={loadingTdTasks ? 'Loading tasks...' : 'Search tasks by ID or title...'}
+                              className="h-8 text-sm"
+                              disabled={loadingTdTasks}
+                            />
+                            <ListTodo className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+
+                            {showTdTaskDropdown && filteredTdTasks.length > 0 && (
+                              <div
+                                ref={tdTaskDropdownRef}
+                                className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-border bg-popover shadow-lg"
+                              >
+                                {filteredTdTasks.map((task) => (
+                                  <button
+                                    key={task.id}
+                                    type="button"
+                                    className="flex items-center gap-2 w-full px-3 py-2 text-left hover:bg-secondary"
+                                    onClick={() => {
+                                      setSelectedTdTaskId(task.id)
+                                      setTdTaskSearch('')
+                                      setShowTdTaskDropdown(false)
+                                    }}
+                                  >
+                                    {task.status === 'in_progress' ? (
+                                      <CircleDot className="h-3 w-3 text-blue-500 shrink-0" />
+                                    ) : (
+                                      <Circle className="h-3 w-3 text-muted-foreground shrink-0" />
+                                    )}
+                                    <span className="text-[10px] font-mono text-muted-foreground shrink-0">{task.id}</span>
+                                    <span className="text-xs truncate flex-1">{task.title}</span>
+                                    <span className={cn(
+                                      'text-[10px] shrink-0',
+                                      task.priority === 'P0' && 'text-red-500',
+                                      task.priority === 'P1' && 'text-orange-500',
+                                    )}>
+                                      {task.priority}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            {showTdTaskDropdown && !loadingTdTasks && filteredTdTasks.length === 0 && tdTaskSearch && (
+                              <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-lg p-3">
+                                <p className="text-xs text-muted-foreground text-center">No matching tasks</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          Link this session to a td task for context tracking
+                        </p>
+                      </div>
+                    )}
 
                     {/* Task List Name (Claude only) */}
                     {isClaudeAgent && (
