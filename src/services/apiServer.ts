@@ -19,6 +19,7 @@ import {
 	getFileDiff,
 } from '../utils/gitStatus.js';
 import {randomUUID, randomBytes} from 'crypto';
+import {execFileSync} from 'child_process';
 import {writeFile, mkdir, readdir, unlink, stat} from 'fs/promises';
 import {tmpdir} from 'os';
 import {generateRandomPort, isDevMode} from '../constants/env.js';
@@ -29,6 +30,9 @@ import {
 	validatePathForBrowser,
 } from '../utils/pathValidation.js';
 import {getDefaultShell} from '../utils/platform.js';
+import {tdService} from './tdService.js';
+import {TdReader} from './tdReader.js';
+import {loadProjectConfig, loadPromptTemplates, loadPromptTemplate} from '../utils/projectConfig.js';
 
 // --- Clipboard Image Paste Constants ---
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -1110,6 +1114,8 @@ export class APIServer {
 				options?: Record<string, boolean | string>;
 				sessionName?: string;
 				taskListName?: string;
+				tdTaskId?: string;
+				promptTemplate?: string;
 			};
 		}>('/api/session/create-with-agent', async (request, reply) => {
 			const {
@@ -1118,6 +1124,8 @@ export class APIServer {
 				options = {},
 				sessionName,
 				taskListName,
+				tdTaskId,
+				promptTemplate,
 			} = request.body;
 			logger.info(
 				`API: Creating session "${sessionName || 'unnamed'}" for ${path} with agent: ${agentId}`,
@@ -1153,16 +1161,122 @@ export class APIServer {
 			}
 			logger.info(`API: Spawning command: ${command} ${args.join(' ')}`);
 
-			// Build extra env for Claude task list (only for Claude agents)
-			let extraEnv: Record<string, string> | undefined;
+			// Build extra env for Claude task list and td integration
+			const extraEnv: Record<string, string> = {};
 			const isClaudeAgent =
 				agentId === 'claude' ||
 				agent.command === 'claude' ||
 				agent.detectionStrategy === 'claude';
 
 			if (taskListName && isClaudeAgent) {
-				extraEnv = {CLAUDE_TASK_LIST: taskListName};
+				extraEnv['CLAUDE_TASK_LIST'] = taskListName;
 				logger.info(`API: Setting CLAUDE_TASK_LIST=${taskListName}`);
+			}
+
+			// Set TD_SESSION_ID when session is linked to a td task
+			if (tdTaskId && tdService.isAvailable()) {
+				const sessionId = `ses_${randomUUID().slice(0, 6)}`;
+				extraEnv['TD_SESSION_ID'] = sessionId;
+				extraEnv['TD_TASK_ID'] = tdTaskId;
+				logger.info(
+					`API: Setting TD_SESSION_ID=${sessionId}, TD_TASK_ID=${tdTaskId}`,
+				);
+
+				// Respect project config for auto-start behavior
+				const projects = projectManager.getProjects();
+				const matchedProject = projects.find(
+					(p: {path: string}) => path.startsWith(p.path) || path.includes(`/.worktrees/${p.path.split('/').pop()}/`)
+				);
+				const projConfig = matchedProject ? loadProjectConfig(matchedProject.path) : null;
+				const autoStartEnabled = projConfig?.td?.autoStart !== false; // default: true
+
+				// Auto-start the td task (set to in_progress) unless disabled in config
+				if (autoStartEnabled) {
+					try {
+						execFileSync('td', ['start', tdTaskId, '--session', sessionId, '-w', path], {
+							encoding: 'utf-8',
+							timeout: 5000,
+						});
+						logger.info(`API: Auto-started td task ${tdTaskId}`);
+					} catch (startErr) {
+						// Non-fatal: task might already be in_progress
+						logger.warn(`API: td start failed (may already be started): ${startErr}`);
+					}
+				} else {
+					logger.info(`API: Auto-start disabled via .cacd config, skipping td start`);
+				}
+
+				// Write task context file to worktree
+				try {
+					const tdState = tdService.resolveProjectState(path);
+					if (tdState.enabled && tdState.tdRoot) {
+						const reader = new TdReader(tdState.tdRoot);
+						const taskDetail = reader.getIssueWithDetails(tdTaskId);
+						if (taskDetail) {
+							const lines: string[] = [
+								`# Task: ${taskDetail.id}`,
+								'',
+								`**${taskDetail.title}**`,
+								'',
+								`Status: ${taskDetail.status} | Priority: ${taskDetail.priority} | Type: ${taskDetail.type}`,
+								'',
+							];
+							if (taskDetail.description) {
+								lines.push('## Description', '', taskDetail.description, '');
+							}
+							if (taskDetail.acceptance) {
+								lines.push('## Acceptance Criteria', '', taskDetail.acceptance, '');
+							}
+							if (taskDetail.handoffs?.length > 0) {
+								const latest = taskDetail.handoffs[0]!;
+								lines.push('## Latest Handoff', '');
+								if (latest.done.length > 0) {
+									lines.push('### Done');
+									latest.done.forEach(item => lines.push(`- [x] ${item}`));
+									lines.push('');
+								}
+								if (latest.remaining.length > 0) {
+									lines.push('### Remaining');
+									latest.remaining.forEach(item => lines.push(`- [ ] ${item}`));
+									lines.push('');
+								}
+								if (latest.uncertain.length > 0) {
+									lines.push('### Uncertain');
+									latest.uncertain.forEach(item => lines.push(`- ??? ${item}`));
+									lines.push('');
+								}
+							}
+
+							// Apply prompt template (explicit or default from .cacd config)
+							const effectiveTemplate = promptTemplate || projConfig?.td?.defaultPrompt;
+							if (effectiveTemplate) {
+								if (matchedProject) {
+									const tmpl = loadPromptTemplate(matchedProject.path, effectiveTemplate);
+									if (tmpl?.content) {
+										// Simple variable substitution in prompt template
+										const rendered = tmpl.content
+											.replace(/\{\{task\.id\}\}/g, taskDetail.id)
+											.replace(/\{\{task\.title\}\}/g, taskDetail.title)
+											.replace(/\{\{task\.description\}\}/g, taskDetail.description || '')
+											.replace(/\{\{task\.status\}\}/g, taskDetail.status)
+											.replace(/\{\{task\.priority\}\}/g, taskDetail.priority)
+											.replace(/\{\{task\.acceptance\}\}/g, taskDetail.acceptance || '');
+										lines.push('## Instructions', '', rendered, '');
+									}
+								}
+							}
+
+							await writeFile(
+								`${path}/.td-task-context.md`,
+								lines.join('\n'),
+								'utf-8'
+							);
+							logger.info(`API: Wrote .td-task-context.md to ${path}`);
+						}
+					}
+				} catch (err) {
+					logger.warn(`API: Failed to write task context: ${err}`);
+				}
 			}
 
 			// Create session with resolved command and args
@@ -1173,7 +1287,7 @@ export class APIServer {
 				agent.detectionStrategy,
 				sessionName,
 				agentId,
-				extraEnv,
+				Object.keys(extraEnv).length > 0 ? extraEnv : undefined,
 			);
 			const result = await Effect.runPromise(Effect.either(effect));
 
@@ -1205,6 +1319,210 @@ export class APIServer {
 				name: session.name,
 				agentId: session.agentId,
 			};
+		});
+
+		// --- TD Integration ---
+
+		// TD availability check
+		this.app.get('/api/td/status', async () => {
+			const availability = tdService.checkAvailability();
+			const project = coreService.getSelectedProject();
+			let projectState = null;
+			let projectConfig = null;
+
+			if (project) {
+				projectState = tdService.resolveProjectState(project.path);
+				const config = loadProjectConfig(project.path);
+				if (config?.td) {
+					projectConfig = config.td;
+				}
+			}
+
+			return {availability, projectState, projectConfig};
+		});
+
+		// TD issues list (for current project)
+		this.app.get<{
+			Querystring: {status?: string; type?: string; parentId?: string};
+		}>('/api/td/issues', async (request, reply) => {
+			const project = coreService.getSelectedProject();
+			if (!project) {
+				return reply.code(400).send({error: 'No project selected'});
+			}
+
+			const state = tdService.resolveProjectState(project.path);
+			if (!state.enabled || !state.dbPath) {
+				return reply
+					.code(404)
+					.send({error: 'TD not available for this project'});
+			}
+
+			const reader = new TdReader(state.dbPath);
+			try {
+				const issues = reader.listIssues({
+					status: request.query.status,
+					type: request.query.type,
+					parentId: request.query.parentId,
+				});
+				return {issues};
+			} finally {
+				reader.close();
+			}
+		});
+
+		// TD single issue with details
+		this.app.get<{Params: {id: string}}>(
+			'/api/td/issues/:id',
+			async (request, reply) => {
+				const project = coreService.getSelectedProject();
+				if (!project) {
+					return reply.code(400).send({error: 'No project selected'});
+				}
+
+				const state = tdService.resolveProjectState(project.path);
+				if (!state.enabled || !state.dbPath) {
+					return reply
+						.code(404)
+						.send({error: 'TD not available for this project'});
+				}
+
+				const reader = new TdReader(state.dbPath);
+				try {
+					const issue = reader.getIssueWithDetails(request.params.id);
+					if (!issue) {
+						return reply.code(404).send({error: 'Issue not found'});
+					}
+					return {issue};
+				} finally {
+					reader.close();
+				}
+			},
+		);
+
+		// TD board view (grouped by status)
+		this.app.get('/api/td/board', async (request, reply) => {
+			const project = coreService.getSelectedProject();
+			if (!project) {
+				return reply.code(400).send({error: 'No project selected'});
+			}
+
+			const state = tdService.resolveProjectState(project.path);
+			if (!state.enabled || !state.dbPath) {
+				return reply
+					.code(404)
+					.send({error: 'TD not available for this project'});
+			}
+
+			const reader = new TdReader(state.dbPath);
+			try {
+				return {board: reader.getBoard()};
+			} finally {
+				reader.close();
+			}
+		});
+
+		// TD search issues
+		this.app.get<{
+			Querystring: {q: string};
+		}>('/api/td/search', async (request, reply) => {
+			const {q} = request.query;
+			if (!q) {
+				return reply.code(400).send({error: 'Search query required'});
+			}
+
+			const project = coreService.getSelectedProject();
+			if (!project) {
+				return reply.code(400).send({error: 'No project selected'});
+			}
+
+			const state = tdService.resolveProjectState(project.path);
+			if (!state.enabled || !state.dbPath) {
+				return reply
+					.code(404)
+					.send({error: 'TD not available for this project'});
+			}
+
+			const reader = new TdReader(state.dbPath);
+			try {
+				return {issues: reader.searchIssues(q)};
+			} finally {
+				reader.close();
+			}
+		});
+
+		// Prompt templates for current project
+		this.app.get('/api/td/prompts', async (request, reply) => {
+			const project = coreService.getSelectedProject();
+			if (!project) {
+				return reply.code(400).send({error: 'No project selected'});
+			}
+
+			const templates = loadPromptTemplates(project.path);
+			return {templates: templates.map(t => ({name: t.name, path: t.path}))};
+		});
+
+		// Get specific prompt template content
+		this.app.get<{Params: {name: string}}>(
+			'/api/td/prompts/:name',
+			async (request, reply) => {
+				const project = coreService.getSelectedProject();
+				if (!project) {
+					return reply.code(400).send({error: 'No project selected'});
+				}
+
+				const templates = loadPromptTemplates(project.path);
+				const template = templates.find(
+					t => t.name === request.params.name,
+				);
+				if (!template) {
+					return reply.code(404).send({error: 'Template not found'});
+				}
+
+				return {template};
+			},
+		);
+
+		// Submit task for review
+		this.app.post<{Params: {id: string}}>(
+			'/api/td/issues/:id/review',
+			async (request, reply) => {
+				const {id} = request.params;
+				if (!tdService.isAvailable()) {
+					return reply.code(400).send({error: 'TD not available'});
+				}
+
+				try {
+					execFileSync('td', ['review', id], {
+						encoding: 'utf-8',
+						timeout: 5000,
+					});
+					return {success: true, message: `Task ${id} submitted for review`};
+				} catch (err) {
+					logger.warn(`API: td review failed for ${id}: ${err}`);
+					return reply.code(500).send({error: `Failed to submit for review: ${err}`});
+				}
+			},
+		);
+
+		// In-review tasks (for notification polling)
+		this.app.get('/api/td/in-review', async (request, reply) => {
+			const project = coreService.getSelectedProject();
+			if (!project) {
+				return {issues: []};
+			}
+
+			const state = tdService.resolveProjectState(project.path);
+			if (!state.enabled || !state.dbPath) {
+				return {issues: []};
+			}
+
+			const reader = new TdReader(state.dbPath);
+			try {
+				const issues = reader.listIssues({status: 'in_review'});
+				return {issues};
+			} finally {
+				reader.close();
+			}
 		});
 
 		// --- Task List Names ---
@@ -1506,6 +1824,43 @@ export class APIServer {
 		coreService.on('sessionUpdated', notifyUpdate);
 		coreService.on('sessionCreated', notifyUpdate);
 		coreService.on('sessionDestroyed', notifyUpdate);
+
+		// TD review polling — detect tasks entering in_review and notify frontend
+		const knownReviewIds = new Set<string>();
+		const pollTdReviews = () => {
+			try {
+				const project = coreService.getSelectedProject();
+				if (!project) return;
+				const state = tdService.resolveProjectState(project.path);
+				if (!state.enabled || !state.dbPath) return;
+
+				const reader = new TdReader(state.dbPath);
+				try {
+					const reviewIssues = reader.listIssues({status: 'in_review'});
+					const newReviews = reviewIssues.filter(i => !knownReviewIds.has(i.id));
+					if (newReviews.length > 0) {
+						newReviews.forEach(i => knownReviewIds.add(i.id));
+						this.io?.emit('td_review_ready', {
+							issues: newReviews.map(i => ({id: i.id, title: i.title, priority: i.priority})),
+						});
+						logger.info(`API: ${newReviews.length} new task(s) ready for review`);
+					}
+					// Clean up IDs no longer in review
+					for (const id of knownReviewIds) {
+						if (!reviewIssues.some(i => i.id === id)) {
+							knownReviewIds.delete(id);
+						}
+					}
+				} finally {
+					reader.close();
+				}
+			} catch {
+				// Silent — td polling is best-effort
+			}
+		};
+		// Poll every 30 seconds, start after 5s
+		setTimeout(pollTdReviews, 5000);
+		setInterval(pollTdReviews, 30000);
 	}
 
 	/**

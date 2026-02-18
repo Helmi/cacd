@@ -145,6 +145,85 @@ export interface WorktreeHooks {
   postCreation: string
 }
 
+// --- TD Integration Types ---
+
+export interface TdAvailability {
+  binaryAvailable: boolean
+  version: string | null
+  binaryPath: string | null
+}
+
+export interface TdProjectState {
+  enabled: boolean
+  todosDir: string | null
+  dbPath: string | null
+  tdRoot: string | null
+}
+
+export interface TdProjectConfig {
+  enabled?: boolean
+  autoStart?: boolean
+  defaultPrompt?: string
+}
+
+export interface TdStatus {
+  availability: TdAvailability
+  projectState: TdProjectState | null
+  projectConfig?: TdProjectConfig | null
+}
+
+export interface TdIssue {
+  id: string
+  title: string
+  description: string
+  status: string
+  type: string
+  priority: string
+  points: number
+  labels: string
+  parent_id: string
+  acceptance: string
+  implementer_session: string
+  reviewer_session: string
+  created_at: string
+  updated_at: string
+  closed_at: string | null
+  deleted_at: string | null
+  minor: number
+  created_branch: string
+  creator_session: string
+}
+
+export interface TdHandoffParsed {
+  id: string
+  issueId: string
+  sessionId: string
+  done: string[]
+  remaining: string[]
+  decisions: string[]
+  uncertain: string[]
+  timestamp: string
+}
+
+export interface TdIssueFile {
+  id: string
+  issue_id: string
+  file_path: string
+  role: string
+}
+
+export interface TdIssueWithChildren extends TdIssue {
+  children: TdIssue[]
+  handoffs: TdHandoffParsed[]
+  files: TdIssueFile[]
+}
+
+export interface TdPromptTemplate {
+  name: string
+  path: string
+  content?: string
+}
+
 // Application configuration
 export interface AppConfig {
   // Auto approval

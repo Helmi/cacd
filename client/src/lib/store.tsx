@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react'
 import { io, Socket } from 'socket.io-client'
-import type { Session, Worktree, Project, ThemeType, FontType, ConnectionStatus, AppConfig, ChangedFile, AgentConfig, AgentsConfig } from './types'
+import type { Session, Worktree, Project, ThemeType, FontType, ConnectionStatus, AppConfig, ChangedFile, AgentConfig, AgentsConfig, TdStatus, TdIssue } from './types'
 import { mapBackendToFrontend, mapFrontendToBackend, getDefaultConfig } from './configMapper'
 
 // Debounce utility
@@ -52,10 +52,11 @@ interface AppState {
   addSessionOpen: boolean
   addSessionWorktreePath: string | null  // Pre-selected worktree context
   addSessionProjectPath: string | null  // Pre-selected project context
+  addSessionTdTaskId: string | null  // Pre-selected td task
 
   // Settings Screen State
   settingsOpen: boolean
-  settingsSection: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks'
+  settingsSection: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td'
 
   // File Diff Viewing State
   viewingFileDiff: { sessionId: string; file: ChangedFile; worktreePath: string } | null
@@ -80,6 +81,13 @@ interface AppState {
 
   // Error handling
   error: string | null
+
+  // TD Integration
+  tdStatus: TdStatus | null
+  tdIssues: TdIssue[]
+  tdBoardView: Record<string, TdIssue[]>
+  taskBoardOpen: boolean
+  tdReviewNotifications: Array<{id: string; title: string; priority: string}>
 
   // Socket
   socket: Socket
@@ -121,7 +129,7 @@ interface AppActions {
 
   // Session management
   createSession: (path: string, presetId?: string, sessionName?: string) => Promise<boolean>
-  createSessionWithAgent: (path: string, agentId: string, options?: Record<string, boolean | string>, sessionName?: string, taskListName?: string) => Promise<boolean>
+  createSessionWithAgent: (path: string, agentId: string, options?: Record<string, boolean | string>, sessionName?: string, taskListName?: string, tdTaskId?: string, promptTemplate?: string) => Promise<boolean>
   renameSession: (sessionId: string, name: string) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<void>
 
@@ -139,11 +147,11 @@ interface AppActions {
   closeAddProject: () => void
   openAddWorktree: (projectPath?: string) => void
   closeAddWorktree: () => void
-  openAddSession: (worktreePath?: string, projectPath?: string) => void
+  openAddSession: (worktreePath?: string, projectPath?: string, tdTaskId?: string) => void
   closeAddSession: () => void
-  openSettings: (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => void
+  openSettings: (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td') => void
   closeSettings: () => void
-  navigateSettings: (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => void
+  navigateSettings: (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td') => void
 
   // Config
   updateConfig: (config: AppConfig) => Promise<boolean>
@@ -156,6 +164,15 @@ interface AppActions {
   // File viewing (from file browser)
   openFile: (worktreePath: string, filePath: string) => void
   closeFile: () => void
+
+  // TD Integration
+  fetchTdStatus: () => Promise<void>
+  fetchTdIssues: (options?: { status?: string; type?: string; parentId?: string }) => Promise<void>
+  fetchTdBoard: () => Promise<void>
+  openTaskBoard: () => void
+  closeTaskBoard: () => void
+  dismissTdReviewNotification: (issueId: string) => void
+  dismissAllTdReviewNotifications: () => void
 
   // Error handling
   clearError: () => void
@@ -232,14 +249,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [addSessionOpen, setAddSessionOpen] = useState(false)
   const [addSessionWorktreePath, setAddSessionWorktreePath] = useState<string | null>(null)
   const [addSessionProjectPath, setAddSessionProjectPath] = useState<string | null>(null)
+  const [addSessionTdTaskId, setAddSessionTdTaskId] = useState<string | null>(null)
   const [viewingFileDiff, setViewingFileDiff] = useState<{ sessionId: string; file: ChangedFile; worktreePath: string } | null>(null)
   const [viewingFile, setViewingFile] = useState<{ worktreePath: string; filePath: string } | null>(null)
 
   // Settings screen state - load section from localStorage
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [settingsSection, setSettingsSection] = useState<'general' | 'agents' | 'status-hooks' | 'worktree-hooks'>(() => {
+  const [settingsSection, setSettingsSection] = useState<'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td'>(() => {
     const saved = localStorage.getItem('cacd_settings_section')
-    if (saved === 'general' || saved === 'agents' || saved === 'status-hooks' || saved === 'worktree-hooks') {
+    if (saved === 'general' || saved === 'agents' || saved === 'status-hooks' || saved === 'worktree-hooks' || saved === 'td') {
       return saved
     }
     return 'general'
@@ -268,6 +286,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Error state
   const [error, setError] = useState<string | null>(null)
+
+  // TD Integration state
+  const [tdStatus, setTdStatus] = useState<TdStatus | null>(null)
+  const [tdIssues, setTdIssues] = useState<TdIssue[]>([])
+  const [tdBoardView, setTdBoardView] = useState<Record<string, TdIssue[]>>({})
+  const [taskBoardOpen, setTaskBoardOpen] = useState(false)
+  const [tdReviewNotifications, setTdReviewNotifications] = useState<Array<{id: string; title: string; priority: string}>>([])
 
   // Apply theme to document
   useEffect(() => {
@@ -385,6 +410,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // TD Integration fetchers
+  const fetchTdStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/td/status', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setTdStatus(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch td status:', err)
+    }
+  }, [])
+
+  const fetchTdIssues = useCallback(async (options?: { status?: string; type?: string; parentId?: string }) => {
+    try {
+      const params = new URLSearchParams()
+      if (options?.status) params.set('status', options.status)
+      if (options?.type) params.set('type', options.type)
+      if (options?.parentId) params.set('parentId', options.parentId)
+      const qs = params.toString()
+      const res = await fetch(`/api/td/issues${qs ? `?${qs}` : ''}`, { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setTdIssues(data.issues)
+      }
+    } catch (err) {
+      console.error('Failed to fetch td issues:', err)
+    }
+  }, [])
+
+  const fetchTdBoard = useCallback(async () => {
+    try {
+      const res = await fetch('/api/td/board', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setTdBoardView(data.board)
+      }
+    } catch (err) {
+      console.error('Failed to fetch td board:', err)
+    }
+  }, [])
+
+  const openTaskBoard = useCallback(() => setTaskBoardOpen(true), [])
+  const closeTaskBoard = useCallback(() => setTaskBoardOpen(false), [])
+  const dismissTdReviewNotification = useCallback((issueId: string) => {
+    setTdReviewNotifications(prev => prev.filter(n => n.id !== issueId))
+  }, [])
+  const dismissAllTdReviewNotifications = useCallback(() => {
+    setTdReviewNotifications([])
+  }, [])
+
   // Save (create or update) an agent
   const saveAgent = async (agent: AgentConfig): Promise<boolean> => {
     try {
@@ -470,6 +546,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Use debounced session fetch for socket events - prevents API storm
     // Only fetches sessions/state (2 calls), not full data (5 calls)
     socket.on('session_update', debouncedFetchSessionData)
+    socket.on('td_review_ready', (data: {issues: Array<{id: string; title: string; priority: string}>}) => {
+      setTdReviewNotifications(prev => {
+        const existingIds = new Set(prev.map(n => n.id))
+        const newOnes = data.issues.filter(i => !existingIds.has(i.id))
+        return newOnes.length > 0 ? [...prev, ...newOnes] : prev
+      })
+    })
 
     // Connect socket now that auth is complete (AppProvider only mounts after auth)
     socket.connect()
@@ -483,6 +566,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       socket.off('disconnect')
       socket.off('connect_error')
       socket.off('session_update')
+      socket.off('td_review_ready')
       debouncedFetchSessionData.cancel()
     }
   }, [fetchData, fetchAgents, debouncedFetchSessionData])
@@ -535,6 +619,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setSelectedSessions([])
       await fetchData()
+      // Fetch td status for newly selected project
+      fetchTdStatus()
     } catch (e) {
       console.error(e)
       setError('Failed to select project. Check your connection.')
@@ -688,14 +774,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     agentId: string,
     options?: Record<string, boolean | string>,
     sessionName?: string,
-    taskListName?: string
+    taskListName?: string,
+    tdTaskId?: string,
+    promptTemplate?: string
   ): Promise<boolean> => {
     try {
       const res = await fetch('/api/session/create-with-agent', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, agentId, options: options || {}, sessionName, taskListName })
+        body: JSON.stringify({ path, agentId, options: options || {}, sessionName, taskListName, tdTaskId, promptTemplate })
       })
       const data = await res.json()
       if (!res.ok) {
@@ -790,17 +878,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAddWorktreeOpen(false)
     setAddWorktreeProjectPath(null)
   }
-  const openAddSession = (worktreePath?: string, projectPath?: string) => {
+  const openAddSession = (worktreePath?: string, projectPath?: string, tdTaskId?: string) => {
     setAddSessionWorktreePath(worktreePath || null)
     setAddSessionProjectPath(projectPath || null)
+    setAddSessionTdTaskId(tdTaskId || null)
     setAddSessionOpen(true)
   }
   const closeAddSession = () => {
     setAddSessionOpen(false)
     setAddSessionWorktreePath(null)
     setAddSessionProjectPath(null)
+    setAddSessionTdTaskId(null)
   }
-  const openSettings = (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => {
+  const openSettings = (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td') => {
     if (section) {
       setSettingsSection(section)
       localStorage.setItem('cacd_settings_section', section)
@@ -808,7 +898,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSettingsOpen(true)
   }
   const closeSettings = () => setSettingsOpen(false)
-  const navigateSettings = (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks') => {
+  const navigateSettings = (section: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td') => {
     setSettingsSection(section)
     localStorage.setItem('cacd_settings_section', section)
   }
@@ -1002,6 +1092,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addSessionOpen,
     addSessionWorktreePath,
     addSessionProjectPath,
+    addSessionTdTaskId,
     settingsOpen,
     settingsSection,
     viewingFileDiff,
@@ -1062,6 +1153,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveAgent,
     deleteAgent: deleteAgentAction,
     setDefaultAgentId: setDefaultAgentIdAction,
+    // TD Integration
+    tdStatus,
+    tdIssues,
+    tdBoardView,
+    taskBoardOpen,
+    fetchTdStatus,
+    fetchTdIssues,
+    fetchTdBoard,
+    openTaskBoard,
+    closeTaskBoard,
+    tdReviewNotifications,
+    dismissTdReviewNotification,
+    dismissAllTdReviewNotifications,
   }
 
   return <AppContext.Provider value={store}>{children}</AppContext.Provider>

@@ -1,0 +1,284 @@
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import Database from 'better-sqlite3';
+import {TdReader} from './tdReader.js';
+import path from 'path';
+import {unlinkSync} from 'fs';
+import {tmpdir} from 'os';
+
+vi.mock('../utils/logger.js', () => ({
+	logger: {
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+		debug: vi.fn(),
+	},
+}));
+
+const TEST_DB_PATH = path.join(tmpdir(), `cacd-tdreader-test-${process.pid}.db`);
+
+function createTestDb(): void {
+	// Clean up any previous test db
+	try {
+		unlinkSync(TEST_DB_PATH);
+	} catch {
+		// ignore
+	}
+
+	const db = new Database(TEST_DB_PATH);
+	db.pragma('journal_mode = WAL');
+
+	db.exec(`
+		CREATE TABLE issues (
+			id TEXT PRIMARY KEY,
+			title TEXT NOT NULL,
+			description TEXT DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'open',
+			type TEXT NOT NULL DEFAULT 'task',
+			priority TEXT NOT NULL DEFAULT 'P2',
+			points INTEGER DEFAULT 0,
+			labels TEXT DEFAULT '',
+			parent_id TEXT DEFAULT '',
+			acceptance TEXT DEFAULT '',
+			implementer_session TEXT DEFAULT '',
+			reviewer_session TEXT DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			closed_at DATETIME,
+			deleted_at DATETIME,
+			minor INTEGER DEFAULT 0,
+			created_branch TEXT DEFAULT '',
+			creator_session TEXT DEFAULT '',
+			sprint TEXT DEFAULT '',
+			defer_until TEXT,
+			due_date TEXT,
+			defer_count INTEGER DEFAULT 0
+		);
+
+		CREATE TABLE handoffs (
+			id TEXT PRIMARY KEY,
+			issue_id TEXT NOT NULL,
+			session_id TEXT NOT NULL,
+			done TEXT DEFAULT '[]',
+			remaining TEXT DEFAULT '[]',
+			decisions TEXT DEFAULT '[]',
+			uncertain TEXT DEFAULT '[]',
+			timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE git_snapshots (
+			id TEXT PRIMARY KEY,
+			issue_id TEXT NOT NULL,
+			event TEXT NOT NULL,
+			commit_sha TEXT NOT NULL,
+			branch TEXT NOT NULL,
+			dirty_files INTEGER DEFAULT 0,
+			timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE issue_files (
+			id TEXT PRIMARY KEY,
+			issue_id TEXT NOT NULL,
+			file_path TEXT NOT NULL,
+			role TEXT NOT NULL DEFAULT 'implementation',
+			linked_sha TEXT DEFAULT '',
+			linked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(issue_id, file_path)
+		);
+
+		CREATE TABLE issue_dependencies (
+			id TEXT PRIMARY KEY,
+			issue_id TEXT NOT NULL,
+			depends_on_id TEXT NOT NULL,
+			relation_type TEXT NOT NULL DEFAULT 'depends_on',
+			UNIQUE(issue_id, depends_on_id, relation_type)
+		);
+	`);
+
+	// Seed test data
+	db.prepare(
+		`INSERT INTO issues (id, title, status, type, priority, parent_id) VALUES (?, ?, ?, ?, ?, ?)`,
+	).run('td-001', 'Epic: Auth system', 'in_progress', 'epic', 'P1', '');
+
+	db.prepare(
+		`INSERT INTO issues (id, title, status, type, priority, parent_id) VALUES (?, ?, ?, ?, ?, ?)`,
+	).run('td-002', 'Add login page', 'open', 'task', 'P1', 'td-001');
+
+	db.prepare(
+		`INSERT INTO issues (id, title, status, type, priority, parent_id) VALUES (?, ?, ?, ?, ?, ?)`,
+	).run('td-003', 'Add logout', 'done', 'task', 'P2', 'td-001');
+
+	db.prepare(
+		`INSERT INTO issues (id, title, status, type, priority, parent_id, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	).run('td-004', 'Deleted task', 'open', 'task', 'P3', '', '2024-01-01');
+
+	db.prepare(
+		`INSERT INTO handoffs (id, issue_id, session_id, done, remaining, decisions, uncertain) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	).run(
+		'h-001',
+		'td-002',
+		'ses_abc',
+		'["Created form component"]',
+		'["Add validation", "Connect to API"]',
+		'["Using React Hook Form"]',
+		'["Error message format"]',
+	);
+
+	db.prepare(
+		`INSERT INTO issue_files (id, issue_id, file_path, role) VALUES (?, ?, ?, ?)`,
+	).run('f-001', 'td-002', 'src/login.tsx', 'implementation');
+
+	db.close();
+}
+
+describe('TdReader', () => {
+	beforeEach(() => {
+		createTestDb();
+	});
+
+	afterEach(() => {
+		try {
+			unlinkSync(TEST_DB_PATH);
+		} catch {
+			// ignore
+		}
+		try {
+			unlinkSync(TEST_DB_PATH + '-shm');
+		} catch {
+			// ignore
+		}
+		try {
+			unlinkSync(TEST_DB_PATH + '-wal');
+		} catch {
+			// ignore
+		}
+	});
+
+	describe('listIssues', () => {
+		it('should list all non-deleted issues', () => {
+			const reader = new TdReader(TEST_DB_PATH);
+			const issues = reader.listIssues();
+			reader.close();
+
+			expect(issues).toHaveLength(3);
+			expect(issues.find(i => i.id === 'td-004')).toBeUndefined();
+		});
+
+		it('should filter by status', () => {
+			const reader = new TdReader(TEST_DB_PATH);
+			const issues = reader.listIssues({status: 'open'});
+			reader.close();
+
+			expect(issues).toHaveLength(1);
+			expect(issues[0]!.id).toBe('td-002');
+		});
+
+		it('should filter by type', () => {
+			const reader = new TdReader(TEST_DB_PATH);
+			const epics = reader.listIssues({type: 'epic'});
+			reader.close();
+
+			expect(epics).toHaveLength(1);
+			expect(epics[0]!.id).toBe('td-001');
+		});
+
+		it('should filter by parentId', () => {
+			const reader = new TdReader(TEST_DB_PATH);
+			const children = reader.listIssues({parentId: 'td-001'});
+			reader.close();
+
+			expect(children).toHaveLength(2);
+		});
+	});
+
+	describe('getIssue', () => {
+		it('should get issue by id', () => {
+			const reader = new TdReader(TEST_DB_PATH);
+			const issue = reader.getIssue('td-002');
+			reader.close();
+
+			expect(issue).not.toBeNull();
+			expect(issue!.title).toBe('Add login page');
+		});
+
+		it('should not return deleted issues', () => {
+			const reader = new TdReader(TEST_DB_PATH);
+			const issue = reader.getIssue('td-004');
+			reader.close();
+
+			expect(issue).toBeNull();
+		});
+
+		it('should return null for non-existent issue', () => {
+			const reader = new TdReader(TEST_DB_PATH);
+			const issue = reader.getIssue('td-999');
+			reader.close();
+
+			expect(issue).toBeNull();
+		});
+	});
+
+	describe('getIssueWithDetails', () => {
+		it('should return issue with children, handoffs, and files', () => {
+			const reader = new TdReader(TEST_DB_PATH);
+			const issue = reader.getIssueWithDetails('td-002');
+			reader.close();
+
+			expect(issue).not.toBeNull();
+			expect(issue!.handoffs).toHaveLength(1);
+			expect(issue!.handoffs[0]!.done).toEqual([
+				'Created form component',
+			]);
+			expect(issue!.handoffs[0]!.remaining).toEqual([
+				'Add validation',
+				'Connect to API',
+			]);
+			expect(issue!.files).toHaveLength(1);
+			expect(issue!.files[0]!.file_path).toBe('src/login.tsx');
+		});
+	});
+
+	describe('getBoard', () => {
+		it('should group issues by status', () => {
+			const reader = new TdReader(TEST_DB_PATH);
+			const board = reader.getBoard();
+			reader.close();
+
+			expect(board['in_progress']).toHaveLength(1);
+			expect(board['open']).toHaveLength(1);
+			expect(board['done']).toHaveLength(1);
+		});
+	});
+
+	describe('searchIssues', () => {
+		it('should search by title', () => {
+			const reader = new TdReader(TEST_DB_PATH);
+			const results = reader.searchIssues('login');
+			reader.close();
+
+			expect(results).toHaveLength(1);
+			expect(results[0]!.id).toBe('td-002');
+		});
+
+		it('should search by id', () => {
+			const reader = new TdReader(TEST_DB_PATH);
+			const results = reader.searchIssues('td-001');
+			reader.close();
+
+			expect(results).toHaveLength(1);
+			expect(results[0]!.title).toBe('Epic: Auth system');
+		});
+	});
+
+	describe('isAccessible', () => {
+		it('should return true for valid database', () => {
+			const reader = new TdReader(TEST_DB_PATH);
+			expect(reader.isAccessible()).toBe(true);
+			reader.close();
+		});
+
+		it('should return false for non-existent database', () => {
+			const reader = new TdReader('/nonexistent/path/db');
+			expect(reader.isAccessible()).toBe(false);
+		});
+	});
+});
