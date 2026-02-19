@@ -1,17 +1,23 @@
 #!/bin/bash
 # CACD Worktree Setup Hook
-# Runs after a new worktree is created to prepare the dev environment.
+# Works with both CACD and Sidecar worktree creation.
 #
-# Environment variables available:
+# CACD env vars:
 #   CACD_ROOT_PATH      - Git root (main repo)
 #   CACD_WORKTREE_PATH  - New worktree path
 #   CACD_WORKTREE_NAME  - Worktree directory name
 #   CACD_BRANCH         - Branch name
+#
+# Sidecar env vars:
+#   MAIN_WORKTREE       - Git root (main repo)
+#   WORKTREE_PATH       - New worktree path
+#   WORKTREE_BRANCH     - Branch name
 
 set -euo pipefail
 
-WORKTREE="${CACD_WORKTREE_PATH}"
-ROOT="${CACD_ROOT_PATH}"
+# Support both CACD and Sidecar env vars
+WORKTREE="${CACD_WORKTREE_PATH:-${WORKTREE_PATH:-$(pwd)}}"
+ROOT="${CACD_ROOT_PATH:-${MAIN_WORKTREE:-$(git rev-parse --show-toplevel 2>/dev/null || echo '')}}"
 
 echo "[worktree-setup] Setting up ${CACD_WORKTREE_NAME} at ${WORKTREE}"
 
