@@ -42,7 +42,7 @@
 		"lint:fix": "eslint src --fix",
 		"typecheck": "tsc --noEmit",
 		"prepublishOnly": "npm run lint && npm run typecheck && npm run test && npm run build",
-		"prepare": "npm run build",
+		"prepublishOnly": "npm run build",
 		"release": "bun scripts/release.ts",
 		"release:dry": "bun scripts/release.ts --dry-run"
 	},
