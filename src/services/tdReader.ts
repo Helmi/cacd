@@ -162,8 +162,14 @@ export class TdReader {
 			const params: string[] = [];
 
 			if (options?.status) {
-				sql += ' AND status = ?';
-				params.push(options.status);
+				const statuses = options.status.split(',').map(s => s.trim()).filter(Boolean);
+				if (statuses.length === 1) {
+					sql += ' AND status = ?';
+					params.push(statuses[0]!);
+				} else if (statuses.length > 1) {
+					sql += ` AND status IN (${statuses.map(() => '?').join(',')})`;
+					params.push(...statuses);
+				}
 			}
 			if (options?.type) {
 				sql += ' AND type = ?';

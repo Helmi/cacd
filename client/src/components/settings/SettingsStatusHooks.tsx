@@ -10,9 +10,12 @@ interface SettingsStatusHooksProps {
 export function SettingsStatusHooks({ localConfig, setLocalConfig }: SettingsStatusHooksProps) {
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Commands to run when session status changes. Use these hooks to trigger notifications or scripts.
-      </p>
+      <div>
+        <h3 className="text-sm font-medium mb-1">Status Hooks</h3>
+        <p className="text-xs text-muted-foreground">
+          Shell commands to run when session status changes. Available env vars: <code className="bg-muted px-1 rounded">$CACD_SESSION_ID</code>, <code className="bg-muted px-1 rounded">$CACD_OLD_STATE</code>, <code className="bg-muted px-1 rounded">$CACD_NEW_STATE</code>, <code className="bg-muted px-1 rounded">$CACD_WORKTREE_PATH</code>
+        </p>
+      </div>
 
       <div className="space-y-4">
         <div className="space-y-2">

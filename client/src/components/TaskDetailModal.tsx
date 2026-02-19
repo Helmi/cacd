@@ -18,7 +18,22 @@ import {
   Loader2,
   Play,
   Send,
+  RotateCcw,
+  MessageSquare,
 } from 'lucide-react'
+
+/**
+ * Parse Go-formatted timestamps like "2026-02-19 08:30:10.451538 +0100 CET m=+0.117390418"
+ * into a JavaScript Date. Strips the timezone abbreviation and monotonic clock suffix.
+ */
+function parseGoDate(s: string): Date | null {
+  if (!s) return null
+  // Extract: YYYY-MM-DD HH:MM:SS +ZZZZ (ignore fractional seconds, tz name, monotonic clock)
+  const match = s.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})(?:\.\d+)?\s+([+-]\d{2})(\d{2})/)
+  if (!match) return null
+  const d = new Date(`${match[1]}T${match[2]}${match[3]}:${match[4]}`)
+  return isNaN(d.getTime()) ? null : d
+}
 
 const statusConfig: Record<string, { icon: typeof Circle; color: string; bg: string; label: string }> = {
   open: { icon: Circle, color: 'text-muted-foreground', bg: 'bg-muted/50', label: 'Open' },
@@ -40,7 +55,7 @@ function HandoffSection({ handoff }: { handoff: TdHandoffParsed }) {
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
         <Clock className="h-3 w-3" />
-        <span>{new Date(handoff.timestamp).toLocaleString()}</span>
+        <span>{parseGoDate(handoff.timestamp)?.toLocaleString() ?? '—'}</span>
         {handoff.sessionId && (
           <span className="font-mono">{handoff.sessionId}</span>
         )}
@@ -109,13 +124,16 @@ interface TaskDetailModalProps {
   onClose: () => void
   onNavigate?: (issueId: string) => void
   onStartWorking?: (issueId: string) => void
+  onRefresh?: () => void
 }
 
-export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking }: TaskDetailModalProps) {
+export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, onRefresh }: TaskDetailModalProps) {
   const [issue, setIssue] = useState<TdIssueWithChildren | null>(null)
   const [loading, setLoading] = useState(true)
   const [isVisible, setIsVisible] = useState(false)
-  const [submittingReview, setSubmittingReview] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [showCommentInput, setShowCommentInput] = useState(false)
+  const [commentText, setCommentText] = useState('')
 
   // Animate in
   useEffect(() => {
@@ -216,45 +234,141 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking }
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-2">
-                {onStartWorking && issue.status !== 'closed' && issue.status !== 'in_review' && (
-                  <Button
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => {
-                      onStartWorking(issue.id)
-                      handleClose()
-                    }}
-                  >
-                    <Play className="h-3 w-3 mr-1.5" />
-                    Start Working
-                  </Button>
-                )}
-                {issue.status === 'in_progress' && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
-                    disabled={submittingReview}
-                    onClick={async () => {
-                      setSubmittingReview(true)
-                      try {
-                        const res = await fetch(`/api/td/issues/${issue.id}/review`, {
-                          method: 'POST',
-                          credentials: 'include',
-                        })
-                        if (res.ok) {
-                          // Refresh issue to show updated status
-                          const data = await fetch(`/api/td/issues/${issue.id}`, { credentials: 'include' }).then(r => r.json())
-                          if (data.issue) setIssue(data.issue)
-                        }
-                      } catch { /* silent */ }
-                      setSubmittingReview(false)
-                    }}
-                  >
-                    <Send className="h-3 w-3 mr-1.5" />
-                    {submittingReview ? 'Submitting...' : 'Submit for Review'}
-                  </Button>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  {onStartWorking && issue.status !== 'closed' && issue.status !== 'in_review' && (
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        onStartWorking(issue.id)
+                        handleClose()
+                      }}
+                    >
+                      <Play className="h-3 w-3 mr-1.5" />
+                      Start Working
+                    </Button>
+                  )}
+                  {issue.status === 'in_progress' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      disabled={actionLoading}
+                      onClick={async () => {
+                        setActionLoading(true)
+                        try {
+                          const res = await fetch(`/api/td/issues/${issue.id}/review`, {
+                            method: 'POST',
+                            credentials: 'include',
+                          })
+                          if (res.ok) {
+                            const data = await fetch(`/api/td/issues/${issue.id}`, { credentials: 'include' }).then(r => r.json())
+                            if (data.issue) setIssue(data.issue)
+                            onRefresh?.()
+                          }
+                        } catch { /* silent */ }
+                        setActionLoading(false)
+                      }}
+                    >
+                      <Send className="h-3 w-3 mr-1.5" />
+                      {actionLoading ? 'Submitting...' : 'Submit for Review'}
+                    </Button>
+                  )}
+                  {issue.status === 'in_review' && (
+                    <>
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={actionLoading}
+                        onClick={async () => {
+                          setActionLoading(true)
+                          try {
+                            const res = await fetch(`/api/td/issues/${issue.id}/approve`, {
+                              method: 'POST',
+                              credentials: 'include',
+                            })
+                            if (res.ok) {
+                              const data = await fetch(`/api/td/issues/${issue.id}`, { credentials: 'include' }).then(r => r.json())
+                              if (data.issue) setIssue(data.issue)
+                              onRefresh?.()
+                            }
+                          } catch { /* silent */ }
+                          setActionLoading(false)
+                        }}
+                      >
+                        <CheckCircle2 className="h-3 w-3 mr-1.5" />
+                        {actionLoading ? 'Approving...' : 'Approve & Close'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        disabled={actionLoading}
+                        onClick={() => setShowCommentInput(!showCommentInput)}
+                      >
+                        <RotateCcw className="h-3 w-3 mr-1.5" />
+                        Request Changes
+                      </Button>
+                    </>
+                  )}
+                </div>
+
+                {/* Request Changes comment input */}
+                {showCommentInput && issue.status === 'in_review' && (
+                  <div className="space-y-2 rounded border border-border p-2">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <MessageSquare className="h-3 w-3" />
+                      <span>Add feedback (optional)</span>
+                    </div>
+                    <textarea
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      placeholder="Describe what needs to change..."
+                      className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                      rows={3}
+                    />
+                    <div className="flex items-center gap-2 justify-end">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-xs"
+                        onClick={() => {
+                          setShowCommentInput(false)
+                          setCommentText('')
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-6 text-xs"
+                        disabled={actionLoading}
+                        onClick={async () => {
+                          setActionLoading(true)
+                          try {
+                            const res = await fetch(`/api/td/issues/${issue.id}/request-changes`, {
+                              method: 'POST',
+                              credentials: 'include',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ comment: commentText.trim() || undefined }),
+                            })
+                            if (res.ok) {
+                              const data = await fetch(`/api/td/issues/${issue.id}`, { credentials: 'include' }).then(r => r.json())
+                              if (data.issue) setIssue(data.issue)
+                              setShowCommentInput(false)
+                              setCommentText('')
+                              onRefresh?.()
+                            }
+                          } catch { /* silent */ }
+                          setActionLoading(false)
+                        }}
+                      >
+                        {actionLoading ? 'Sending...' : 'Send Back'}
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -355,9 +469,9 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking }
                 <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Details</h3>
                 <div className="grid grid-cols-2 gap-y-1 text-xs">
                   <span className="text-muted-foreground">Created</span>
-                  <span>{issue.created_at ? new Date(issue.created_at).toLocaleDateString() : '—'}</span>
+                  <span>{parseGoDate(issue.created_at)?.toLocaleString() ?? '—'}</span>
                   <span className="text-muted-foreground">Updated</span>
-                  <span>{issue.updated_at ? new Date(issue.updated_at).toLocaleDateString() : '—'}</span>
+                  <span>{parseGoDate(issue.updated_at)?.toLocaleString() ?? '—'}</span>
                   {issue.created_branch && (
                     <>
                       <span className="text-muted-foreground">Branch</span>

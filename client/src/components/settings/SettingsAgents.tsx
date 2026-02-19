@@ -32,22 +32,21 @@ export function SettingsAgents({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Configure agents and their launch options.
-        </p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8"
-          onClick={startNewAgent}
-          disabled={!!newAgent}
-        >
-          <Plus className="h-4 w-4 mr-1" />
-          Add Agent
-        </Button>
+      <div>
+        <h3 className="text-sm font-medium mb-1">Agents</h3>
+        <p className="text-xs text-muted-foreground">Configure agents and their launch options.</p>
       </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-8"
+        onClick={startNewAgent}
+        disabled={!!newAgent}
+      >
+        <Plus className="h-4 w-4 mr-1" />
+        Add Agent
+      </Button>
 
       {agentsLoading ? (
         <div className="flex items-center justify-center py-8">

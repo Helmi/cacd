@@ -11,6 +11,11 @@ interface SettingsGeneralProps {
 export function SettingsGeneral({ localConfig, setLocalConfig }: SettingsGeneralProps) {
   return (
     <div className="space-y-6">
+      <div>
+        <h3 className="text-sm font-medium mb-1">General</h3>
+        <p className="text-xs text-muted-foreground">Auto-approval, worktree defaults, and global preferences.</p>
+      </div>
+
       {/* Auto Approval */}
       <div className="space-y-3">
         <h3 className="text-sm font-medium">Auto Approval</h3>

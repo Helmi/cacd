@@ -98,9 +98,9 @@ export function SettingsTd() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-sm font-medium mb-1">Global TD Settings</h3>
+        <h3 className="text-sm font-medium mb-1">TD Integration</h3>
         <p className="text-xs text-muted-foreground">
-          Machine-wide td availability and global prompt templates.
+          Agent TODO lists — machine-wide availability and global prompt templates.
         </p>
       </div>
 

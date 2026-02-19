@@ -147,11 +147,15 @@ class TdService {
 		const directResult = this.checkTodosDir(resolved, binaryAvailable);
 		if (directResult.initialized) return directResult;
 
-		// 3. Walk up to find .todos/ (max 10 levels to avoid infinite loops)
+		// 3. Walk up to find .todos/ (max 10 levels, stop at git boundaries)
 		let current = path.dirname(resolved);
 		for (let i = 0; i < 10; i++) {
 			const parentResult = this.checkTodosDir(current, binaryAvailable);
 			if (parentResult.initialized) return parentResult;
+
+			// Stop at git repository boundaries to prevent cross-project leaks
+			// (e.g., a demo project inheriting .todos/ from an unrelated parent)
+			if (existsSync(path.join(current, '.git'))) break;
 
 			const parent = path.dirname(current);
 			if (parent === current) break; // reached filesystem root
