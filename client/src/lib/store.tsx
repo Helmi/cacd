@@ -703,16 +703,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [fetchData, fetchAgents, debouncedFetchSessionData])
 
   // Keep project-specific td/config state in sync with selected project
+  // Always fetch td status (availability is system-wide), only clear project-specific state
   useEffect(() => {
     if (!currentProject) {
-      setTdStatus(null)
       setProjectConfig(null)
       setProjectConfigPath(null)
-      return
+    } else {
+      fetchProjectConfig()
     }
 
+    // Always fetch — availability is system-wide, projectState/projectConfig will be null when no project
     fetchTdStatus()
-    fetchProjectConfig()
   }, [currentProject?.path, fetchProjectConfig, fetchTdStatus])
 
   // Clean up stale sessions from sidebar preferences and tab state
@@ -763,8 +764,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setSelectedSessions([])
       await fetchData()
-      // Fetch project-specific state for newly selected project
-      await Promise.all([fetchTdStatus(), fetchProjectConfig()])
+      // td status and project config are fetched by the useEffect watching currentProject.path
     } catch (e) {
       console.error(e)
       setError('Failed to select project. Check your connection.')

@@ -10,7 +10,7 @@ import {
   SettingsTd,
   SettingsProject,
 } from '@/components/settings'
-import { Settings, Bot, Bell, GitBranch, X, Loader2, ChevronRight, ListTodo, FolderCog } from 'lucide-react'
+import { Settings, Bot, Bell, GitBranch, X, Loader2, ChevronRight, ListTodo, FolderCog, Check } from 'lucide-react'
 import { ThemeSelector } from '@/components/ThemeSelector'
 import { FontSelector } from '@/components/FontSelector'
 import { cn } from '@/lib/utils'
@@ -23,8 +23,8 @@ const NAV_ITEMS: { id: SettingsSection; label: string; icon: typeof Settings; de
   { id: 'agents', label: 'Agents', icon: Bot, description: 'Configure agent presets' },
   { id: 'status-hooks', label: 'Status Hooks', icon: Bell, description: 'Session status notifications' },
   { id: 'worktree-hooks', label: 'Worktree Hooks', icon: GitBranch, description: 'Lifecycle automation' },
-  { id: 'td', label: 'TD Global', icon: ListTodo, description: 'Global td and prompt settings' },
-  { id: 'project', label: 'Project', icon: FolderCog, description: 'Project-specific td and config' },
+  { id: 'td', label: 'TD Integration', icon: ListTodo, description: 'Agent TODO lists' },
+  { id: 'project', label: 'Project Settings', icon: FolderCog, description: 'Per-project config and overrides' },
 ]
 
 export function SettingsScreen() {
@@ -48,6 +48,7 @@ export function SettingsScreen() {
   const [localAgents, setLocalAgents] = useState<AgentConfig[]>(agents)
   const [newAgent, setNewAgent] = useState<AgentConfig | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [isVisible, setIsVisible] = useState(false)
 
   // Animate in on mount
@@ -112,7 +113,8 @@ export function SettingsScreen() {
 
     setSaving(false)
     if (configSuccess && agentsSuccess) {
-      handleClose()
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
     }
   }
 
@@ -290,14 +292,9 @@ export function SettingsScreen() {
                       isActive ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-foreground'
                     )} />
                   </div>
-                  <div className="flex flex-col min-w-0">
-                    <span className={cn('text-sm truncate', isActive && 'font-medium')}>
-                      {item.label}
-                    </span>
-                    <span className="text-xs text-muted-foreground truncate">
-                      {item.description}
-                    </span>
-                  </div>
+                  <span className={cn('text-sm truncate', isActive && 'font-medium')}>
+                    {item.label}
+                  </span>
                   {isActive && (
                     <ChevronRight className="h-3 w-3 ml-auto text-muted-foreground shrink-0" />
                   )}
@@ -309,15 +306,6 @@ export function SettingsScreen() {
           {/* Content area */}
           <ScrollArea className="flex-1">
             <div className="p-6 max-w-2xl">
-              {/* Section header */}
-              <div className="mb-6 hidden md:block">
-                <h2 className="text-lg font-medium text-foreground">
-                  {currentNavItem?.label}
-                </h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {currentNavItem?.description}
-                </p>
-              </div>
               {renderContent()}
             </div>
           </ScrollArea>
@@ -340,11 +328,12 @@ export function SettingsScreen() {
             <Button
               size="sm"
               onClick={handleSave}
-              disabled={saving || configLoading}
-              className="h-8 px-4 text-sm"
+              disabled={saving || saved || configLoading}
+              className={cn('h-8 px-4 text-sm transition-colors', saved && 'bg-green-600 hover:bg-green-600')}
             >
               {saving && <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />}
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saved && <Check className="h-3.5 w-3.5 mr-2" />}
+              {saving ? 'Saving...' : saved ? 'Saved' : 'Save Changes'}
             </Button>
           )}
         </footer>

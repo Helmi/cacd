@@ -28,9 +28,11 @@ import {
   ChevronsRight,
   ChevronDown,
   ChevronRight,
+  FolderCog,
   FolderGit2,
   FolderPlus,
   GitBranch,
+  ListTodo,
   MoreVertical,
   PanelLeftClose,
   Pencil,
@@ -63,6 +65,9 @@ export function Sidebar() {
     openAddProject,
     openAddWorktree,
     openAddSession,
+    openSettings,
+    openTaskBoard,
+    selectProject,
     updateProject,
     removeProject,
     renameSession,
@@ -364,19 +369,6 @@ export function Sidebar() {
     expandedWorktrees,
   ])
 
-  // Toggle project expansion
-  const toggleProject = (path: string) => {
-    setExpandedProjects((prev) => {
-      const next = new Set(prev)
-      if (next.has(path)) {
-        next.delete(path)
-      } else {
-        next.add(path)
-      }
-      return next
-    })
-  }
-
   // Toggle worktree expansion
   const toggleWorktree = (path: string) => {
     setExpandedWorktrees((prev) => {
@@ -521,7 +513,6 @@ export function Sidebar() {
         <div className="py-1">
           {filteredData.projects.map((project, projectIndex) => {
             const projectWorktrees = getWorktreesForProject(project.path)
-            const isExpanded = expandedProjects.has(project.path)
             const isCurrentProject = currentProject?.path === project.path
             const isInvalid = project.isValid === false
 
@@ -530,8 +521,7 @@ export function Sidebar() {
                 {/* Project header - prominent separator */}
                 <ContextMenu>
                   <ContextMenuTrigger asChild>
-                    <button
-                      onClick={() => renamingProject !== project.path && toggleProject(project.path)}
+                    <div
                       className={cn(
                         'group flex w-full min-w-0 items-center gap-2 px-2 py-2 text-sm',
                         'bg-muted/50 hover:bg-muted transition-colors',
@@ -543,9 +533,7 @@ export function Sidebar() {
                         'h-4 w-4 shrink-0 transition-colors',
                         isInvalid
                           ? 'text-yellow-600'
-                          : isExpanded
-                            ? 'text-primary'
-                            : 'text-muted-foreground group-hover:text-foreground'
+                          : 'text-primary'
                       )} />
                       {renamingProject === project.path ? (
                         <Input
@@ -593,11 +581,18 @@ export function Sidebar() {
                               <DropdownMenuSeparator />
                             </>
                           )}
-                          <DropdownMenuItem onClick={() => startRenameProject(project)}>
-                            <Pencil className="h-3.5 w-3.5 mr-2" />
-                            Rename
+                          <DropdownMenuItem
+                            onClick={async () => {
+                              if (currentProject?.path !== project.path) {
+                                await selectProject(project.path)
+                              }
+                              openTaskBoard()
+                            }}
+                            disabled={isInvalid}
+                          >
+                            <ListTodo className="h-3.5 w-3.5 mr-2" />
+                            Task Board
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => openAddWorktree(project.path)}
                             disabled={isInvalid}
@@ -613,6 +608,23 @@ export function Sidebar() {
                             New Session
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => startRenameProject(project)}>
+                            <Pencil className="h-3.5 w-3.5 mr-2" />
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={async () => {
+                              if (currentProject?.path !== project.path) {
+                                await selectProject(project.path)
+                              }
+                              openSettings('project')
+                            }}
+                            disabled={isInvalid}
+                          >
+                            <FolderCog className="h-3.5 w-3.5 mr-2" />
+                            Project Settings
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
                             onClick={() => confirmRemoveProject(project)}
@@ -622,12 +634,7 @@ export function Sidebar() {
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                      {isExpanded ? (
-                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      )}
-                    </button>
+                    </div>
                   </ContextMenuTrigger>
                   <ContextMenuContent>
                     {isInvalid && (
@@ -639,11 +646,18 @@ export function Sidebar() {
                         <ContextMenuSeparator />
                       </>
                     )}
-                    <ContextMenuItem onClick={() => startRenameProject(project)}>
-                      <Pencil className="h-3.5 w-3.5 mr-2" />
-                      Rename
+                    <ContextMenuItem
+                      onClick={async () => {
+                        if (currentProject?.path !== project.path) {
+                          await selectProject(project.path)
+                        }
+                        openTaskBoard()
+                      }}
+                      disabled={isInvalid}
+                    >
+                      <ListTodo className="h-3.5 w-3.5 mr-2" />
+                      Task Board
                     </ContextMenuItem>
-                    <ContextMenuSeparator />
                     <ContextMenuItem
                       onClick={() => openAddWorktree(project.path)}
                       disabled={isInvalid}
@@ -659,6 +673,23 @@ export function Sidebar() {
                       New Session
                     </ContextMenuItem>
                     <ContextMenuSeparator />
+                    <ContextMenuItem onClick={() => startRenameProject(project)}>
+                      <Pencil className="h-3.5 w-3.5 mr-2" />
+                      Rename
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onClick={async () => {
+                        if (currentProject?.path !== project.path) {
+                          await selectProject(project.path)
+                        }
+                        openSettings('project')
+                      }}
+                      disabled={isInvalid}
+                    >
+                      <FolderCog className="h-3.5 w-3.5 mr-2" />
+                      Project Settings
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
                     <ContextMenuItem
                       destructive
                       onClick={() => confirmRemoveProject(project)}
@@ -670,8 +701,7 @@ export function Sidebar() {
                 </ContextMenu>
 
                 {/* Worktrees */}
-                {isExpanded && (
-                  <div className="py-1 min-w-0">
+                <div className="py-1 min-w-0">
                     {projectWorktrees.length === 0 ? (
                       <div className="px-3 py-2 text-xs text-muted-foreground italic">
                         No worktrees
@@ -871,8 +901,7 @@ export function Sidebar() {
                         )
                       })
                     )}
-                  </div>
-                )}
+                </div>
               </div>
             )
           })}

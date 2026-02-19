@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAppStore } from '@/lib/store'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { ProjectConfig, TdPromptTemplate } from '@/lib/types'
-import { CheckCircle2, XCircle, Play, Save, RefreshCw, FileText, Trash2, Plus, Code2 } from 'lucide-react'
+import { CheckCircle2, XCircle, Play, Save, RefreshCw, FileText, Trash2, Plus, Code2, FolderGit2, ChevronRight, Check, Globe, FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function SettingsProject() {
   const {
+    projects,
     currentProject,
+    selectProject,
     tdStatus,
     agents,
     projectConfig,
@@ -28,21 +30,19 @@ export function SettingsProject() {
   const [rawJson, setRawJson] = useState('{}')
   const [jsonError, setJsonError] = useState<string | null>(null)
   const [savingConfig, setSavingConfig] = useState(false)
+  const [savedConfig, setSavedConfig] = useState(false)
 
   const [allPrompts, setAllPrompts] = useState<TdPromptTemplate[]>([])
   const [effectivePrompts, setEffectivePrompts] = useState<TdPromptTemplate[]>([])
-  const [selectedProjectPrompt, setSelectedProjectPrompt] = useState('')
-  const [projectPromptName, setProjectPromptName] = useState('')
-  const [projectPromptContent, setProjectPromptContent] = useState('')
+  const [selectedPromptName, setSelectedPromptName] = useState('')
+  const [selectedPromptSource, setSelectedPromptSource] = useState<'global' | 'project' | 'new'>('new')
+  const [promptName, setPromptName] = useState('')
+  const [promptContent, setPromptContent] = useState('')
   const [savingPrompt, setSavingPrompt] = useState(false)
+  const [showRawJson, setShowRawJson] = useState(false)
 
   const projectState = tdStatus?.projectState
   const availability = tdStatus?.availability
-  const projectPrompts = useMemo(
-    () => allPrompts.filter(t => t.source === 'project'),
-    [allPrompts]
-  )
-
   const refreshPromptData = async () => {
     const [all, effective] = await Promise.all([
       fetchTdPrompts('all'),
@@ -65,27 +65,53 @@ export function SettingsProject() {
     setRawJson(JSON.stringify(cfg, null, 2))
   }, [projectConfig])
 
-  useEffect(() => {
-    if (!selectedProjectPrompt) {
-      setProjectPromptContent('')
-      return
-    }
-
-    fetch(`/api/td/prompts/${encodeURIComponent(selectedProjectPrompt)}?scope=project`, {
-      credentials: 'include',
-    })
-      .then(res => res.json())
-      .then(data => {
-        setProjectPromptName(data.template?.name || selectedProjectPrompt)
-        setProjectPromptContent(data.template?.content || '')
+  const selectPrompt = async (name: string, source: 'global' | 'project') => {
+    setSelectedPromptName(name)
+    setSelectedPromptSource(source)
+    setPromptName(name)
+    try {
+      const res = await fetch(`/api/td/prompts/${encodeURIComponent(name)}?scope=${source}`, {
+        credentials: 'include',
       })
-      .catch(() => setProjectPromptContent(''))
-  }, [selectedProjectPrompt])
+      const data = await res.json()
+      setPromptContent(data.template?.content || '')
+    } catch {
+      setPromptContent('')
+    }
+  }
+
+  const validProjects = projects.filter(p => p.isValid !== false)
 
   if (!currentProject) {
     return (
-      <div className="rounded border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        Select a project to edit project-level settings.
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-sm font-medium mb-1">Project Settings</h3>
+          <p className="text-xs text-muted-foreground">
+            Select a project to configure project-level settings.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label className="text-muted-foreground">Project</Label>
+          <Select onValueChange={(path) => selectProject(path)}>
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder="Select a project..." />
+            </SelectTrigger>
+            <SelectContent>
+              {validProjects.map((p) => (
+                <SelectItem key={p.path} value={p.path}>
+                  <div className="flex items-center gap-2">
+                    <FolderGit2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    {p.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {validProjects.length === 0 && (
+            <p className="text-xs text-muted-foreground">No projects registered yet. Add a project from the sidebar first.</p>
+          )}
+        </div>
       </div>
     )
   }
@@ -149,6 +175,8 @@ export function SettingsProject() {
     setSavingConfig(true)
     await saveProjectConfig(localConfig)
     setSavingConfig(false)
+    setSavedConfig(true)
+    setTimeout(() => setSavedConfig(false), 2000)
   }
 
   const handleApplyJson = () => {
@@ -169,30 +197,33 @@ export function SettingsProject() {
   }
 
   const handleNewPrompt = () => {
-    setSelectedProjectPrompt('')
-    setProjectPromptName('')
-    setProjectPromptContent('')
+    setSelectedPromptName('')
+    setSelectedPromptSource('new')
+    setPromptName('')
+    setPromptContent('')
   }
 
   const handleSavePrompt = async () => {
-    if (!projectPromptName.trim()) return
+    if (!promptName.trim()) return
     setSavingPrompt(true)
-    const ok = await saveTdPrompt(projectPromptName.trim(), projectPromptContent, 'project')
+    const ok = await saveTdPrompt(promptName.trim(), promptContent, 'project')
     if (ok) {
-      setSelectedProjectPrompt(projectPromptName.trim())
       await refreshPromptData()
+      setSelectedPromptName(promptName.trim())
+      setSelectedPromptSource('project')
     }
     setSavingPrompt(false)
   }
 
   const handleDeletePrompt = async () => {
-    if (!selectedProjectPrompt) return
+    if (!selectedPromptName || selectedPromptSource !== 'project') return
     setSavingPrompt(true)
-    const ok = await deleteTdPrompt(selectedProjectPrompt, 'project')
+    const ok = await deleteTdPrompt(selectedPromptName, 'project')
     if (ok) {
-      setSelectedProjectPrompt('')
-      setProjectPromptName('')
-      setProjectPromptContent('')
+      setSelectedPromptName('')
+      setSelectedPromptSource('new')
+      setPromptName('')
+      setPromptContent('')
       await refreshPromptData()
     }
     setSavingPrompt(false)
@@ -203,14 +234,34 @@ export function SettingsProject() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-sm font-medium mb-1">Project Settings</h3>
-        <p className="text-xs text-muted-foreground">
-          Settings for <span className="font-mono">{currentProject.name}</span>.
-        </p>
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-medium mb-1">Project Settings</h3>
+          <p className="text-xs text-muted-foreground">
+            Configure project-level hooks, prompts, and agent defaults.
+          </p>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Project</Label>
+          <Select value={currentProject.path} onValueChange={(path) => selectProject(path)}>
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {validProjects.map((p) => (
+                <SelectItem key={p.path} value={p.path}>
+                  <div className="flex items-center gap-2">
+                    <FolderGit2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    {p.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         {projectConfigPath && (
-          <p className="text-xs text-muted-foreground mt-1">
-            Config file: <span className="font-mono">{projectConfigPath}</span>
+          <p className="text-xs text-muted-foreground">
+            Config: <span className="font-mono">{projectConfigPath}</span>
           </p>
         )}
       </div>
@@ -302,8 +353,11 @@ export function SettingsProject() {
             value={localConfig.scripts?.setup || ''}
             onChange={(e) => setHook('setup', e.target.value)}
             className="h-8 font-mono"
-            placeholder="command to run after worktree creation"
+            placeholder="npm install && npm run build"
           />
+          <p className="text-xs text-muted-foreground">
+            Runs after worktree creation. Env: <code className="bg-muted px-1 rounded">$CACD_WORKTREE_PATH</code>, <code className="bg-muted px-1 rounded">$CACD_WORKTREE_BRANCH</code>
+          </p>
         </div>
 
         <div className="space-y-2">
@@ -313,19 +367,27 @@ export function SettingsProject() {
             value={localConfig.scripts?.teardown || ''}
             onChange={(e) => setHook('teardown', e.target.value)}
             className="h-8 font-mono"
-            placeholder="command to run before worktree deletion"
+            placeholder="cleanup-script.sh"
           />
+          <p className="text-xs text-muted-foreground">
+            Runs before worktree deletion. Same env vars as setup hook.
+          </p>
         </div>
 
-        <Button size="sm" onClick={handleSaveConfig} disabled={savingConfig}>
-          <Save className="h-3.5 w-3.5 mr-1" />
-          Save Project Config
+        <Button
+          size="sm"
+          onClick={handleSaveConfig}
+          disabled={savingConfig || savedConfig}
+          className={cn(savedConfig && 'bg-green-600 hover:bg-green-600')}
+        >
+          {savedConfig ? <Check className="h-3.5 w-3.5 mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+          {savingConfig ? 'Saving...' : savedConfig ? 'Saved' : 'Save Project Config'}
         </Button>
       </div>
 
       <div className="space-y-3 border-t border-border pt-4">
         <div className="flex items-center justify-between">
-          <Label className="text-muted-foreground">Project Prompt Templates</Label>
+          <Label className="text-muted-foreground">Prompt Templates</Label>
           <div className="flex gap-1">
             <Button variant="ghost" size="sm" onClick={refreshPromptData}>
               <RefreshCw className="h-3.5 w-3.5" />
@@ -337,103 +399,120 @@ export function SettingsProject() {
           </div>
         </div>
 
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">Merged prompt visibility (source + override state):</p>
-          <div className="flex flex-wrap gap-2">
-            {allPrompts.map((prompt) => (
-              <span
-                key={`${prompt.source}-${prompt.name}`}
-                className={cn(
-                  'text-[11px] rounded border px-2 py-1',
-                  prompt.source === 'project' && prompt.overridesGlobal && 'border-blue-500/40 text-blue-500',
-                  prompt.source === 'project' && !prompt.overridesGlobal && 'border-green-500/40 text-green-500',
-                  prompt.source === 'global' && prompt.overridden && 'border-orange-500/40 text-orange-500',
-                  prompt.source === 'global' && !prompt.overridden && 'border-border text-muted-foreground'
-                )}
-              >
-                {prompt.name}
-                {' · '}
-                {prompt.source}
-                {prompt.source === 'project' && prompt.overridesGlobal ? ' override' : ''}
-                {prompt.source === 'global' && prompt.overridden ? ' overridden' : ''}
-              </span>
-            ))}
-          </div>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          Select a template to view or edit. Global templates can be customized as project overrides.
+        </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-3">
-          <div className="border border-border rounded-md max-h-64 overflow-y-auto">
-            {projectPrompts.length === 0 ? (
-              <div className="p-3 text-xs text-muted-foreground">No project prompts yet.</div>
-            ) : (
-              projectPrompts.map((prompt) => (
+        {/* Unified template list */}
+        <div className="border border-border rounded-md max-h-56 overflow-y-auto">
+          {allPrompts.length === 0 ? (
+            <div className="p-3 text-xs text-muted-foreground">No prompt templates found.</div>
+          ) : (
+            allPrompts.map((prompt) => {
+              const isSelected = selectedPromptName === prompt.name && selectedPromptSource === prompt.source
+              return (
                 <button
-                  key={prompt.name}
+                  key={`${prompt.source}-${prompt.name}`}
                   className={cn(
-                    'w-full text-left px-3 py-2 border-b border-border last:border-b-0 text-sm',
-                    selectedProjectPrompt === prompt.name ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
+                    'w-full text-left px-3 py-2 border-b border-border last:border-b-0 text-sm transition-colors',
+                    isSelected ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'
                   )}
-                  onClick={() => setSelectedProjectPrompt(prompt.name)}
+                  onClick={() => selectPrompt(prompt.name, prompt.source as 'global' | 'project')}
                 >
                   <div className="flex items-center gap-2">
-                    <FileText className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{prompt.name}</span>
+                    {prompt.source === 'global' ? (
+                      <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <FolderOpen className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+                    )}
+                    <span className="truncate flex-1">{prompt.name}</span>
+                    <span className={cn(
+                      'text-[10px] px-1.5 py-0.5 rounded shrink-0',
+                      prompt.source === 'project' ? 'bg-blue-500/10 text-blue-500' : 'bg-muted text-muted-foreground',
+                      prompt.source === 'global' && prompt.overridden && 'line-through opacity-50'
+                    )}>
+                      {prompt.source === 'project' && prompt.overridesGlobal ? 'override' : prompt.source}
+                    </span>
                   </div>
                 </button>
-              ))
+              )
+            })
+          )}
+        </div>
+
+        {/* Editor area */}
+        {(selectedPromptName || selectedPromptSource === 'new') && (
+          <div className="space-y-3 rounded-md border border-border bg-muted/10 p-3">
+            {selectedPromptSource === 'global' && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded px-2.5 py-2">
+                <Globe className="h-3.5 w-3.5 shrink-0" />
+                <span>Global template — save to create a project override</span>
+              </div>
             )}
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="project-prompt-name" className="text-xs text-muted-foreground">Name</Label>
-            <Input
-              id="project-prompt-name"
-              value={projectPromptName}
-              onChange={(e) => setProjectPromptName(e.target.value)}
-              className="h-8"
-              placeholder="Prompt template name"
-            />
+            <div className="space-y-2">
+              <Label htmlFor="prompt-name" className="text-xs text-muted-foreground">Name</Label>
+              <Input
+                id="prompt-name"
+                value={promptName}
+                onChange={(e) => setPromptName(e.target.value)}
+                className="h-8"
+                placeholder="Prompt template name"
+              />
+            </div>
 
-            <Label htmlFor="project-prompt-content" className="text-xs text-muted-foreground">Content</Label>
-            <textarea
-              id="project-prompt-content"
-              value={projectPromptContent}
-              onChange={(e) => setProjectPromptContent(e.target.value)}
-              className="min-h-44 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              placeholder="Prompt text with task variables"
-            />
+            <div className="space-y-2">
+              <Label htmlFor="prompt-content" className="text-xs text-muted-foreground">Content</Label>
+              <textarea
+                id="prompt-content"
+                value={promptContent}
+                onChange={(e) => setPromptContent(e.target.value)}
+                className="min-h-36 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                placeholder="Prompt text. Supports variables like {{task.id}}, {{task.title}}, {{task.description}}"
+              />
+            </div>
 
             <div className="flex items-center gap-2">
-              <Button size="sm" onClick={handleSavePrompt} disabled={!projectPromptName.trim() || savingPrompt}>
+              <Button size="sm" onClick={handleSavePrompt} disabled={!promptName.trim() || savingPrompt}>
                 <Save className="h-3.5 w-3.5 mr-1" />
-                Save
+                {selectedPromptSource === 'global' ? 'Save as Override' : 'Save'}
               </Button>
-              <Button variant="outline" size="sm" onClick={handleDeletePrompt} disabled={!selectedProjectPrompt || savingPrompt}>
-                <Trash2 className="h-3.5 w-3.5 mr-1" />
-                Delete
-              </Button>
+              {selectedPromptSource === 'project' && (
+                <Button variant="outline" size="sm" onClick={handleDeletePrompt} disabled={savingPrompt}>
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                  Delete
+                </Button>
+              )}
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="space-y-3 border-t border-border pt-4">
-        <Label className="text-muted-foreground">Raw Config JSON</Label>
-        <div className="rounded border border-border bg-muted/20 p-3 space-y-2">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Code2 className="h-3.5 w-3.5" />
-            For advanced fields not covered in the structured form.
+        <button
+          onClick={() => setShowRawJson(!showRawJson)}
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', showRawJson && 'rotate-90')} />
+          <Code2 className="h-3.5 w-3.5" />
+          Raw Config JSON
+        </button>
+        {showRawJson && (
+          <div className="rounded border border-border bg-muted/20 p-3 space-y-2">
+            <p className="text-xs text-muted-foreground">
+              For advanced fields not covered in the structured form.
+            </p>
+            <textarea
+              value={rawJson}
+              onChange={(e) => setRawJson(e.target.value)}
+              className="min-h-48 w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono"
+            />
+            {jsonError && <p className="text-xs text-red-500">{jsonError}</p>}
+            <Button size="sm" variant="outline" onClick={handleApplyJson}>
+              Apply JSON to Form
+            </Button>
           </div>
-          <textarea
-            value={rawJson}
-            onChange={(e) => setRawJson(e.target.value)}
-            className="min-h-48 w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono"
-          />
-          {jsonError && <p className="text-xs text-red-500">{jsonError}</p>}
-          <Button size="sm" variant="outline" onClick={handleApplyJson}>
-            Apply JSON to Form
-          </Button>
-        </div>
+        )}
       </div>
     </div>
   )

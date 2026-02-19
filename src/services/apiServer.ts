@@ -1734,6 +1734,10 @@ export class APIServer {
 			'/api/td/issues/:id/review',
 			async (request, reply) => {
 				const {id} = request.params;
+				const {project} = resolveSelectedProjectTdContext();
+				if (!project) {
+					return reply.code(400).send({error: 'No project selected'});
+				}
 				if (!tdService.isAvailable()) {
 					return reply.code(400).send({error: 'TD not available'});
 				}
@@ -1742,11 +1746,76 @@ export class APIServer {
 					execFileSync('td', ['review', id], {
 						encoding: 'utf-8',
 						timeout: 5000,
+						cwd: project.path,
 					});
 					return {success: true, message: `Task ${id} submitted for review`};
 				} catch (err) {
 					logger.warn(`API: td review failed for ${id}: ${err}`);
 					return reply.code(500).send({error: `Failed to submit for review: ${err}`});
+				}
+			},
+		);
+
+		// Approve/close a task from review
+		this.app.post<{Params: {id: string}}>(
+			'/api/td/issues/:id/approve',
+			async (request, reply) => {
+				const {id} = request.params;
+				const {project} = resolveSelectedProjectTdContext();
+				if (!project) {
+					return reply.code(400).send({error: 'No project selected'});
+				}
+				if (!tdService.isAvailable()) {
+					return reply.code(400).send({error: 'TD not available'});
+				}
+
+				try {
+					execFileSync('td', ['approve', id], {
+						encoding: 'utf-8',
+						timeout: 5000,
+						cwd: project.path,
+					});
+					return {success: true, message: `Task ${id} approved and closed`};
+				} catch (err) {
+					logger.warn(`API: td approve failed for ${id}: ${err}`);
+					return reply.code(500).send({error: `Failed to approve: ${err}`});
+				}
+			},
+		);
+
+		// Request changes (reopen from review with optional comment)
+		this.app.post<{Params: {id: string}; Body: {comment?: string}}>(
+			'/api/td/issues/:id/request-changes',
+			async (request, reply) => {
+				const {id} = request.params;
+				const {project} = resolveSelectedProjectTdContext();
+				if (!project) {
+					return reply.code(400).send({error: 'No project selected'});
+				}
+				if (!tdService.isAvailable()) {
+					return reply.code(400).send({error: 'TD not available'});
+				}
+
+				try {
+					// Add comment first if provided
+					const comment = (request.body as {comment?: string})?.comment;
+					if (comment?.trim()) {
+						execFileSync('td', ['comment', id, comment.trim()], {
+							encoding: 'utf-8',
+							timeout: 5000,
+							cwd: project.path,
+						});
+					}
+					// Reject the task (moves from in_review back to in_progress)
+					execFileSync('td', ['reject', id, '--reason', 'Changes requested via CACD'], {
+						encoding: 'utf-8',
+						timeout: 5000,
+						cwd: project.path,
+					});
+					return {success: true, message: `Task ${id} sent back for changes`};
+				} catch (err) {
+					logger.warn(`API: td request-changes failed for ${id}: ${err}`);
+					return reply.code(500).send({error: `Failed to request changes: ${err}`});
 				}
 			},
 		);

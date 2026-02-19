@@ -10,9 +10,12 @@ interface SettingsWorktreeHooksProps {
 export function SettingsWorktreeHooks({ localConfig, setLocalConfig }: SettingsWorktreeHooksProps) {
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Commands to run on worktree lifecycle events.
-      </p>
+      <div>
+        <h3 className="text-sm font-medium mb-1">Worktree Hooks</h3>
+        <p className="text-xs text-muted-foreground">
+          Shell commands to run on worktree lifecycle events. Chain multiple commands with <code className="bg-muted px-1 rounded">&&</code> or <code className="bg-muted px-1 rounded">;</code>
+        </p>
+      </div>
 
       <div className="space-y-4">
         <div className="space-y-2">
@@ -32,7 +35,7 @@ export function SettingsWorktreeHooks({ localConfig, setLocalConfig }: SettingsW
             placeholder="npm install && git pull"
           />
           <p className="text-xs text-muted-foreground">
-            Run after worktree is created. Use placeholders: {'{path}'}, {'{branch}'}
+            Runs after a worktree is created. Environment variables: <code className="bg-muted px-1 rounded">$CACD_WORKTREE_PATH</code>, <code className="bg-muted px-1 rounded">$CACD_WORKTREE_BRANCH</code>, <code className="bg-muted px-1 rounded">$CACD_GIT_ROOT</code>
           </p>
         </div>
       </div>

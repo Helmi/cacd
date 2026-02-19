@@ -265,7 +265,7 @@ export function AddSessionScreen() {
       return
     }
     setLoadingTdTasks(true)
-    fetch('/api/td/issues?status=open,in_progress', { credentials: 'include' })
+    fetch('/api/td/issues?status=open,in_progress,in_review,blocked', { credentials: 'include' })
       .then(res => res.json())
       .then(data => setTdTasks(data.issues || []))
       .catch(() => setTdTasks([]))
