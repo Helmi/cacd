@@ -433,63 +433,132 @@ describe('SessionManager', () => {
 		});
 	});
 
-	describe('createSessionWithAgentEffect', () => {
-			it('should spawn a persistent shell and bootstrap the agent command', async () => {
-				vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
+	describe('buildBootstrapCommand', () => {
+		const getBuildBootstrapCommand = (): ((
+			shellCommand: string,
+			command: string,
+			args: string[],
+		) => string) =>
+			(
+				Reflect.get(
+					sessionManager,
+					'buildBootstrapCommand',
+				) as (
+					shellCommand: string,
+					command: string,
+					args: string[],
+				) => string
+			).bind(sessionManager);
 
-				await Effect.runPromise(
-					sessionManager.createSessionWithAgentEffect(
-						'/test/worktree',
-						'claude',
-						['--resume'],
-						'claude',
-						'Agent Session',
-						'claude',
-						{TEST_ENV: '1'},
-						'agent',
-					),
-				);
+		it('should keep simple POSIX commands readable without extra quotes', () => {
+			const buildBootstrapCommand = getBuildBootstrapCommand();
+			const result = buildBootstrapCommand('/bin/zsh', 'claude', [
+				'--resume',
+				'--model=sonnet',
+			]);
 
-				expect(spawn).toHaveBeenCalledWith(
-					getDefaultShell(),
-					[],
-					expect.objectContaining({
-						cwd: '/test/worktree',
-						env: expect.objectContaining({TEST_ENV: '1'}),
-					}),
-				);
-
-				expect(mockPty.write).toHaveBeenCalledTimes(1);
-				const bootstrapCommand = mockPty.write.mock.calls[0]?.[0] as string;
-				expect(bootstrapCommand).toContain('claude');
-				expect(bootstrapCommand).toContain('--resume');
-				expect(bootstrapCommand.endsWith('\r')).toBe(true);
-			});
-
-			it('should keep terminal sessions as plain shells without bootstrap command', async () => {
-				vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
-
-				await Effect.runPromise(
-					sessionManager.createSessionWithAgentEffect(
-						'/test/worktree',
-						'ignored-for-terminal-kind',
-						['--ignored'],
-						undefined,
-						undefined,
-						'terminal',
-						undefined,
-						'terminal',
-					),
-				);
-
-				expect(spawn).toHaveBeenCalledWith(
-					getDefaultShell(),
-					[],
-					expect.objectContaining({cwd: '/test/worktree'}),
-				);
-				expect(mockPty.write).not.toHaveBeenCalled();
-			});
+			expect(result).toBe('claude --resume --model=sonnet');
 		});
+
+		it('should quote unsafe POSIX tokens safely', () => {
+			const buildBootstrapCommand = getBuildBootstrapCommand();
+			const result = buildBootstrapCommand('/bin/zsh', 'claude', [
+				'--message',
+				'hello world',
+				"it's done",
+				'$(rm -rf /)',
+				'',
+			]);
+
+			expect(result).toBe(
+				"claude --message 'hello world' 'it'\"'\"'s done' '$(rm -rf /)' ''",
+			);
+		});
+
+		it('should keep simple PowerShell commands readable without extra quotes', () => {
+			const buildBootstrapCommand = getBuildBootstrapCommand();
+			const result = buildBootstrapCommand('powershell.exe', 'claude', [
+				'--resume',
+				'--model=sonnet',
+			]);
+
+			expect(result).toBe('& claude --resume --model=sonnet');
+		});
+
+		it('should quote unsafe PowerShell tokens safely', () => {
+			const buildBootstrapCommand = getBuildBootstrapCommand();
+			const result = buildBootstrapCommand('pwsh', 'my tool', [
+				'--message',
+				"don't panic",
+				'$env:PATH',
+				'',
+			]);
+
+			expect(result).toBe(
+				"& 'my tool' --message 'don''t panic' '$env:PATH' ''",
+			);
+		});
+	});
+
+	describe('createSessionWithAgentEffect', () => {
+		it('should spawn a persistent shell and bootstrap the agent command', async () => {
+			vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
+
+			await Effect.runPromise(
+				sessionManager.createSessionWithAgentEffect(
+					'/test/worktree',
+					'claude',
+					['--resume'],
+					'claude',
+					'Agent Session',
+					'claude',
+					{TEST_ENV: '1'},
+					'agent',
+				),
+			);
+
+			expect(spawn).toHaveBeenCalledWith(
+				getDefaultShell(),
+				[],
+				expect.objectContaining({
+					cwd: '/test/worktree',
+					env: expect.objectContaining({TEST_ENV: '1'}),
+				}),
+			);
+
+			expect(mockPty.write).toHaveBeenCalledTimes(1);
+			const bootstrapCommand = mockPty.write.mock.calls[0]?.[0] as string;
+			expect(bootstrapCommand.endsWith('\r')).toBe(true);
+			expect(bootstrapCommand).toContain('claude');
+			expect(bootstrapCommand).toContain('--resume');
+			expect(bootstrapCommand).not.toContain("'claude'");
+			expect(bootstrapCommand).not.toContain("'--resume'");
+		});
+
+		it('should keep terminal sessions as plain shells without bootstrap command', async () => {
+			vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
+
+			await Effect.runPromise(
+				sessionManager.createSessionWithAgentEffect(
+					'/test/worktree',
+					'ignored-for-terminal-kind',
+					['--ignored'],
+					undefined,
+					undefined,
+					'terminal',
+					undefined,
+					'terminal',
+				),
+			);
+
+			expect(spawn).toHaveBeenCalledWith(
+				getDefaultShell(),
+				[],
+				expect.objectContaining({cwd: '/test/worktree'}),
+			);
+			expect(mockPty.write).not.toHaveBeenCalled();
+		});
+	});
 
 	describe('session lifecycle', () => {
 		it('should destroy session and clean up resources', async () => {

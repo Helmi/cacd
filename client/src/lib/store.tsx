@@ -25,6 +25,13 @@ const socket: Socket = io({
   autoConnect: false, // Don't connect until AppProvider mounts (after auth)
 })
 
+type AddSessionIntent = 'work' | 'review'
+
+interface AddSessionContext {
+  intent?: AddSessionIntent
+  sessionName?: string
+}
+
 interface AppState {
   // Data
   projects: Project[]
@@ -53,6 +60,8 @@ interface AppState {
   addSessionWorktreePath: string | null  // Pre-selected worktree context
   addSessionProjectPath: string | null  // Pre-selected project context
   addSessionTdTaskId: string | null  // Pre-selected td task
+  addSessionIntent: AddSessionIntent | null
+  addSessionSessionName: string | null
 
   // Settings Screen State
   settingsOpen: boolean
@@ -84,6 +93,7 @@ interface AppState {
 
   // TD Integration
   tdStatus: TdStatus | null
+  tdStatusLoading: boolean
   tdIssues: TdIssue[]
   tdBoardView: Record<string, TdIssue[]>
   taskBoardOpen: boolean
@@ -99,7 +109,7 @@ interface AppActions {
   // Data fetching
   fetchData: () => void
   fetchAgents: () => Promise<void>
-  selectProject: (path: string) => Promise<void>
+  selectProject: (path: string) => Promise<boolean>
 
   // Agent management
   saveAgent: (agent: AgentConfig) => Promise<boolean>
@@ -149,7 +159,7 @@ interface AppActions {
   closeAddProject: () => void
   openAddWorktree: (projectPath?: string) => void
   closeAddWorktree: () => void
-  openAddSession: (worktreePath?: string, projectPath?: string, tdTaskId?: string) => void
+  openAddSession: (worktreePath?: string, projectPath?: string, tdTaskId?: string, context?: AddSessionContext) => void
   closeAddSession: () => void
   openSettings: (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td' | 'project') => void
   closeSettings: () => void
@@ -258,6 +268,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [addSessionWorktreePath, setAddSessionWorktreePath] = useState<string | null>(null)
   const [addSessionProjectPath, setAddSessionProjectPath] = useState<string | null>(null)
   const [addSessionTdTaskId, setAddSessionTdTaskId] = useState<string | null>(null)
+  const [addSessionIntent, setAddSessionIntent] = useState<AddSessionIntent | null>(null)
+  const [addSessionSessionName, setAddSessionSessionName] = useState<string | null>(null)
   const [viewingFileDiff, setViewingFileDiff] = useState<{ sessionId: string; file: ChangedFile; worktreePath: string } | null>(null)
   const [viewingFile, setViewingFile] = useState<{ worktreePath: string; filePath: string } | null>(null)
 
@@ -297,6 +309,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // TD Integration state
   const [tdStatus, setTdStatus] = useState<TdStatus | null>(null)
+  const [tdStatusLoading, setTdStatusLoading] = useState(true)
   const [tdIssues, setTdIssues] = useState<TdIssue[]>([])
   const [tdBoardView, setTdBoardView] = useState<Record<string, TdIssue[]>>({})
   const [taskBoardOpen, setTaskBoardOpen] = useState(false)
@@ -346,7 +359,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sessionsRes.json(),
       ])
 
-      if (state.selectedProject) setCurrentProject(state.selectedProject)
+      setCurrentProject(state.selectedProject || null)
       if (state.isDevMode !== undefined) setIsDevMode(state.isDevMode)
       setSessions(sessionsData)
     } catch (err) {
@@ -359,6 +372,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => debounce(fetchSessionData, 250),
     [fetchSessionData]
   )
+
+  const normalizeTdStatus = useCallback((data: unknown): TdStatus | null => {
+    if (!data || typeof data !== 'object') return null
+
+    const raw = data as Record<string, unknown>
+    const availabilitySource = (raw.availability && typeof raw.availability === 'object'
+      ? raw.availability
+      : raw) as Record<string, unknown>
+
+    return {
+      availability: {
+        binaryAvailable: availabilitySource.binaryAvailable === true,
+        version: typeof availabilitySource.version === 'string' ? availabilitySource.version : null,
+        binaryPath: typeof availabilitySource.binaryPath === 'string' ? availabilitySource.binaryPath : null,
+      },
+      projectState: (raw.projectState && typeof raw.projectState === 'object'
+        ? raw.projectState
+        : null) as TdStatus['projectState'],
+      projectConfig: (raw.projectConfig && typeof raw.projectConfig === 'object'
+        ? raw.projectConfig
+        : null) as TdStatus['projectConfig'],
+    }
+  }, [])
 
   // Fetch reference data (projects, worktrees, config - rarely changes)
   const fetchReferenceData = useCallback(async () => {
@@ -422,16 +458,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // TD Integration fetchers
   const fetchTdStatus = useCallback(async () => {
+    setTdStatusLoading(true)
     try {
       const res = await fetch('/api/td/status', { credentials: 'include' })
-      if (res.ok) {
-        const data = await res.json()
-        setTdStatus(data)
+      if (!res.ok) {
+        setTdStatus(null)
+        return
       }
+
+      const data = await res.json()
+      setTdStatus(normalizeTdStatus(data))
     } catch (err) {
       console.error('Failed to fetch td status:', err)
+      setTdStatus(null)
+    } finally {
+      setTdStatusLoading(false)
     }
-  }, [])
+  }, [normalizeTdStatus])
 
   const fetchProjectConfig = useCallback(async () => {
     try {
@@ -749,7 +792,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [sessions, contextSidebarSessionId, sessionsWithSidebarOpen, setSessionsWithSidebarOpen, sessionContextTabs])
 
-  const selectProject = async (path: string) => {
+  const selectProject = async (path: string): Promise<boolean> => {
     try {
       const res = await fetch('/api/project/select', {
         method: 'POST',
@@ -760,14 +803,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setError(data.error || 'Failed to select project')
-        return
+        return false
       }
       setSelectedSessions([])
       await fetchData()
       // td status and project config are fetched by the useEffect watching currentProject.path
+      return true
     } catch (e) {
       console.error(e)
       setError('Failed to select project. Check your connection.')
+      return false
     }
   }
 
@@ -1022,10 +1067,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAddWorktreeOpen(false)
     setAddWorktreeProjectPath(null)
   }
-  const openAddSession = (worktreePath?: string, projectPath?: string, tdTaskId?: string) => {
+  const openAddSession = (worktreePath?: string, projectPath?: string, tdTaskId?: string, context?: AddSessionContext) => {
     setAddSessionWorktreePath(worktreePath || null)
     setAddSessionProjectPath(projectPath || null)
     setAddSessionTdTaskId(tdTaskId || null)
+    setAddSessionIntent(context?.intent || null)
+    setAddSessionSessionName(context?.sessionName || null)
     setAddSessionOpen(true)
   }
   const closeAddSession = () => {
@@ -1033,12 +1080,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAddSessionWorktreePath(null)
     setAddSessionProjectPath(null)
     setAddSessionTdTaskId(null)
+    setAddSessionIntent(null)
+    setAddSessionSessionName(null)
   }
   const openSettings = (section?: 'general' | 'agents' | 'status-hooks' | 'worktree-hooks' | 'td' | 'project') => {
-    if (section) {
-      setSettingsSection(section)
-      localStorage.setItem('cacd_settings_section', section)
+    const targetSection = section || (settingsSection === 'project' ? 'general' : settingsSection)
+    if (settingsSection !== targetSection) {
+      setSettingsSection(targetSection)
     }
+    localStorage.setItem('cacd_settings_section', targetSection)
     setSettingsOpen(true)
   }
   const closeSettings = () => setSettingsOpen(false)
@@ -1237,6 +1287,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addSessionWorktreePath,
     addSessionProjectPath,
     addSessionTdTaskId,
+    addSessionIntent,
+    addSessionSessionName,
     settingsOpen,
     settingsSection,
     viewingFileDiff,
@@ -1299,6 +1351,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDefaultAgentId: setDefaultAgentIdAction,
     // TD Integration
     tdStatus,
+    tdStatusLoading,
     tdIssues,
     tdBoardView,
     taskBoardOpen,

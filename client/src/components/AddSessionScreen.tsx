@@ -23,12 +23,62 @@ import {
 import { cn, generateWorktreePath as generatePath } from '@/lib/utils'
 import type { AgentConfig, TdIssue, TdPromptTemplate } from '@/lib/types'
 
+type QuickStartIntent = 'work' | 'review'
+
+const AUTO_SESSION_NAME_PATTERN = /^[A-Za-z]+-[a-z0-9]{4}$/
+const REVIEW_AGENT_KEY_PREFIX = 'cacd_review_default_agent:'
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function getNestedString(source: unknown, path: string[]): string | undefined {
+  let current: unknown = source
+  for (const part of path) {
+    const rec = toRecord(current)
+    if (!rec || !(part in rec)) return undefined
+    current = rec[part]
+  }
+  return typeof current === 'string' && current.trim() ? current.trim() : undefined
+}
+
+function toSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+function sanitizeBranchName(value: string): string {
+  return value
+    .replace(/\s+/g, '-')
+    .replace(/[^A-Za-z0-9._/\-]+/g, '-')
+    .replace(/\/+/g, '/')
+    .replace(/^-+|-+$/g, '')
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\.-|\.\./g, '.')
+}
+
+function renderTemplate(template: string, task: Pick<TdIssue, 'id' | 'title'>): string {
+  const titleSlug = toSlug(task.title || '')
+  return template
+    .replace(/\{\{\s*task\.id\s*\}\}/g, task.id)
+    .replace(/\{\{\s*task\.title\s*\}\}/g, task.title || '')
+    .replace(/\{\{\s*task\.title-slug\s*\}\}/g, titleSlug)
+    .replace(/\{\{\s*task\.title_slug\s*\}\}/g, titleSlug)
+}
+
 export function AddSessionScreen() {
   const {
     closeAddSession,
     addSessionWorktreePath,
     addSessionProjectPath,
     addSessionTdTaskId,
+    addSessionIntent,
+    addSessionSessionName,
     createSessionWithAgent,
     createWorktree,
     fetchData,
@@ -38,8 +88,10 @@ export function AddSessionScreen() {
     config,
     agents,
     defaultAgentId,
+    sessions,
     openAddProject,
     tdStatus,
+    projectConfig,
     fetchTdPrompts,
   } = useAppStore()
 
@@ -71,6 +123,8 @@ export function AddSessionScreen() {
   // Prompt template state
   const [promptTemplates, setPromptTemplates] = useState<TdPromptTemplate[]>([])
   const [selectedPromptTemplate, setSelectedPromptTemplate] = useState<string>('')
+  const [branchTemplateApplied, setBranchTemplateApplied] = useState(false)
+  const [promptTemplateApplied, setPromptTemplateApplied] = useState(false)
 
   // Task list state (Claude-specific)
   const [taskListName, setTaskListName] = useState('')
@@ -103,6 +157,151 @@ export function AddSessionScreen() {
 
   // Get the selected project object for display
   const selectedProject = projects.find(p => p.path === selectedProjectPath)
+  const quickStartIntent: QuickStartIntent | null = addSessionIntent === 'work' || addSessionIntent === 'review'
+    ? addSessionIntent
+    : null
+
+  const resolveConfigValue = useCallback((paths: string[][]): string | undefined => {
+    for (const path of paths) {
+      const projectValue = getNestedString(projectConfig, path)
+      if (projectValue) return projectValue
+      const globalValue = getNestedString(config.raw, path)
+      if (globalValue) return globalValue
+    }
+    return undefined
+  }, [projectConfig, config.raw])
+
+  const workBranchTemplate = useMemo(() => {
+    return resolveConfigValue([
+      ['quickStart', 'work', 'branchTemplate'],
+      ['quickstart', 'work', 'branchTemplate'],
+      ['quickStart', 'work', 'branchNameTemplate'],
+      ['quickstart', 'work', 'branchNameTemplate'],
+      ['td', 'quickStart', 'work', 'branchTemplate'],
+      ['td', 'workBranchTemplate'],
+    ]) || 'feature/{{task.id}}-{{task.title-slug}}'
+  }, [resolveConfigValue])
+
+  const workPromptDefault = useMemo(() => {
+    return resolveConfigValue([
+      ['quickStart', 'work', 'promptTemplate'],
+      ['quickstart', 'work', 'promptTemplate'],
+      ['quickStart', 'work', 'defaultPrompt'],
+      ['quickstart', 'work', 'defaultPrompt'],
+      ['quickStart', 'work', 'prompt'],
+      ['quickstart', 'work', 'prompt'],
+      ['td', 'quickStart', 'work', 'promptTemplate'],
+      ['td', 'defaultPrompt'],
+    ]) || projectConfig?.td?.defaultPrompt
+  }, [resolveConfigValue, projectConfig?.td?.defaultPrompt])
+
+  const reviewPromptDefault = useMemo(() => {
+    return resolveConfigValue([
+      ['quickStart', 'review', 'promptTemplate'],
+      ['quickstart', 'review', 'promptTemplate'],
+      ['quickStart', 'review', 'defaultPrompt'],
+      ['quickstart', 'review', 'defaultPrompt'],
+      ['quickStart', 'review', 'prompt'],
+      ['quickstart', 'review', 'prompt'],
+      ['td', 'quickStart', 'review', 'promptTemplate'],
+      ['td', 'defaultReviewPrompt'],
+      ['td', 'reviewPrompt'],
+    ])
+  }, [resolveConfigValue])
+
+  const reviewSessionNameTemplate = useMemo(() => {
+    return resolveConfigValue([
+      ['quickStart', 'review', 'sessionNameTemplate'],
+      ['quickstart', 'review', 'sessionNameTemplate'],
+      ['td', 'quickStart', 'review', 'sessionNameTemplate'],
+    ]) || 'Review: {{task.id}}'
+  }, [resolveConfigValue])
+
+  const preferredPromptTemplate = useMemo(() => {
+    return quickStartIntent === 'review' ? reviewPromptDefault : workPromptDefault
+  }, [quickStartIntent, reviewPromptDefault, workPromptDefault])
+
+  const selectedTdTask = useMemo(
+    () => tdTasks.find(t => t.id === selectedTdTaskId),
+    [tdTasks, selectedTdTaskId]
+  )
+
+  const rememberedReviewAgentId = useMemo(() => {
+    if (typeof window === 'undefined' || !selectedProjectPath) return undefined
+    return localStorage.getItem(`${REVIEW_AGENT_KEY_PREFIX}${selectedProjectPath}`) || undefined
+  }, [selectedProjectPath])
+
+  const projectDefaultAgentId = useMemo(() => {
+    return (
+      getNestedString(projectConfig, ['quickStart', 'work', 'agentId']) ||
+      getNestedString(projectConfig, ['quickstart', 'work', 'agentId']) ||
+      getNestedString(projectConfig, ['agentDefaults', 'agentId']) ||
+      undefined
+    )
+  }, [projectConfig])
+
+  const globalDefaultAgentId = useMemo(() => {
+    return (
+      getNestedString(config.raw, ['quickStart', 'work', 'agentId']) ||
+      getNestedString(config.raw, ['quickstart', 'work', 'agentId']) ||
+      defaultAgentId ||
+      undefined
+    )
+  }, [config.raw, defaultAgentId])
+
+  const reviewDerivedAgentId = useMemo(() => {
+    if (!selectedTdTask) return undefined
+    const byId = (sessionId?: string) => {
+      if (!sessionId) return undefined
+      return sessions.find(s => s.id === sessionId)?.agentId
+    }
+    return byId(selectedTdTask.reviewer_session) || byId(selectedTdTask.implementer_session)
+  }, [selectedTdTask, sessions])
+
+  const reviewConfigAgentId = useMemo(() => {
+    return (
+      resolveConfigValue([
+        ['quickStart', 'review', 'agentId'],
+        ['quickstart', 'review', 'agentId'],
+        ['td', 'quickStart', 'review', 'agentId'],
+        ['td', 'reviewAgentId'],
+      ]) ||
+      getNestedString(projectConfig, ['agentDefaults', 'agentId']) ||
+      undefined
+    )
+  }, [resolveConfigValue, projectConfig])
+
+  const preferredAgentId = useMemo(() => {
+    const resolve = (candidate?: string) => {
+      if (!candidate) return undefined
+      return agents.some(a => a.id === candidate) ? candidate : undefined
+    }
+
+    if (quickStartIntent === 'review') {
+      return (
+        resolve(reviewConfigAgentId) ||
+        resolve(rememberedReviewAgentId) ||
+        resolve(reviewDerivedAgentId) ||
+        resolve(projectDefaultAgentId) ||
+        resolve(globalDefaultAgentId) ||
+        agents[0]?.id
+      )
+    }
+
+    return (
+      resolve(projectDefaultAgentId) ||
+      resolve(globalDefaultAgentId) ||
+      agents[0]?.id
+    )
+  }, [
+    quickStartIntent,
+    agents,
+    reviewConfigAgentId,
+    rememberedReviewAgentId,
+    reviewDerivedAgentId,
+    projectDefaultAgentId,
+    globalDefaultAgentId,
+  ])
 
   // Animate in on mount
   useEffect(() => {
@@ -166,6 +365,13 @@ export function AddSessionScreen() {
     }
   }, [addSessionWorktreePath, getProjectForWorktree])
 
+  useEffect(() => {
+    if (quickStartIntent === 'work' && !addSessionWorktreePath) {
+      setMode('new')
+      setSelectedWorktreePath('')
+    }
+  }, [quickStartIntent, addSessionWorktreePath])
+
   // Handle pre-selected project
   useEffect(() => {
     if (!addSessionProjectPath || addSessionWorktreePath) return
@@ -195,10 +401,10 @@ export function AddSessionScreen() {
   // Set default agent when agents are loaded
   useEffect(() => {
     if (agents.length > 0 && !selectedAgentId) {
-      const defaultAgent = defaultAgentId || agents[0]?.id || ''
+      const defaultAgent = preferredAgentId || ''
       setSelectedAgentId(defaultAgent)
     }
-  }, [agents, defaultAgentId, selectedAgentId])
+  }, [agents, preferredAgentId, selectedAgentId])
 
   // Reset options when agent changes
   useEffect(() => {
@@ -276,12 +482,25 @@ export function AddSessionScreen() {
   useEffect(() => {
     if (addSessionTdTaskId && tdEnabled) {
       setSelectedTdTaskId(addSessionTdTaskId)
-      // Auto-fill session name from task ID if empty
-      if (!sessionName) {
-        setSessionName(addSessionTdTaskId)
+      if (!sessionName || AUTO_SESSION_NAME_PATTERN.test(sessionName)) {
+        if (addSessionSessionName?.trim()) {
+          setSessionName(addSessionSessionName.trim())
+        } else if (quickStartIntent === 'review') {
+          setSessionName(renderTemplate(reviewSessionNameTemplate, {
+            id: addSessionTdTaskId,
+            title: '',
+          }))
+        } else {
+          setSessionName(addSessionTdTaskId)
+        }
       }
     }
-  }, [addSessionTdTaskId, tdEnabled])
+  }, [addSessionTdTaskId, addSessionSessionName, tdEnabled, quickStartIntent, reviewSessionNameTemplate, sessionName])
+
+  useEffect(() => {
+    setBranchTemplateApplied(false)
+    setPromptTemplateApplied(false)
+  }, [addSessionTdTaskId, quickStartIntent])
 
   // Fetch prompt templates when td is enabled
   useEffect(() => {
@@ -293,6 +512,62 @@ export function AddSessionScreen() {
       .then(data => setPromptTemplates(data))
       .catch(() => setPromptTemplates([]))
   }, [fetchTdPrompts, tdEnabled])
+
+  useEffect(() => {
+    if (
+      !tdEnabled ||
+      !selectedTdTaskId ||
+      promptTemplateApplied ||
+      selectedPromptTemplate ||
+      promptTemplates.length === 0
+    ) {
+      return
+    }
+
+    if (!preferredPromptTemplate) {
+      setPromptTemplateApplied(true)
+      return
+    }
+
+    const normalizedTarget = preferredPromptTemplate.toLowerCase()
+    const template = promptTemplates.find(t => t.name.toLowerCase() === normalizedTarget)
+    if (template) {
+      setSelectedPromptTemplate(template.name)
+    }
+    setPromptTemplateApplied(true)
+  }, [
+    tdEnabled,
+    selectedTdTaskId,
+    promptTemplateApplied,
+    selectedPromptTemplate,
+    promptTemplates,
+    preferredPromptTemplate,
+  ])
+
+  useEffect(() => {
+    if (quickStartIntent !== 'review' || !selectedTdTask) return
+
+    const shouldPrefill =
+      !sessionName ||
+      AUTO_SESSION_NAME_PATTERN.test(sessionName) ||
+      sessionName === selectedTdTask.id ||
+      sessionName === `Review: ${selectedTdTask.id}`
+
+    if (!shouldPrefill) return
+
+    if (addSessionSessionName?.trim()) {
+      setSessionName(addSessionSessionName.trim())
+      return
+    }
+
+    setSessionName(renderTemplate(reviewSessionNameTemplate, selectedTdTask))
+  }, [
+    quickStartIntent,
+    selectedTdTask,
+    sessionName,
+    addSessionSessionName,
+    reviewSessionNameTemplate,
+  ])
 
   // Filter td tasks by search
   const filteredTdTasks = useMemo(() => {
@@ -321,9 +596,6 @@ export function AddSessionScreen() {
     }
   }, [showTdTaskDropdown])
 
-  // Get selected td task for display
-  const selectedTdTask = tdTasks.find(t => t.id === selectedTdTaskId)
-
   // Generate default session name
   const generateDefaultSessionName = (agent: AgentConfig | undefined): string => {
     if (!agent) return `Session-${Date.now().toString(36).slice(-4)}`
@@ -333,7 +605,7 @@ export function AddSessionScreen() {
 
   // Update session name when agent changes
   useEffect(() => {
-    const isAutoGenerated = /^[A-Za-z]+-[a-z0-9]{4}$/.test(sessionName)
+    const isAutoGenerated = AUTO_SESSION_NAME_PATTERN.test(sessionName)
     if (!sessionName || isAutoGenerated) {
       setSessionName(generateDefaultSessionName(selectedAgent))
     }
@@ -368,6 +640,31 @@ export function AddSessionScreen() {
       .catch(() => setBranches(['main']))
       .finally(() => setLoadingBranches(false))
   }, [selectedProjectPath])
+
+  useEffect(() => {
+    if (
+      quickStartIntent !== 'work' ||
+      mode !== 'new' ||
+      !selectedTdTask ||
+      branchTemplateApplied ||
+      newBranchName.trim()
+    ) {
+      return
+    }
+
+    const rendered = sanitizeBranchName(renderTemplate(workBranchTemplate, selectedTdTask))
+    if (rendered) {
+      setNewBranchName(rendered)
+      setBranchTemplateApplied(true)
+    }
+  }, [
+    quickStartIntent,
+    mode,
+    selectedTdTask,
+    workBranchTemplate,
+    branchTemplateApplied,
+    newBranchName,
+  ])
 
   // Generate worktree path from config template
   const generatedWorktreePath = useMemo(() => {
@@ -485,6 +782,9 @@ export function AddSessionScreen() {
       )
 
       if (success) {
+        if (quickStartIntent === 'review' && selectedAgentId && selectedProjectPath) {
+          localStorage.setItem(`${REVIEW_AGENT_KEY_PREFIX}${selectedProjectPath}`, selectedAgentId)
+        }
         fetchData()
         handleClose()
       } else {

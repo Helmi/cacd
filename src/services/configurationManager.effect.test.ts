@@ -75,6 +75,11 @@ describe('ConfigurationManager - Effect-based operations', () => {
 			expect(result).toBeDefined();
 			expect(result.shortcuts).toBeDefined();
 			expect(result.command).toBeDefined();
+			expect(result.td).toEqual({
+				autoStart: true,
+				injectTaskContext: true,
+				injectTdUsage: true,
+			});
 		});
 
 		it('should fail with FileSystemError when file read fails', async () => {

@@ -190,6 +190,14 @@ export interface AgentsConfig {
 	schemaVersion: number; // For future migrations
 }
 
+export interface TdConfig {
+	enabled?: boolean; // Global default for td integration (project can override)
+	autoStart?: boolean; // Auto-run `td start` for linked task sessions
+	defaultPrompt?: string; // Default prompt template name for task-linked sessions
+	injectTaskContext?: boolean; // Inject task context on agent startup
+	injectTdUsage?: boolean; // Inject td usage instructions on agent startup
+}
+
 export interface DevcontainerConfig {
 	upCommand: string; // Command to start devcontainer
 	execCommand: string; // Command to execute in devcontainer
@@ -208,6 +216,7 @@ export interface ConfigurationData {
 		customCommand?: string; // Custom verification command; must output JSON matching AutoApprovalResponse
 		timeout?: number; // Timeout in seconds for auto-approval verification (default: 30)
 	};
+	td?: TdConfig; // TD startup defaults used across projects
 	port?: number; // Port for web interface (generated randomly on first run if not set)
 	webEnabled?: boolean; // Whether web interface is enabled
 	// Authentication (new two-tier system)

@@ -124,10 +124,11 @@ interface TaskDetailModalProps {
   onClose: () => void
   onNavigate?: (issueId: string) => void
   onStartWorking?: (issueId: string) => void
+  onStartReview?: (issueId: string, createdBranch?: string) => void
   onRefresh?: () => void
 }
 
-export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, onRefresh }: TaskDetailModalProps) {
+export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, onStartReview, onRefresh }: TaskDetailModalProps) {
   const [issue, setIssue] = useState<TdIssueWithChildren | null>(null)
   const [loading, setLoading] = useState(true)
   const [isVisible, setIsVisible] = useState(false)
@@ -277,6 +278,20 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
                   )}
                   {issue.status === 'in_review' && (
                     <>
+                      {onStartReview && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            onStartReview(issue.id, issue.created_branch || undefined)
+                            handleClose()
+                          }}
+                        >
+                          <Play className="h-3 w-3 mr-1.5" />
+                          Start Review
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         className="h-7 text-xs"

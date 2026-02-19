@@ -114,11 +114,19 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		);
 	}
 
-	private quotePosix(value: string): string {
+	private formatPosixToken(value: string): string {
+		if (value !== '' && /^[A-Za-z0-9_@%+=:,./~-]+$/.test(value)) {
+			return value;
+		}
+
 		return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 	}
 
-	private quotePowerShell(value: string): string {
+	private formatPowerShellToken(value: string): string {
+		if (value !== '' && /^[A-Za-z0-9_@%+=:,./\\~-]+$/.test(value)) {
+			return value;
+		}
+
 		return `'${value.replace(/'/g, "''")}'`;
 	}
 
@@ -128,14 +136,14 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		args: string[],
 	): string {
 		if (this.isPowerShell(shellCommand)) {
-			const escapedCommand = this.quotePowerShell(command);
-			const escapedArgs = args.map(arg => this.quotePowerShell(arg));
-			return ['&', escapedCommand, ...escapedArgs].join(' ');
+			const formattedCommand = this.formatPowerShellToken(command);
+			const formattedArgs = args.map(arg => this.formatPowerShellToken(arg));
+			return ['&', formattedCommand, ...formattedArgs].join(' ');
 		}
 
-		const escapedCommand = this.quotePosix(command);
-		const escapedArgs = args.map(arg => this.quotePosix(arg));
-		return [escapedCommand, ...escapedArgs].join(' ');
+		const formattedCommand = this.formatPosixToken(command);
+		const formattedArgs = args.map(arg => this.formatPosixToken(arg));
+		return [formattedCommand, ...formattedArgs].join(' ');
 	}
 
 	private bootstrapCommandInShell(

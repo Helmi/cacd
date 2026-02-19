@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { ProjectConfig, TdPromptTemplate } from '@/lib/types'
-import { CheckCircle2, XCircle, Play, Save, RefreshCw, FileText, Trash2, Plus, Code2, FolderGit2, ChevronRight, Check, Globe, FolderOpen } from 'lucide-react'
+import { CheckCircle2, XCircle, Play, Save, RefreshCw, Trash2, Plus, Code2, FolderGit2, ChevronRight, Check, Globe, FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function SettingsProject() {

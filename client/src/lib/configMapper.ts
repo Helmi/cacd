@@ -30,6 +30,7 @@ export interface BackendConfig {
     timeout?: number
   }
   port?: number
+  [key: string]: unknown
 }
 
 /**
@@ -86,6 +87,9 @@ export function mapBackendToFrontend(backend: BackendConfig): AppConfig {
     worktreeHooks: {
       postCreation: backend.worktreeHooks?.post_creation?.enabled ? backend.worktreeHooks.post_creation.command : '',
     },
+
+    // Keep access to raw backend keys (quick-start defaults, experimental config, etc.)
+    raw: backend as Record<string, unknown>,
   }
 }
 

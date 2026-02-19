@@ -229,6 +229,40 @@ describe('WorktreeService', () => {
 
 			expect(result).toBe('main');
 		});
+
+		it('should fallback to current HEAD branch when origin/main/master are unavailable', async () => {
+			mockedExecSync.mockImplementation((cmd, _options) => {
+				if (typeof cmd === 'string') {
+					if (cmd === 'git rev-parse --git-common-dir') {
+						return '/fake/path/.git\n';
+					}
+					if (
+						cmd.includes('rev-parse --verify main') ||
+						cmd.includes('rev-parse --verify master')
+					) {
+						throw new Error('Not found');
+					}
+					if (cmd === 'git rev-parse --abbrev-ref HEAD') {
+						return 'demo\n';
+					}
+				}
+				throw new Error('Command not mocked: ' + cmd);
+			});
+			mockedExecFileSync.mockImplementation((file, args, _options) => {
+				const argsArray = args as string[];
+				if (file === 'git' && argsArray?.includes('symbolic-ref')) {
+					throw new Error('No origin');
+				}
+				throw new Error(
+					`execFileSync not mocked: ${file} ${argsArray?.join(' ')}`,
+				);
+			});
+
+			const effect = service.getDefaultBranchEffect();
+			const result = await Effect.runPromise(effect);
+
+			expect(result).toBe('demo');
+		});
 	});
 
 	describe('getAllBranchesEffect', () => {
@@ -781,6 +815,42 @@ branch refs/heads/feature
 				path: '/fake/path/feature',
 				branch: 'feature',
 				isMainWorktree: false,
+			});
+		});
+
+		it('should mark repository root worktree as main when output order is non-root first', async () => {
+			mockedExecSync.mockImplementation((cmd, _options) => {
+				if (typeof cmd === 'string') {
+					if (cmd === 'git rev-parse --git-common-dir') {
+						return '/fake/path/.git\n';
+					}
+					if (cmd === 'git worktree list --porcelain') {
+						return `worktree /fake/path/demo
+HEAD abcd1234
+branch refs/heads/demo
+
+worktree /fake/path
+HEAD efgh5678
+branch refs/heads/main
+`;
+					}
+				}
+				throw new Error('Command not mocked: ' + cmd);
+			});
+
+			const effect = service.getWorktreesEffect();
+			const result = await Effect.runPromise(effect);
+
+			expect(result).toHaveLength(2);
+			expect(result[0]).toMatchObject({
+				path: '/fake/path/demo',
+				branch: 'demo',
+				isMainWorktree: false,
+			});
+			expect(result[1]).toMatchObject({
+				path: '/fake/path',
+				branch: 'main',
+				isMainWorktree: true,
 			});
 		});
 

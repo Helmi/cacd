@@ -514,9 +514,28 @@ export class WorktreeService {
 								catch: (error: unknown) => error,
 							}),
 							(_masterError: unknown) => {
-								// All attempts failed, return 'main' as default
-								// This is acceptable behavior for new repositories
-								return Effect.succeed('main');
+								return Effect.catchAll(
+									Effect.try({
+										try: () => {
+											const branch = execSync(
+												'git rev-parse --abbrev-ref HEAD',
+												{
+													cwd: self.rootPath,
+													encoding: 'utf8',
+												},
+											).trim();
+											if (!branch || branch === 'HEAD') {
+												throw new Error('No usable current branch');
+											}
+											return branch;
+										},
+										catch: (error: unknown) => error,
+									}),
+									(_headError: unknown) => {
+										// Final fallback for detached or brand-new repositories.
+										return Effect.succeed('main');
+									},
+								);
 							},
 						);
 					},
@@ -758,8 +777,26 @@ export class WorktreeService {
 						index = nextIndex > index ? nextIndex : index + 1;
 					}
 
-					// Mark the first worktree as main if none are marked
-					if (worktrees.length > 0 && !worktrees.some(w => w.isMainWorktree)) {
+					const normalizeWorktreePath = (worktreePath: string) => {
+						const resolved = path.resolve(worktreePath);
+						return process.platform === 'win32'
+							? resolved.toLowerCase()
+							: resolved;
+					};
+					const normalizedGitRoot = normalizeWorktreePath(self.gitRootPath);
+					const rootMatchIndex = worktrees.findIndex(
+						worktree =>
+							normalizeWorktreePath(worktree.path) === normalizedGitRoot,
+					);
+
+					if (rootMatchIndex >= 0) {
+						worktrees.forEach((worktree, worktreeIndex) => {
+							worktree.isMainWorktree = worktreeIndex === rootMatchIndex;
+						});
+					} else if (
+						worktrees.length > 0 &&
+						!worktrees.some(w => w.isMainWorktree)
+					) {
 						worktrees[0]!.isMainWorktree = true;
 					}
 
