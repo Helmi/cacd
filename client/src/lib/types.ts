@@ -166,6 +166,7 @@ export interface TdProjectConfig {
   enabled?: boolean
   autoStart?: boolean
   defaultPrompt?: string
+  [key: string]: unknown
 }
 
 export interface TdStatus {
@@ -230,6 +231,20 @@ export interface TdPromptTemplate {
   content?: string
 }
 
+export interface QuickStartFlowConfig {
+  branchTemplate?: string
+  promptTemplate?: string
+  agentId?: string
+  sessionNameTemplate?: string
+  [key: string]: unknown
+}
+
+export interface QuickStartConfig {
+  work?: QuickStartFlowConfig
+  review?: QuickStartFlowConfig
+  [key: string]: unknown
+}
+
 export interface ProjectConfig {
   scripts?: {
     setup?: string
@@ -244,6 +259,7 @@ export interface ProjectConfig {
     agentId?: string
     options?: Record<string, boolean | string>
   }
+  quickStart?: QuickStartConfig
   [key: string]: unknown
 }
 
@@ -265,4 +281,5 @@ export interface AppConfig {
   // Hooks
   statusHooks: StatusHooks
   worktreeHooks: WorktreeHooks
+  raw?: Record<string, unknown>
 }

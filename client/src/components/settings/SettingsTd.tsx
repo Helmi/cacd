@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '@/lib/store'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -13,11 +13,12 @@ import {
   Trash2,
   FileText,
   RefreshCw,
+  Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function SettingsTd() {
-  const { tdStatus, fetchTdPrompts, saveTdPrompt, deleteTdPrompt } = useAppStore()
+  const { tdStatus, tdStatusLoading, fetchTdPrompts, saveTdPrompt, deleteTdPrompt } = useAppStore()
   const [prompts, setPrompts] = useState<TdPromptTemplate[]>([])
   const [selectedPrompt, setSelectedPrompt] = useState<string>('')
   const [promptName, setPromptName] = useState('')
@@ -27,19 +28,29 @@ export function SettingsTd() {
 
   const availability = tdStatus?.availability
 
-  const refreshPrompts = async () => {
+  const refreshPrompts = useCallback(async () => {
     const data = await fetchTdPrompts('global')
     setPrompts(data)
-    if (!selectedPrompt && data.length > 0) {
-      setSelectedPrompt(data[0].name)
-      setPromptName(data[0].name)
-    }
-  }
+    setSelectedPrompt((prevSelected) => {
+      if (data.length === 0) {
+        setPromptName('')
+        setPromptContent('')
+        return ''
+      }
+
+      if (!prevSelected || !data.some(p => p.name === prevSelected)) {
+        const next = data[0].name
+        setPromptName(next)
+        return next
+      }
+
+      return prevSelected
+    })
+  }, [fetchTdPrompts])
 
   useEffect(() => {
-    refreshPrompts()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    void refreshPrompts()
+  }, [refreshPrompts, availability?.binaryAvailable])
 
   useEffect(() => {
     if (!selectedPrompt) {
@@ -100,7 +111,17 @@ export function SettingsTd() {
       <div>
         <h3 className="text-sm font-medium mb-1">TD Integration</h3>
         <p className="text-xs text-muted-foreground">
-          Agent TODO lists — machine-wide availability and global prompt templates.
+          TD is a lightweight task tracker for agent workflows with per-project `.todos` state.
+          {' '}
+          <a
+            href="https://github.com/marcus/td"
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-4 hover:text-foreground"
+          >
+            Learn more
+          </a>
+          .
         </p>
       </div>
 
@@ -108,15 +129,19 @@ export function SettingsTd() {
         <Label className="text-muted-foreground">td Installation</Label>
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm">
-            {availability?.binaryAvailable ? (
+            {tdStatusLoading ? (
+              <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
+            ) : availability?.binaryAvailable ? (
               <CheckCircle2 className="h-4 w-4 text-green-500" />
             ) : (
               <XCircle className="h-4 w-4 text-red-500" />
             )}
             <span>
-              td binary {availability?.binaryAvailable ? 'installed' : 'not found'}
+              {tdStatusLoading
+                ? 'Checking td installation...'
+                : `td binary ${availability?.binaryAvailable ? 'installed' : 'not found'}`}
             </span>
-            {availability?.binaryAvailable && availability.version && (
+            {!tdStatusLoading && availability?.binaryAvailable && availability.version && (
               <span className="text-xs text-muted-foreground font-mono">
                 {availability.version}
               </span>
@@ -134,7 +159,7 @@ export function SettingsTd() {
             <div className="rounded border border-border bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
               <p>Install td to enable task management features:</p>
               <code className="block bg-background rounded px-2 py-1 font-mono text-[11px]">
-                go install github.com/toodoo-app/td@latest
+                go install github.com/marcus/td@latest
               </code>
             </div>
           )}

@@ -8,7 +8,7 @@ import {logger} from '../utils/logger.js';
 import {configurationManager} from './configurationManager.js';
 import {projectManager} from './projectManager.js';
 import {authService} from './authService.js';
-import {ConfigurationData} from '../types/index.js';
+import {ConfigurationData, TdConfig} from '../types/index.js';
 import {ValidationError} from '../types/errors.js';
 import {Effect} from 'effect';
 import path from 'path';
@@ -31,7 +31,7 @@ import {
 } from '../utils/pathValidation.js';
 import {getDefaultShell} from '../utils/platform.js';
 import {tdService} from './tdService.js';
-import {TdReader} from './tdReader.js';
+import {TdReader, type TdIssueWithChildren} from './tdReader.js';
 import {
 	loadProjectConfig,
 	getProjectConfigPath,
@@ -43,6 +43,7 @@ import {
 	type PromptScope,
 	type ProjectConfig,
 } from '../utils/projectConfig.js';
+import type {Session, SessionState} from '../types/index.js';
 
 // --- Clipboard Image Paste Constants ---
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -121,6 +122,138 @@ function isAllowedHost(hostname: string): boolean {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+interface EffectiveTdStartupConfig {
+	enabled: boolean;
+	autoStart: boolean;
+	defaultPrompt?: string;
+	injectTaskContext: boolean;
+	injectTdUsage: boolean;
+}
+
+interface PendingTdPromptInjection {
+	prompt: string;
+	taskId?: string;
+	timeout: NodeJS.Timeout;
+}
+
+function renderTaskPromptTemplate(
+	templateContent: string,
+	taskDetail: TdIssueWithChildren,
+): string {
+	return templateContent
+		.replace(/\{\{task\.id\}\}/g, taskDetail.id)
+		.replace(/\{\{task\.title\}\}/g, taskDetail.title)
+		.replace(/\{\{task\.description\}\}/g, taskDetail.description || '')
+		.replace(/\{\{task\.status\}\}/g, taskDetail.status)
+		.replace(/\{\{task\.priority\}\}/g, taskDetail.priority)
+		.replace(/\{\{task\.acceptance\}\}/g, taskDetail.acceptance || '');
+}
+
+function buildTaskContextMarkdown(
+	taskDetail: TdIssueWithChildren,
+	renderedPromptTemplate?: string,
+): string {
+	const lines: string[] = [
+		`# Task: ${taskDetail.id}`,
+		'',
+		`**${taskDetail.title}**`,
+		'',
+		`Status: ${taskDetail.status} | Priority: ${taskDetail.priority} | Type: ${taskDetail.type}`,
+		'',
+	];
+
+	if (taskDetail.description) {
+		lines.push('## Description', '', taskDetail.description, '');
+	}
+	if (taskDetail.acceptance) {
+		lines.push('## Acceptance Criteria', '', taskDetail.acceptance, '');
+	}
+	if (taskDetail.handoffs?.length > 0) {
+		const latest = taskDetail.handoffs[0]!;
+		lines.push('## Latest Handoff', '');
+		if (latest.done.length > 0) {
+			lines.push('### Done');
+			latest.done.forEach(item => lines.push(`- [x] ${item}`));
+			lines.push('');
+		}
+		if (latest.remaining.length > 0) {
+			lines.push('### Remaining');
+			latest.remaining.forEach(item => lines.push(`- [ ] ${item}`));
+			lines.push('');
+		}
+		if (latest.uncertain.length > 0) {
+			lines.push('### Uncertain');
+			latest.uncertain.forEach(item => lines.push(`- ??? ${item}`));
+			lines.push('');
+		}
+	}
+	if (renderedPromptTemplate) {
+		lines.push('## Instructions', '', renderedPromptTemplate, '');
+	}
+
+	return lines.join('\n');
+}
+
+function buildTdStartupPrompt(params: {
+	taskId: string;
+	taskContextMarkdown?: string;
+	renderedPromptTemplate?: string;
+	injectTaskContext: boolean;
+	injectTdUsage: boolean;
+}): string | null {
+	const parts: string[] = [];
+
+	if (params.injectTdUsage) {
+		parts.push(
+			'Use td workflow reminders: run td usage --new-session for new conversations, and td usage -q in this conversation.',
+		);
+	}
+
+	parts.push(`This session is linked to td task ${params.taskId}.`);
+
+	if (params.injectTaskContext && params.taskContextMarkdown) {
+		parts.push('Read .td-task-context.md in this worktree before making changes.');
+	} else {
+		parts.push('Task context file is .td-task-context.md.');
+	}
+
+	if (
+		params.renderedPromptTemplate &&
+		(!params.injectTaskContext || !params.taskContextMarkdown)
+	) {
+		parts.push('Prompt instructions are included in .td-task-context.md.');
+	}
+
+	if (parts.length === 0) {
+		return null;
+	}
+
+	return parts.join(' ');
+}
+
+function resolveEffectiveTdStartupConfig(
+	projectConfig: ProjectConfig | null,
+	globalTdConfig: TdConfig,
+): EffectiveTdStartupConfig {
+	return {
+		enabled: projectConfig?.td?.enabled ?? globalTdConfig.enabled ?? true,
+		autoStart: projectConfig?.td?.autoStart ?? globalTdConfig.autoStart ?? true,
+		defaultPrompt: projectConfig?.td?.defaultPrompt ?? globalTdConfig.defaultPrompt,
+		injectTaskContext:
+			projectConfig?.td?.injectTaskContext ??
+			globalTdConfig.injectTaskContext ??
+			true,
+		injectTdUsage:
+			projectConfig?.td?.injectTdUsage ?? globalTdConfig.injectTdUsage ?? true,
+	};
+}
+
+function isValidTdTaskId(taskId: string): boolean {
+	const normalized = taskId.trim();
+	// TD issue IDs are expected to follow the canonical "td-<alnum>" form.
+	return /^td-[a-z0-9]+$/i.test(normalized);
+}
+
 export class APIServer {
 	private app: FastifyInstance;
 	private io: Server | undefined;
@@ -129,11 +262,61 @@ export class APIServer {
 
 	// Track socket subscriptions to prevent duplicates in dev mode
 	private socketSubscriptions = new Map<string, string>(); // socketId -> sessionId
+	private pendingTdPromptInjections = new Map<string, PendingTdPromptInjection>();
 
 	constructor() {
 		this.app = Fastify({logger: false});
 		this.token = randomUUID();
 		this.setupPromise = this.setup();
+	}
+
+	private clearPendingTdPromptInjection(sessionId: string): void {
+		const pending = this.pendingTdPromptInjections.get(sessionId);
+		if (!pending) return;
+		clearTimeout(pending.timeout);
+		this.pendingTdPromptInjections.delete(sessionId);
+	}
+
+	private queueTdPromptInjection(
+		sessionId: string,
+		prompt: string,
+		taskId?: string,
+	): void {
+		this.clearPendingTdPromptInjection(sessionId);
+
+		const timeout = setTimeout(() => {
+			if (!this.pendingTdPromptInjections.has(sessionId)) return;
+			this.pendingTdPromptInjections.delete(sessionId);
+			logger.warn(
+				`API: Timed out waiting for ready session state before TD startup prompt injection for session ${sessionId}${taskId ? ` (task ${taskId})` : ''}`,
+			);
+		}, 30000);
+
+		this.pendingTdPromptInjections.set(sessionId, {prompt, taskId, timeout});
+	}
+
+	private isReadyForTdPromptInjection(state: SessionState): boolean {
+		// Avoid writing while bootstrap command is still starting up.
+		return state !== 'busy' && state !== 'pending_auto_approval';
+	}
+
+	private injectPendingTdPromptIfReady(session: Session): void {
+		const pending = this.pendingTdPromptInjections.get(session.id);
+		if (!pending) return;
+
+		const state = session.stateMutex.getSnapshot().state;
+		if (!this.isReadyForTdPromptInjection(state)) return;
+
+		try {
+			session.process.write(`${pending.prompt}\r`);
+			logger.info(
+				`API: Injected TD startup prompt for session ${session.id}${pending.taskId ? ` (task ${pending.taskId})` : ''}`,
+			);
+		} catch (err) {
+			logger.warn(`API: Failed TD startup prompt injection: ${err}`);
+		} finally {
+			this.clearPendingTdPromptInjection(session.id);
+		}
 	}
 
 	private async setup(): Promise<void> {
@@ -224,9 +407,12 @@ export class APIServer {
 			}
 
 			const projectConfig = loadProjectConfig(project.path);
+			const globalTdConfig = configurationManager.getTdConfig();
+			const tdEnabled =
+				projectConfig?.td?.enabled ?? globalTdConfig.enabled ?? true;
 			const rawProjectState = tdService.resolveProjectState(project.path);
 			const projectState =
-				projectConfig?.td?.enabled === false
+				!tdEnabled
 					? {
 							...rawProjectState,
 							enabled: false,
@@ -1189,7 +1375,7 @@ export class APIServer {
 			};
 		}>('/api/session/create-with-agent', async (request, reply) => {
 			const {
-				path,
+				path: worktreePath,
 				agentId,
 				options = {},
 				sessionName,
@@ -1197,8 +1383,12 @@ export class APIServer {
 				tdTaskId,
 				promptTemplate,
 			} = request.body;
+			const normalizedTdTaskId = tdTaskId?.trim();
+			if (normalizedTdTaskId && !isValidTdTaskId(normalizedTdTaskId)) {
+				return reply.code(400).send({error: 'Invalid tdTaskId format'});
+			}
 			logger.info(
-				`API: Creating session "${sessionName || 'unnamed'}" for ${path} with agent: ${agentId}`,
+				`API: Creating session "${sessionName || 'unnamed'}" for ${worktreePath} with agent: ${agentId}`,
 			);
 
 			const agent = configurationManager.getAgentById(agentId);
@@ -1237,135 +1427,126 @@ export class APIServer {
 				agentId === 'claude' ||
 				agent.command === 'claude' ||
 				agent.detectionStrategy === 'claude';
+			const projects = projectManager.getProjects();
+			const matchedProject = projects.find(
+				(p: {path: string}) =>
+					worktreePath.startsWith(p.path) ||
+					worktreePath.includes(`/.worktrees/${p.path.split('/').pop()}/`),
+			);
+			const projConfig = matchedProject
+				? loadProjectConfig(matchedProject.path)
+				: null;
+			const globalTdConfig = configurationManager.getTdConfig();
+			const effectiveTdConfig = resolveEffectiveTdStartupConfig(
+				projConfig,
+				globalTdConfig,
+			);
+			let startupPromptToInject: string | null = null;
 
 			if (taskListName && isClaudeAgent) {
 				extraEnv['CLAUDE_TASK_LIST'] = taskListName;
 				logger.info(`API: Setting CLAUDE_TASK_LIST=${taskListName}`);
 			}
 
-			// Set TD_SESSION_ID when session is linked to a td task
-			if (tdTaskId && tdService.isAvailable()) {
-				const sessionId = `ses_${randomUUID().slice(0, 6)}`;
-				extraEnv['TD_SESSION_ID'] = sessionId;
-				extraEnv['TD_TASK_ID'] = tdTaskId;
-				logger.info(
-					`API: Setting TD_SESSION_ID=${sessionId}, TD_TASK_ID=${tdTaskId}`,
-				);
+			// TD startup context and prompt injection for task-linked sessions
+			if (normalizedTdTaskId && effectiveTdConfig.enabled) {
+				if (tdService.isAvailable()) {
+					const tdSessionId = `ses_${randomUUID().slice(0, 6)}`;
+					extraEnv['TD_SESSION_ID'] = tdSessionId;
+					extraEnv['TD_TASK_ID'] = normalizedTdTaskId;
+					logger.info(
+						`API: Setting TD_SESSION_ID=${tdSessionId}, TD_TASK_ID=${normalizedTdTaskId}`,
+					);
 
-				// Respect project config for auto-start behavior
-				const projects = projectManager.getProjects();
-				const matchedProject = projects.find(
-					(p: {path: string}) => path.startsWith(p.path) || path.includes(`/.worktrees/${p.path.split('/').pop()}/`)
-				);
-				const projConfig = matchedProject ? loadProjectConfig(matchedProject.path) : null;
-				const tdConfigEnabled = projConfig?.td?.enabled !== false;
-				const autoStartEnabled = projConfig?.td?.autoStart !== false; // default: true
-
-				// Auto-start the td task (set to in_progress) unless disabled in config
-				if (autoStartEnabled && tdConfigEnabled) {
-					try {
-						execFileSync('td', ['start', tdTaskId, '--session', sessionId, '-w', path], {
-							encoding: 'utf-8',
-							timeout: 5000,
-						});
-						logger.info(`API: Auto-started td task ${tdTaskId}`);
-					} catch (startErr) {
-						// Non-fatal: task might already be in_progress
-						logger.warn(`API: td start failed (may already be started): ${startErr}`);
+					// Auto-start the td task (set to in_progress) unless disabled in config
+					if (effectiveTdConfig.autoStart) {
+						try {
+							execFileSync(
+								'td',
+								[
+									'start',
+									normalizedTdTaskId,
+									'--session',
+									tdSessionId,
+									'-w',
+									worktreePath,
+								],
+								{
+									encoding: 'utf-8',
+									timeout: 5000,
+								},
+							);
+							logger.info(`API: Auto-started td task ${normalizedTdTaskId}`);
+						} catch (startErr) {
+							// Non-fatal: task might already be in_progress
+							logger.warn(
+								`API: td start failed (may already be started): ${startErr}`,
+							);
+						}
+					} else {
+						logger.info('API: td auto-start disabled by config');
 					}
-				} else {
-					logger.info(`API: Auto-start disabled via .cacd config, skipping td start`);
 				}
 
-				// Write task context file to worktree
 				try {
-					const rawTdState = tdService.resolveProjectState(path);
-					const tdState =
-						projConfig?.td?.enabled === false
-							? {...rawTdState, enabled: false}
-							: rawTdState;
+					let taskContextMarkdown: string | undefined;
+					let renderedPromptTemplate: string | undefined;
+					const tdState = tdService.resolveProjectState(worktreePath);
 
-					if (tdState.enabled && tdState.dbPath) {
+					if (tdState.initialized && tdState.dbPath) {
 						const reader = new TdReader(tdState.dbPath);
 						try {
-							const taskDetail = reader.getIssueWithDetails(tdTaskId);
+							const taskDetail =
+								reader.getIssueWithDetails(normalizedTdTaskId);
 							if (taskDetail) {
-								const lines: string[] = [
-									`# Task: ${taskDetail.id}`,
-									'',
-									`**${taskDetail.title}**`,
-									'',
-									`Status: ${taskDetail.status} | Priority: ${taskDetail.priority} | Type: ${taskDetail.type}`,
-									'',
-								];
-								if (taskDetail.description) {
-									lines.push('## Description', '', taskDetail.description, '');
-								}
-								if (taskDetail.acceptance) {
-									lines.push('## Acceptance Criteria', '', taskDetail.acceptance, '');
-								}
-								if (taskDetail.handoffs?.length > 0) {
-									const latest = taskDetail.handoffs[0]!;
-									lines.push('## Latest Handoff', '');
-									if (latest.done.length > 0) {
-										lines.push('### Done');
-										latest.done.forEach(item => lines.push(`- [x] ${item}`));
-										lines.push('');
-									}
-									if (latest.remaining.length > 0) {
-										lines.push('### Remaining');
-										latest.remaining.forEach(item => lines.push(`- [ ] ${item}`));
-										lines.push('');
-									}
-									if (latest.uncertain.length > 0) {
-										lines.push('### Uncertain');
-										latest.uncertain.forEach(item => lines.push(`- ??? ${item}`));
-										lines.push('');
-									}
-								}
+								const effectiveTemplate =
+									promptTemplate || effectiveTdConfig.defaultPrompt;
 
-								// Apply prompt template (explicit or default from .cacd config)
-								const effectiveTemplate = promptTemplate || projConfig?.td?.defaultPrompt;
-								if (effectiveTemplate) {
-									if (matchedProject) {
-										const tmpl = loadPromptTemplateByScope(
-											matchedProject.path,
-											'effective',
-											effectiveTemplate,
+								if (effectiveTemplate && matchedProject) {
+									const template = loadPromptTemplateByScope(
+										matchedProject.path,
+										'effective',
+										effectiveTemplate,
+									);
+									if (template?.content) {
+										renderedPromptTemplate = renderTaskPromptTemplate(
+											template.content,
+											taskDetail,
 										);
-										if (tmpl?.content) {
-											// Simple variable substitution in prompt template
-											const rendered = tmpl.content
-												.replace(/\{\{task\.id\}\}/g, taskDetail.id)
-												.replace(/\{\{task\.title\}\}/g, taskDetail.title)
-												.replace(/\{\{task\.description\}\}/g, taskDetail.description || '')
-												.replace(/\{\{task\.status\}\}/g, taskDetail.status)
-												.replace(/\{\{task\.priority\}\}/g, taskDetail.priority)
-												.replace(/\{\{task\.acceptance\}\}/g, taskDetail.acceptance || '');
-											lines.push('## Instructions', '', rendered, '');
-										}
 									}
 								}
 
-								await writeFile(
-									`${path}/.td-task-context.md`,
-									lines.join('\n'),
-									'utf-8'
+								taskContextMarkdown = buildTaskContextMarkdown(
+									taskDetail,
+									renderedPromptTemplate,
 								);
-								logger.info(`API: Wrote .td-task-context.md to ${path}`);
+								await writeFile(
+									path.join(worktreePath, '.td-task-context.md'),
+									taskContextMarkdown,
+									'utf-8',
+								);
+								logger.info(`API: Wrote .td-task-context.md to ${worktreePath}`);
 							}
 						} finally {
 							reader.close();
 						}
 					}
+
+					startupPromptToInject = buildTdStartupPrompt({
+						taskId: normalizedTdTaskId,
+						taskContextMarkdown,
+						renderedPromptTemplate,
+						injectTaskContext: effectiveTdConfig.injectTaskContext,
+						injectTdUsage: effectiveTdConfig.injectTdUsage,
+					});
 				} catch (err) {
-					logger.warn(`API: Failed to write task context: ${err}`);
+					logger.warn(`API: Failed to prepare TD startup context: ${err}`);
 				}
 			}
 
 			// Create session with resolved command and args
 			const effect = coreService.sessionManager.createSessionWithAgentEffect(
-				path,
+				worktreePath,
 				command,
 				args,
 				agent.detectionStrategy,
@@ -1385,7 +1566,7 @@ export class APIServer {
 				// Find the project that contains this worktree path
 				const projects = projectManager.getProjects();
 				for (const project of projects) {
-					if (path.startsWith(project.path)) {
+					if (worktreePath.startsWith(project.path)) {
 						projectManager.instance.addTaskListName(project.path, taskListName);
 						logger.info(
 							`API: Stored task list name "${taskListName}" for project ${project.name}`,
@@ -1397,6 +1578,14 @@ export class APIServer {
 
 			const session = result.right;
 			coreService.sessionManager.setSessionActive(session.id, true);
+			if (startupPromptToInject && agent.kind !== 'terminal') {
+				this.queueTdPromptInjection(
+					session.id,
+					startupPromptToInject,
+					normalizedTdTaskId,
+				);
+				this.injectPendingTdPromptIfReady(session);
+			}
 
 			return {
 				success: true,
@@ -2125,20 +2314,23 @@ export class APIServer {
 			});
 		});
 
-		const notifyUpdate = (session: {
-			id: string;
-			stateMutex: {getSnapshot: () => {state: string}};
-		}) => {
+		const notifyUpdate = (session: Session) => {
 			this.io?.emit('session_update', {
 				id: session.id,
 				state: session.stateMutex.getSnapshot().state,
 			});
 		};
 
-		coreService.on('sessionStateChanged', notifyUpdate);
+		coreService.on('sessionStateChanged', session => {
+			this.injectPendingTdPromptIfReady(session);
+			notifyUpdate(session);
+		});
 		coreService.on('sessionUpdated', notifyUpdate);
 		coreService.on('sessionCreated', notifyUpdate);
-		coreService.on('sessionDestroyed', notifyUpdate);
+		coreService.on('sessionDestroyed', session => {
+			this.clearPendingTdPromptInjection(session.id);
+			notifyUpdate(session);
+		});
 
 		// TD review polling — detect tasks entering in_review and notify frontend
 		const knownReviewIds = new Set<string>();

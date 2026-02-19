@@ -10,7 +10,7 @@ import {
   SettingsTd,
   SettingsProject,
 } from '@/components/settings'
-import { Settings, Bot, Bell, GitBranch, X, Loader2, ChevronRight, ListTodo, FolderCog, Check } from 'lucide-react'
+import { Settings, Bot, Bell, GitBranch, X, Loader2, ChevronRight, ListTodo, Check } from 'lucide-react'
 import { ThemeSelector } from '@/components/ThemeSelector'
 import { FontSelector } from '@/components/FontSelector'
 import { cn } from '@/lib/utils'
@@ -24,8 +24,16 @@ const NAV_ITEMS: { id: SettingsSection; label: string; icon: typeof Settings; de
   { id: 'status-hooks', label: 'Status Hooks', icon: Bell, description: 'Session status notifications' },
   { id: 'worktree-hooks', label: 'Worktree Hooks', icon: GitBranch, description: 'Lifecycle automation' },
   { id: 'td', label: 'TD Integration', icon: ListTodo, description: 'Agent TODO lists' },
-  { id: 'project', label: 'Project Settings', icon: FolderCog, description: 'Per-project config and overrides' },
 ]
+
+const SECTION_LABELS: Record<SettingsSection, string> = {
+  general: 'General',
+  agents: 'Agents',
+  'status-hooks': 'Status Hooks',
+  'worktree-hooks': 'Worktree Hooks',
+  td: 'TD Integration',
+  project: 'Project Settings',
+}
 
 export function SettingsScreen() {
   const {
@@ -209,7 +217,7 @@ export function SettingsScreen() {
             {/* Mobile: show current section */}
             <span className="text-muted-foreground text-sm md:hidden">
               <ChevronRight className="h-3 w-3 inline mx-1" />
-              {currentNavItem?.label}
+              {currentNavItem?.label || SECTION_LABELS[settingsSection]}
             </span>
           </div>
           <div className="flex items-center gap-1">

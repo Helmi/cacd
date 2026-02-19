@@ -13,6 +13,7 @@ import {
 	AgentConfig,
 	AgentsConfig,
 	DEFAULT_SHORTCUTS,
+	TdConfig,
 } from '../types/index.js';
 import {
 	FileSystemError,
@@ -23,6 +24,12 @@ import {getConfigDir} from '../utils/configDir.js';
 
 // Current schema version for agents config
 const AGENTS_SCHEMA_VERSION = 2;
+
+const DEFAULT_TD_CONFIG: Required<Pick<TdConfig, 'autoStart' | 'injectTaskContext' | 'injectTdUsage'>> = {
+	autoStart: true,
+	injectTaskContext: true,
+	injectTdUsage: true,
+};
 
 // Default agent configurations shipped with CACD
 const DEFAULT_AGENTS: AgentConfig[] = [
@@ -301,6 +308,28 @@ export class ConfigurationManager {
 				this.config.autoApproval.timeout = 30;
 			}
 		}
+		if (!this.config.td) {
+			this.config.td = {
+				...DEFAULT_TD_CONFIG,
+			};
+		} else {
+			if (!Object.prototype.hasOwnProperty.call(this.config.td, 'autoStart')) {
+				this.config.td.autoStart = DEFAULT_TD_CONFIG.autoStart;
+			}
+			if (
+				!Object.prototype.hasOwnProperty.call(
+					this.config.td,
+					'injectTaskContext',
+				)
+			) {
+				this.config.td.injectTaskContext = DEFAULT_TD_CONFIG.injectTaskContext;
+			}
+			if (
+				!Object.prototype.hasOwnProperty.call(this.config.td, 'injectTdUsage')
+			) {
+				this.config.td.injectTdUsage = DEFAULT_TD_CONFIG.injectTdUsage;
+			}
+		}
 
 		// Migrate legacy command config to presets if needed
 		this.migrateLegacyCommandToPresets();
@@ -413,6 +442,21 @@ export class ConfigurationManager {
 	setAutoApprovalTimeout(timeout: number): void {
 		const currentConfig = this.getAutoApprovalConfig();
 		this.setAutoApprovalConfig({...currentConfig, timeout});
+	}
+
+	getTdConfig(): TdConfig {
+		return {
+			...DEFAULT_TD_CONFIG,
+			...(this.config.td || {}),
+		};
+	}
+
+	setTdConfig(tdConfig: TdConfig): void {
+		this.config.td = {
+			...DEFAULT_TD_CONFIG,
+			...tdConfig,
+		};
+		this.saveConfig();
 	}
 
 	getCommandConfig(): CommandConfig {
@@ -1182,6 +1226,21 @@ export class ConfigurationManager {
 				!Object.prototype.hasOwnProperty.call(config.autoApproval, 'timeout')
 			) {
 				config.autoApproval.timeout = 30;
+			}
+		}
+		if (!config.td) {
+			config.td = {
+				...DEFAULT_TD_CONFIG,
+			};
+		} else {
+			if (!Object.prototype.hasOwnProperty.call(config.td, 'autoStart')) {
+				config.td.autoStart = DEFAULT_TD_CONFIG.autoStart;
+			}
+			if (!Object.prototype.hasOwnProperty.call(config.td, 'injectTaskContext')) {
+				config.td.injectTaskContext = DEFAULT_TD_CONFIG.injectTaskContext;
+			}
+			if (!Object.prototype.hasOwnProperty.call(config.td, 'injectTdUsage')) {
+				config.td.injectTdUsage = DEFAULT_TD_CONFIG.injectTdUsage;
 			}
 		}
 

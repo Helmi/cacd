@@ -5,6 +5,7 @@ import type {
 	CommandConfig,
 	CommandPresetsConfig,
 	ConfigurationData,
+	TdConfig,
 } from '../types/index.js';
 
 // Mock fs module
@@ -337,6 +338,52 @@ describe('ConfigurationManager - Command Presets', () => {
 
 			const presets = configManager.getCommandPresets();
 			expect(presets.defaultPresetId).toBe('1');
+		});
+	});
+
+	describe('td config defaults', () => {
+		it('should provide stable td defaults when td config is missing', () => {
+			delete mockConfigData.td;
+			configManager = new ConfigurationManager();
+
+			expect(configManager.getTdConfig()).toEqual({
+				autoStart: true,
+				injectTaskContext: true,
+				injectTdUsage: true,
+			});
+		});
+
+		it('should merge configured td values with defaults', () => {
+			mockConfigData.td = {
+				autoStart: false,
+				defaultPrompt: 'Begin Work on Task',
+			};
+			configManager = new ConfigurationManager();
+
+			expect(configManager.getTdConfig()).toEqual({
+				autoStart: false,
+				defaultPrompt: 'Begin Work on Task',
+				injectTaskContext: true,
+				injectTdUsage: true,
+			});
+		});
+
+		it('should persist td config updates', () => {
+			configManager = new ConfigurationManager();
+			const tdConfig: TdConfig = {
+				autoStart: false,
+				injectTaskContext: false,
+				injectTdUsage: false,
+				defaultPrompt: 'Code Review',
+			};
+
+			configManager.setTdConfig(tdConfig);
+
+			expect(writeFileSync).toHaveBeenCalledWith(
+				expect.stringContaining('config.json'),
+				expect.stringContaining('"td"'),
+			);
+			expect(configManager.getTdConfig()).toEqual(tdConfig);
 		});
 	});
 

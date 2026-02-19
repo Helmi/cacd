@@ -26,6 +26,10 @@ export interface ProjectConfig {
 		autoStart?: boolean;
 		/** Default prompt template to use for agent sessions */
 		defaultPrompt?: string;
+		/** Inject task context when launching an agent linked to a td task */
+		injectTaskContext?: boolean;
+		/** Inject td usage instructions when launching an agent linked to a td task */
+		injectTdUsage?: boolean;
 		[key: string]: unknown;
 	};
 	agentDefaults?: {

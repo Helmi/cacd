@@ -77,6 +77,12 @@ export function Sidebar() {
 
   const isMobile = useIsMobile()
   const formatName = useCallback((path: string) => path.split('/').pop() || path, [])
+  const ensureProjectSelected = useCallback(async (projectPath: string) => {
+    if (currentProject?.path === projectPath) {
+      return true
+    }
+    return selectProject(projectPath)
+  }, [currentProject?.path, selectProject])
 
   // Helper to get agent config by ID
   const getAgentById = (agentId?: string) => {
@@ -583,9 +589,8 @@ export function Sidebar() {
                           )}
                           <DropdownMenuItem
                             onClick={async () => {
-                              if (currentProject?.path !== project.path) {
-                                await selectProject(project.path)
-                              }
+                              const selected = await ensureProjectSelected(project.path)
+                              if (!selected) return
                               openTaskBoard()
                             }}
                             disabled={isInvalid}
@@ -614,9 +619,8 @@ export function Sidebar() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={async () => {
-                              if (currentProject?.path !== project.path) {
-                                await selectProject(project.path)
-                              }
+                              const selected = await ensureProjectSelected(project.path)
+                              if (!selected) return
                               openSettings('project')
                             }}
                             disabled={isInvalid}
@@ -648,9 +652,8 @@ export function Sidebar() {
                     )}
                     <ContextMenuItem
                       onClick={async () => {
-                        if (currentProject?.path !== project.path) {
-                          await selectProject(project.path)
-                        }
+                        const selected = await ensureProjectSelected(project.path)
+                        if (!selected) return
                         openTaskBoard()
                       }}
                       disabled={isInvalid}
@@ -679,9 +682,8 @@ export function Sidebar() {
                     </ContextMenuItem>
                     <ContextMenuItem
                       onClick={async () => {
-                        if (currentProject?.path !== project.path) {
-                          await selectProject(project.path)
-                        }
+                        const selected = await ensureProjectSelected(project.path)
+                        if (!selected) return
                         openSettings('project')
                       }}
                       disabled={isInvalid}
