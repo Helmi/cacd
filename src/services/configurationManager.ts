@@ -23,9 +23,23 @@ import {
 import {getConfigDir} from '../utils/configDir.js';
 
 // Current schema version for agents config
-const AGENTS_SCHEMA_VERSION = 2;
+const AGENTS_SCHEMA_VERSION = 3;
 
-const DEFAULT_TD_CONFIG: Required<Pick<TdConfig, 'autoStart' | 'injectTaskContext' | 'injectTdUsage'>> = {
+const BUILTIN_PROMPT_ARG_DEFAULTS: Record<string, string | undefined> = {
+	claude: undefined,
+	codex: undefined,
+	gemini: undefined,
+	cursor: undefined,
+	pi: undefined,
+	kilocode: undefined,
+	droid: undefined,
+	opencode: '--prompt',
+	terminal: 'none',
+};
+
+const DEFAULT_TD_CONFIG: Required<
+	Pick<TdConfig, 'autoStart' | 'injectTaskContext' | 'injectTdUsage'>
+> = {
 	autoStart: true,
 	injectTaskContext: true,
 	injectTdUsage: true,
@@ -39,6 +53,7 @@ const DEFAULT_AGENTS: AgentConfig[] = [
 		description: 'Anthropic Claude CLI for coding assistance',
 		kind: 'agent',
 		command: 'claude',
+		enabled: true,
 		icon: 'claude',
 		options: [
 			{
@@ -87,6 +102,7 @@ const DEFAULT_AGENTS: AgentConfig[] = [
 		description: 'OpenAI Codex CLI',
 		kind: 'agent',
 		command: 'codex',
+		enabled: true,
 		icon: 'openai',
 		options: [
 			{
@@ -105,6 +121,7 @@ const DEFAULT_AGENTS: AgentConfig[] = [
 		description: 'Google Gemini CLI',
 		kind: 'agent',
 		command: 'gemini',
+		enabled: true,
 		icon: 'gemini',
 		options: [
 			{
@@ -123,6 +140,7 @@ const DEFAULT_AGENTS: AgentConfig[] = [
 		description: 'Pi Coding Agent (pi CLI)',
 		kind: 'agent',
 		command: 'pi',
+		enabled: true,
 		icon: 'pi',
 		options: [
 			{
@@ -199,11 +217,21 @@ const DEFAULT_AGENTS: AgentConfig[] = [
 		description: 'Plain shell session',
 		kind: 'terminal',
 		command: '$SHELL',
+		enabled: true,
+		promptArg: 'none',
 		icon: 'terminal',
 		iconColor: '#6B7280',
 		options: [],
 	},
 ];
+
+export interface SaveAgentResult {
+	success: boolean;
+	agent?: AgentConfig;
+	defaultChangedFrom?: string;
+	defaultChangedTo?: string;
+	error?: string;
+}
 
 export class ConfigurationManager {
 	private configPath: string;
@@ -610,6 +638,67 @@ export class ConfigurationManager {
 	// Agent Configuration Methods
 	// ============================================================================
 
+	private normalizePromptArgValue(
+		agent: Pick<AgentConfig, 'id' | 'promptArg'>,
+	): string | undefined {
+		const normalized = agent.promptArg?.trim();
+		if (normalized) {
+			return normalized;
+		}
+		return BUILTIN_PROMPT_ARG_DEFAULTS[agent.id];
+	}
+
+	private applyAgentDefaults(agent: AgentConfig): AgentConfig {
+		return {
+			...agent,
+			enabled: agent.enabled ?? true,
+			promptArg: this.normalizePromptArgValue(agent),
+		};
+	}
+
+	private pickDefaultEnabledAgentId(agents: AgentConfig[]): string | undefined {
+		return agents.find(agent => agent.enabled !== false)?.id;
+	}
+
+	private ensureAtLeastOneEnabledAgent(agents: AgentConfig[]): AgentConfig[] {
+		if (agents.length === 0) {
+			return agents;
+		}
+		if (agents.some(agent => agent.enabled !== false)) {
+			return agents;
+		}
+
+		return agents.map((agent, index) =>
+			index === 0 ? {...agent, enabled: true} : agent,
+		);
+	}
+
+	private normalizeAgentsConfig(config: AgentsConfig): AgentsConfig {
+		const normalizedAgents = this.ensureAtLeastOneEnabledAgent(
+			config.agents.map(agent => this.applyAgentDefaults(agent)),
+		);
+		const hasDefault = normalizedAgents.some(
+			agent => agent.id === config.defaultAgentId,
+		);
+		const defaultEnabled = normalizedAgents.find(
+			agent => agent.id === config.defaultAgentId && agent.enabled !== false,
+		);
+		const fallbackDefaultId =
+			this.pickDefaultEnabledAgentId(normalizedAgents) ||
+			normalizedAgents[0]?.id ||
+			'claude';
+
+		return {
+			...config,
+			agents: normalizedAgents,
+			defaultAgentId:
+				hasDefault && defaultEnabled
+					? config.defaultAgentId
+					: fallbackDefaultId,
+			schemaVersion: AGENTS_SCHEMA_VERSION,
+		};
+	}
+
 	/**
 	 * Initialize agents config with defaults or migrate from presets.
 	 * Called during loadConfig().
@@ -631,19 +720,14 @@ export class ConfigurationManager {
 					this.config.agents.agents.push(piDefault);
 					changed = true;
 				}
-
-				this.config.agents.schemaVersion = AGENTS_SCHEMA_VERSION;
+			}
+			if (schemaVersion < AGENTS_SCHEMA_VERSION) {
 				changed = true;
 			}
 
-			// Ensure defaultAgentId points to a real agent
-			if (
-				!this.config.agents.agents.some(
-					a => a.id === this.config.agents!.defaultAgentId,
-				)
-			) {
-				this.config.agents.defaultAgentId =
-					this.config.agents.agents[0]?.id || 'claude';
+			const normalized = this.normalizeAgentsConfig(this.config.agents);
+			if (JSON.stringify(normalized) !== JSON.stringify(this.config.agents)) {
+				this.config.agents = normalized;
 				changed = true;
 			}
 
@@ -684,6 +768,7 @@ export class ConfigurationManager {
 				schemaVersion: AGENTS_SCHEMA_VERSION,
 			};
 		}
+		this.config.agents = this.normalizeAgentsConfig(this.config.agents);
 
 		this.saveConfig();
 	}
@@ -716,6 +801,11 @@ export class ConfigurationManager {
 				kind: 'agent' as const,
 				command: preset.command,
 				baseArgs: preset.args,
+				enabled: true,
+				promptArg: this.normalizePromptArgValue({
+					id: preset.id || `migrated-${index}`,
+					promptArg: undefined,
+				}),
 				options: [],
 				detectionStrategy: preset.detectionStrategy,
 			};
@@ -729,14 +819,19 @@ export class ConfigurationManager {
 		if (!this.config.agents) {
 			this.initializeAgentsConfig();
 		}
-		return this.config.agents!;
+		const normalized = this.normalizeAgentsConfig(this.config.agents!);
+		if (JSON.stringify(normalized) !== JSON.stringify(this.config.agents)) {
+			this.config.agents = normalized;
+			this.saveConfig();
+		}
+		return normalized;
 	}
 
 	/**
 	 * Set the entire agents configuration.
 	 */
 	setAgentsConfig(agents: AgentsConfig): void {
-		this.config.agents = agents;
+		this.config.agents = this.normalizeAgentsConfig(agents);
 		this.saveConfig();
 	}
 
@@ -747,6 +842,10 @@ export class ConfigurationManager {
 		return this.getAgentsConfig().agents;
 	}
 
+	getEnabledAgents(): AgentConfig[] {
+		return this.getAgents().filter(agent => agent.enabled !== false);
+	}
+
 	/**
 	 * Get the default agent.
 	 */
@@ -755,7 +854,10 @@ export class ConfigurationManager {
 		const defaultAgent = config.agents.find(
 			a => a.id === config.defaultAgentId,
 		);
-		return defaultAgent || config.agents[0]!;
+		if (defaultAgent && defaultAgent.enabled !== false) {
+			return defaultAgent;
+		}
+		return this.getEnabledAgents()[0] || config.agents[0]!;
 	}
 
 	/**
@@ -768,17 +870,42 @@ export class ConfigurationManager {
 	/**
 	 * Add or update an agent.
 	 */
-	saveAgent(agent: AgentConfig): void {
+	saveAgent(agent: AgentConfig): SaveAgentResult {
 		const config = this.getAgentsConfig();
 		const existingIndex = config.agents.findIndex(a => a.id === agent.id);
+		const normalizedAgent = this.applyAgentDefaults(agent);
 
 		if (existingIndex >= 0) {
-			config.agents[existingIndex] = agent;
+			config.agents[existingIndex] = normalizedAgent;
 		} else {
-			config.agents.push(agent);
+			config.agents.push(normalizedAgent);
+		}
+
+		if (!config.agents.some(current => current.enabled !== false)) {
+			return {
+				success: false,
+				error: 'At least one agent must remain enabled',
+			};
+		}
+
+		const previousDefaultAgentId = config.defaultAgentId;
+		const defaultDisabled = config.agents.some(
+			current =>
+				current.id === previousDefaultAgentId && current.enabled === false,
+		);
+		if (defaultDisabled) {
+			config.defaultAgentId =
+				this.pickDefaultEnabledAgentId(config.agents) || config.agents[0]!.id;
 		}
 
 		this.setAgentsConfig(config);
+		const defaultChanged = previousDefaultAgentId !== config.defaultAgentId;
+		return {
+			success: true,
+			agent: normalizedAgent,
+			defaultChangedFrom: defaultChanged ? previousDefaultAgentId : undefined,
+			defaultChangedTo: defaultChanged ? config.defaultAgentId : undefined,
+		};
 	}
 
 	/**
@@ -813,7 +940,8 @@ export class ConfigurationManager {
 	 */
 	setDefaultAgent(id: string): boolean {
 		const config = this.getAgentsConfig();
-		if (!config.agents.some(a => a.id === id)) {
+		const target = config.agents.find(a => a.id === id);
+		if (!target || target.enabled === false) {
 			return false;
 		}
 		config.defaultAgentId = id;
@@ -1236,7 +1364,9 @@ export class ConfigurationManager {
 			if (!Object.prototype.hasOwnProperty.call(config.td, 'autoStart')) {
 				config.td.autoStart = DEFAULT_TD_CONFIG.autoStart;
 			}
-			if (!Object.prototype.hasOwnProperty.call(config.td, 'injectTaskContext')) {
+			if (
+				!Object.prototype.hasOwnProperty.call(config.td, 'injectTaskContext')
+			) {
 				config.td.injectTaskContext = DEFAULT_TD_CONFIG.injectTaskContext;
 			}
 			if (!Object.prototype.hasOwnProperty.call(config.td, 'injectTdUsage')) {

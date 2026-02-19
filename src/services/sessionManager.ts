@@ -10,6 +10,8 @@ import {EventEmitter} from 'events';
 import pkg from '@xterm/headless';
 import {exec} from 'child_process';
 import {promisify} from 'util';
+import {writeFile} from 'fs/promises';
+import {join} from 'path';
 import {configurationManager} from './configurationManager.js';
 import {executeStatusHook} from '../utils/hookExecutor.js';
 import {createStateDetector} from './stateDetector.js';
@@ -33,6 +35,11 @@ export interface SessionCounts {
 	waiting_input: number;
 	pending_auto_approval: number;
 	total: number;
+}
+
+interface AgentBootstrapOptions {
+	initialPrompt?: string;
+	promptArg?: string;
 }
 
 export class SessionManager extends EventEmitter implements ISessionManager {
@@ -119,7 +126,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			return value;
 		}
 
-		return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+		return `'${value.replace(/'/g, `'"'"'`)}'`;
 	}
 
 	private formatPowerShellToken(value: string): string {
@@ -130,19 +137,126 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		return `'${value.replace(/'/g, "''")}'`;
 	}
 
+	private normalizePromptArg(promptArg?: string): string | undefined {
+		const normalized = promptArg?.trim();
+		if (!normalized) return undefined;
+		return normalized;
+	}
+
+	private applyInitialPromptToArgs(
+		args: string[],
+		initialPrompt?: string,
+		promptArg?: string,
+	): string[] {
+		const normalizedPromptArg = this.normalizePromptArg(promptArg);
+		if (!initialPrompt || normalizedPromptArg?.toLowerCase() === 'none') {
+			return [...args];
+		}
+		if (normalizedPromptArg) {
+			return [...args, normalizedPromptArg, initialPrompt];
+		}
+		return [...args, initialPrompt];
+	}
+
+	private parseCommandAndInlineArgs(
+		command: string,
+		args: string[],
+	): {command: string; args: string[]} {
+		const trimmed = command.trim();
+		if (!trimmed.includes(' ')) {
+			return {command: trimmed, args: [...args]};
+		}
+
+		const parts = trimmed.split(/\s+/).filter(Boolean);
+		const [resolvedCommand, ...inlineArgs] = parts;
+		if (!resolvedCommand) {
+			return {command: trimmed, args: [...args]};
+		}
+
+		return {
+			command: resolvedCommand,
+			args: [...inlineArgs, ...args],
+		};
+	}
+
+	private shouldUsePromptLauncher(
+		shellCommand: string,
+		initialPrompt?: string,
+		promptArg?: string,
+	): boolean {
+		const normalizedPromptArg = this.normalizePromptArg(promptArg);
+		if (!initialPrompt || normalizedPromptArg?.toLowerCase() === 'none') {
+			return false;
+		}
+		if (this.isPowerShell(shellCommand)) {
+			return false;
+		}
+		return /[\n\r`"'\\$]/.test(initialPrompt);
+	}
+
+	private async writePromptLauncherScript(
+		worktreePath: string,
+		command: string,
+		args: string[],
+		initialPrompt: string,
+		promptArg?: string,
+	): Promise<string> {
+		const normalizedPromptArg = this.normalizePromptArg(promptArg);
+		const scriptId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+		const scriptPath = join(worktreePath, `.cacd-startup-${scriptId}.sh`);
+		const delimiter = `CACD_PROMPT_${scriptId.replace(/[^A-Za-z0-9]/g, '').toUpperCase()}_EOF`;
+
+		const commandTokens = [
+			this.formatPosixToken(command),
+			...args.map(arg => this.formatPosixToken(arg)),
+		];
+		if (normalizedPromptArg && normalizedPromptArg.toLowerCase() !== 'none') {
+			commandTokens.push(this.formatPosixToken(normalizedPromptArg));
+		}
+		commandTokens.push('"$CACD_PROMPT"');
+
+		const scriptContent = `#!/usr/bin/env bash
+SCRIPT_PATH="$0"
+cleanup() { rm -f "$SCRIPT_PATH"; }
+trap cleanup EXIT
+CACD_PROMPT=$(cat <<'${delimiter}'
+${initialPrompt}
+${delimiter}
+)
+${commandTokens.join(' ')}
+`;
+
+		await writeFile(scriptPath, scriptContent, {
+			encoding: 'utf-8',
+			mode: 0o700,
+		});
+
+		return scriptPath;
+	}
+
 	private buildBootstrapCommand(
 		shellCommand: string,
 		command: string,
 		args: string[],
+		initialPrompt?: string,
+		promptArg?: string,
 	): string {
+		const resolvedArgs = this.applyInitialPromptToArgs(
+			args,
+			initialPrompt,
+			promptArg,
+		);
+
 		if (this.isPowerShell(shellCommand)) {
 			const formattedCommand = this.formatPowerShellToken(command);
-			const formattedArgs = args.map(arg => this.formatPowerShellToken(arg));
+			const formattedArgs = resolvedArgs.map(arg =>
+				this.formatPowerShellToken(arg),
+			);
 			return ['&', formattedCommand, ...formattedArgs].join(' ');
 		}
 
 		const formattedCommand = this.formatPosixToken(command);
-		const formattedArgs = args.map(arg => this.formatPosixToken(arg));
+		const formattedArgs = resolvedArgs.map(arg => this.formatPosixToken(arg));
 		return [formattedCommand, ...formattedArgs].join(' ');
 	}
 
@@ -151,14 +265,18 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		shellCommand: string,
 		command: string,
 		args: string[],
+		initialPrompt?: string,
+		promptArg?: string,
 	): void {
 		const bootstrapCommand = this.buildBootstrapCommand(
 			shellCommand,
 			command,
 			args,
+			initialPrompt,
+			promptArg,
 		);
 		logger.info(
-			`[SessionManager] Bootstrapping shell with: ${command} ${args.join(' ')}`,
+			`[SessionManager] Bootstrapping shell with: ${command} (${args.length} args${initialPrompt ? ' + startup prompt' : ''})`,
 		);
 		shellProcess.write(`${bootstrapCommand}\r`);
 	}
@@ -541,9 +659,12 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 		agentId?: string,
 		extraEnv?: Record<string, string>,
 		agentKind: 'agent' | 'terminal' = 'agent',
+		bootstrapOptions?: AgentBootstrapOptions,
 	): Effect.Effect<Session, ProcessError, never> {
 		return Effect.tryPromise({
 			try: async () => {
+				const resolvedCommand = this.parseCommandAndInlineArgs(command, args);
+
 				// Spawn a persistent shell first; agent command runs inside it.
 				const shellCommand = getDefaultShell();
 				const shellProcess = await this.spawn(
@@ -569,7 +690,48 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 				// Terminal-kind sessions are plain interactive shells.
 				// Agent-kind sessions execute one bootstrap command, then return to shell prompt on exit.
 				if (agentKind !== 'terminal') {
-					this.bootstrapCommandInShell(shellProcess, shellCommand, command, args);
+					if (
+						this.shouldUsePromptLauncher(
+							shellCommand,
+							bootstrapOptions?.initialPrompt,
+							bootstrapOptions?.promptArg,
+						) &&
+						bootstrapOptions?.initialPrompt
+					) {
+						try {
+							const scriptPath = await this.writePromptLauncherScript(
+								worktreePath,
+								resolvedCommand.command,
+								resolvedCommand.args,
+								bootstrapOptions.initialPrompt,
+								bootstrapOptions.promptArg,
+							);
+							this.bootstrapCommandInShell(shellProcess, shellCommand, 'bash', [
+								scriptPath,
+							]);
+						} catch (error) {
+							logger.warn(
+								`[SessionManager] Failed to create prompt launcher script, falling back to inline bootstrap: ${error}`,
+							);
+							this.bootstrapCommandInShell(
+								shellProcess,
+								shellCommand,
+								resolvedCommand.command,
+								resolvedCommand.args,
+								bootstrapOptions.initialPrompt,
+								bootstrapOptions.promptArg,
+							);
+						}
+					} else {
+						this.bootstrapCommandInShell(
+							shellProcess,
+							shellCommand,
+							resolvedCommand.command,
+							resolvedCommand.args,
+							bootstrapOptions?.initialPrompt,
+							bootstrapOptions?.promptArg,
+						);
+					}
 				}
 
 				return session;

@@ -144,6 +144,23 @@ export function AgentConfigEditor({ agent, onChange, onDelete, isNew }: AgentCon
         />
       </div>
 
+      <div className="space-y-1">
+        <Label htmlFor={`agent-prompt-arg-${agent.id}`} className="text-xs">Initial Prompt Argument</Label>
+        <Input
+          id={`agent-prompt-arg-${agent.id}`}
+          value={agent.promptArg || ''}
+          onChange={(e) => {
+            const value = e.target.value.trim()
+            updateField('promptArg', value || undefined)
+          }}
+          placeholder="Leave empty for positional (default), or use --prompt, --message, none"
+          className="h-7 text-xs font-mono"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Leave empty for positional argument (works for most CLIs). Set a flag like <code>--prompt</code> if needed, or <code>none</code> to disable startup prompt injection. Most users won&apos;t need to change this.
+        </p>
+      </div>
+
       {/* Icon Selection */}
       <IconPicker
         icon={agent.icon}

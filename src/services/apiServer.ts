@@ -43,7 +43,7 @@ import {
 	type PromptScope,
 	type ProjectConfig,
 } from '../utils/projectConfig.js';
-import type {Session, SessionState} from '../types/index.js';
+import type {Session} from '../types/index.js';
 
 // --- Clipboard Image Paste Constants ---
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -130,12 +130,6 @@ interface EffectiveTdStartupConfig {
 	injectTdUsage: boolean;
 }
 
-interface PendingTdPromptInjection {
-	prompt: string;
-	taskId?: string;
-	timeout: NodeJS.Timeout;
-}
-
 function renderTaskPromptTemplate(
 	templateContent: string,
 	taskDetail: TdIssueWithChildren,
@@ -212,7 +206,9 @@ function buildTdStartupPrompt(params: {
 	parts.push(`This session is linked to td task ${params.taskId}.`);
 
 	if (params.injectTaskContext && params.taskContextMarkdown) {
-		parts.push('Read .td-task-context.md in this worktree before making changes.');
+		parts.push(
+			'Read .td-task-context.md in this worktree before making changes.',
+		);
 	} else {
 		parts.push('Task context file is .td-task-context.md.');
 	}
@@ -238,7 +234,8 @@ function resolveEffectiveTdStartupConfig(
 	return {
 		enabled: projectConfig?.td?.enabled ?? globalTdConfig.enabled ?? true,
 		autoStart: projectConfig?.td?.autoStart ?? globalTdConfig.autoStart ?? true,
-		defaultPrompt: projectConfig?.td?.defaultPrompt ?? globalTdConfig.defaultPrompt,
+		defaultPrompt:
+			projectConfig?.td?.defaultPrompt ?? globalTdConfig.defaultPrompt,
 		injectTaskContext:
 			projectConfig?.td?.injectTaskContext ??
 			globalTdConfig.injectTaskContext ??
@@ -262,61 +259,11 @@ export class APIServer {
 
 	// Track socket subscriptions to prevent duplicates in dev mode
 	private socketSubscriptions = new Map<string, string>(); // socketId -> sessionId
-	private pendingTdPromptInjections = new Map<string, PendingTdPromptInjection>();
 
 	constructor() {
 		this.app = Fastify({logger: false});
 		this.token = randomUUID();
 		this.setupPromise = this.setup();
-	}
-
-	private clearPendingTdPromptInjection(sessionId: string): void {
-		const pending = this.pendingTdPromptInjections.get(sessionId);
-		if (!pending) return;
-		clearTimeout(pending.timeout);
-		this.pendingTdPromptInjections.delete(sessionId);
-	}
-
-	private queueTdPromptInjection(
-		sessionId: string,
-		prompt: string,
-		taskId?: string,
-	): void {
-		this.clearPendingTdPromptInjection(sessionId);
-
-		const timeout = setTimeout(() => {
-			if (!this.pendingTdPromptInjections.has(sessionId)) return;
-			this.pendingTdPromptInjections.delete(sessionId);
-			logger.warn(
-				`API: Timed out waiting for ready session state before TD startup prompt injection for session ${sessionId}${taskId ? ` (task ${taskId})` : ''}`,
-			);
-		}, 30000);
-
-		this.pendingTdPromptInjections.set(sessionId, {prompt, taskId, timeout});
-	}
-
-	private isReadyForTdPromptInjection(state: SessionState): boolean {
-		// Avoid writing while bootstrap command is still starting up.
-		return state !== 'busy' && state !== 'pending_auto_approval';
-	}
-
-	private injectPendingTdPromptIfReady(session: Session): void {
-		const pending = this.pendingTdPromptInjections.get(session.id);
-		if (!pending) return;
-
-		const state = session.stateMutex.getSnapshot().state;
-		if (!this.isReadyForTdPromptInjection(state)) return;
-
-		try {
-			session.process.write(`${pending.prompt}\r`);
-			logger.info(
-				`API: Injected TD startup prompt for session ${session.id}${pending.taskId ? ` (task ${pending.taskId})` : ''}`,
-			);
-		} catch (err) {
-			logger.warn(`API: Failed TD startup prompt injection: ${err}`);
-		} finally {
-			this.clearPendingTdPromptInjection(session.id);
-		}
 	}
 
 	private async setup(): Promise<void> {
@@ -402,7 +349,9 @@ export class APIServer {
 				return {
 					project: null,
 					projectConfig: null as ProjectConfig | null,
-					projectState: null as ReturnType<typeof tdService.resolveProjectState> | null,
+					projectState: null as ReturnType<
+						typeof tdService.resolveProjectState
+					> | null,
 				};
 			}
 
@@ -411,13 +360,12 @@ export class APIServer {
 			const tdEnabled =
 				projectConfig?.td?.enabled ?? globalTdConfig.enabled ?? true;
 			const rawProjectState = tdService.resolveProjectState(project.path);
-			const projectState =
-				!tdEnabled
-					? {
-							...rawProjectState,
-							enabled: false,
-					  }
-					: rawProjectState;
+			const projectState = !tdEnabled
+				? {
+						...rawProjectState,
+						enabled: false,
+					}
+				: rawProjectState;
 
 			return {project, projectConfig, projectState};
 		};
@@ -1280,9 +1228,23 @@ export class APIServer {
 		);
 
 		// --- Agents ---
-		this.app.get('/api/agents', async () => {
-			return configurationManager.getAgentsConfig();
-		});
+		this.app.get<{Querystring: {includeDisabled?: string}}>(
+			'/api/agents',
+			async request => {
+				const includeDisabled =
+					request.query.includeDisabled === 'true' ||
+					request.query.includeDisabled === '1';
+				if (includeDisabled) {
+					return configurationManager.getAgentsConfig();
+				}
+
+				const config = configurationManager.getAgentsConfig();
+				return {
+					...config,
+					agents: configurationManager.getEnabledAgents(),
+				};
+			},
+		);
 
 		this.app.get<{Params: {id: string}}>(
 			'/api/agents/:id',
@@ -1307,9 +1269,19 @@ export class APIServer {
 				return reply.code(400).send({error: 'Agent ID mismatch'});
 			}
 
-			configurationManager.saveAgent(agent);
+			const saved = configurationManager.saveAgent(agent);
+			if (!saved.success) {
+				return reply
+					.code(400)
+					.send({error: saved.error || 'Failed to save agent'});
+			}
 			logger.info(`API: Saved agent ${id}`);
-			return {success: true, agent};
+			return {
+				success: true,
+				agent: saved.agent,
+				defaultChangedFrom: saved.defaultChangedFrom,
+				defaultChangedTo: saved.defaultChangedTo,
+			};
 		});
 
 		this.app.post<{Body: import('../types/index.js').AgentConfig}>(
@@ -1324,9 +1296,19 @@ export class APIServer {
 						.send({error: 'Agent with this ID already exists'});
 				}
 
-				configurationManager.saveAgent(agent);
+				const saved = configurationManager.saveAgent(agent);
+				if (!saved.success) {
+					return reply
+						.code(400)
+						.send({error: saved.error || 'Failed to create agent'});
+				}
 				logger.info(`API: Created agent ${agent.id}`);
-				return {success: true, agent};
+				return {
+					success: true,
+					agent: saved.agent,
+					defaultChangedFrom: saved.defaultChangedFrom,
+					defaultChangedTo: saved.defaultChangedTo,
+				};
 			},
 		);
 
@@ -1354,7 +1336,9 @@ export class APIServer {
 				const success = configurationManager.setDefaultAgent(id);
 
 				if (!success) {
-					return reply.code(404).send({error: 'Agent not found'});
+					return reply
+						.code(404)
+						.send({error: 'Agent not found or agent is disabled'});
 				}
 
 				logger.info(`API: Set default agent to ${id}`);
@@ -1396,10 +1380,16 @@ export class APIServer {
 				logger.error(`API: Agent not found: ${agentId}`);
 				return reply.code(404).send({error: 'Agent not found'});
 			}
+			if (agent.enabled === false) {
+				return reply
+					.code(400)
+					.send({error: `Agent "${agent.name}" is disabled`});
+			}
 
 			logger.info(
 				`API: Found agent "${agent.name}" (id=${agent.id}, command=${agent.command})`,
 			);
+			const normalizedPromptArg = agent.promptArg?.trim();
 
 			// Validate options
 			const validationErrors = configurationManager.validateAgentOptions(
@@ -1496,8 +1486,7 @@ export class APIServer {
 					if (tdState.initialized && tdState.dbPath) {
 						const reader = new TdReader(tdState.dbPath);
 						try {
-							const taskDetail =
-								reader.getIssueWithDetails(normalizedTdTaskId);
+							const taskDetail = reader.getIssueWithDetails(normalizedTdTaskId);
 							if (taskDetail) {
 								const effectiveTemplate =
 									promptTemplate || effectiveTdConfig.defaultPrompt;
@@ -1525,7 +1514,9 @@ export class APIServer {
 									taskContextMarkdown,
 									'utf-8',
 								);
-								logger.info(`API: Wrote .td-task-context.md to ${worktreePath}`);
+								logger.info(
+									`API: Wrote .td-task-context.md to ${worktreePath}`,
+								);
 							}
 						} finally {
 							reader.close();
@@ -1554,6 +1545,14 @@ export class APIServer {
 				agentId,
 				Object.keys(extraEnv).length > 0 ? extraEnv : undefined,
 				agent.kind,
+				{
+					initialPrompt:
+						startupPromptToInject &&
+						normalizedPromptArg?.toLowerCase() !== 'none'
+							? startupPromptToInject
+							: undefined,
+					promptArg: normalizedPromptArg,
+				},
 			);
 			const result = await Effect.runPromise(Effect.either(effect));
 
@@ -1578,14 +1577,6 @@ export class APIServer {
 
 			const session = result.right;
 			coreService.sessionManager.setSessionActive(session.id, true);
-			if (startupPromptToInject && agent.kind !== 'terminal') {
-				this.queueTdPromptInjection(
-					session.id,
-					startupPromptToInject,
-					normalizedTdTaskId,
-				);
-				this.injectPendingTdPromptIfReady(session);
-			}
 
 			return {
 				success: true,
@@ -1610,7 +1601,8 @@ export class APIServer {
 
 		// Initialize td in current project
 		this.app.post('/api/td/init', async (request, reply) => {
-			const {project, projectConfig, projectState} = resolveSelectedProjectTdContext();
+			const {project, projectConfig, projectState} =
+				resolveSelectedProjectTdContext();
 			if (!project || !projectState) {
 				return reply.code(400).send({error: 'No project selected'});
 			}
@@ -1637,7 +1629,9 @@ export class APIServer {
 				});
 			} catch (error) {
 				logger.warn(`API: td init failed for ${project.path}: ${error}`);
-				return reply.code(500).send({error: `Failed to initialize td: ${error}`});
+				return reply
+					.code(500)
+					.send({error: `Failed to initialize td: ${error}`});
 			}
 
 			const refreshedRawState = tdService.resolveProjectState(project.path);
@@ -1804,43 +1798,40 @@ export class APIServer {
 		this.app.get<{
 			Params: {name: string};
 			Querystring: {scope?: 'project' | 'global' | 'effective'};
-		}>(
-			'/api/td/prompts/:name',
-			async (request, reply) => {
-				const scope = request.query.scope || 'project';
-				if (!['project', 'global', 'effective'].includes(scope)) {
-					return reply.code(400).send({error: 'Invalid prompt scope'});
-				}
+		}>('/api/td/prompts/:name', async (request, reply) => {
+			const scope = request.query.scope || 'project';
+			if (!['project', 'global', 'effective'].includes(scope)) {
+				return reply.code(400).send({error: 'Invalid prompt scope'});
+			}
 
-				if (scope === 'global') {
-					const template = loadPromptTemplateByScope(
-						'',
-						'global',
-						request.params.name,
-					);
-					if (!template) {
-						return reply.code(404).send({error: 'Template not found'});
-					}
-					return {template};
-				}
-
-				const {project} = resolveSelectedProjectTdContext();
-				if (!project) {
-					return reply.code(400).send({error: 'No project selected'});
-				}
-
+			if (scope === 'global') {
 				const template = loadPromptTemplateByScope(
-					project.path,
-					scope,
+					'',
+					'global',
 					request.params.name,
 				);
 				if (!template) {
 					return reply.code(404).send({error: 'Template not found'});
 				}
-
 				return {template};
-			},
-		);
+			}
+
+			const {project} = resolveSelectedProjectTdContext();
+			if (!project) {
+				return reply.code(400).send({error: 'No project selected'});
+			}
+
+			const template = loadPromptTemplateByScope(
+				project.path,
+				scope,
+				request.params.name,
+			);
+			if (!template) {
+				return reply.code(404).send({error: 'Template not found'});
+			}
+
+			return {template};
+		});
 
 		// Upsert prompt template in selected scope
 		this.app.post<{
@@ -1940,7 +1931,9 @@ export class APIServer {
 					return {success: true, message: `Task ${id} submitted for review`};
 				} catch (err) {
 					logger.warn(`API: td review failed for ${id}: ${err}`);
-					return reply.code(500).send({error: `Failed to submit for review: ${err}`});
+					return reply
+						.code(500)
+						.send({error: `Failed to submit for review: ${err}`});
 				}
 			},
 		);
@@ -1996,21 +1989,27 @@ export class APIServer {
 						});
 					}
 					// Reject the task (moves from in_review back to in_progress)
-					execFileSync('td', ['reject', id, '--reason', 'Changes requested via CACD'], {
-						encoding: 'utf-8',
-						timeout: 5000,
-						cwd: project.path,
-					});
+					execFileSync(
+						'td',
+						['reject', id, '--reason', 'Changes requested via CACD'],
+						{
+							encoding: 'utf-8',
+							timeout: 5000,
+							cwd: project.path,
+						},
+					);
 					return {success: true, message: `Task ${id} sent back for changes`};
 				} catch (err) {
 					logger.warn(`API: td request-changes failed for ${id}: ${err}`);
-					return reply.code(500).send({error: `Failed to request changes: ${err}`});
+					return reply
+						.code(500)
+						.send({error: `Failed to request changes: ${err}`});
 				}
 			},
 		);
 
 		// In-review tasks (for notification polling)
-		this.app.get('/api/td/in-review', async (request, reply) => {
+		this.app.get('/api/td/in-review', async (_request, _reply) => {
 			const {project, projectState} = resolveSelectedProjectTdContext();
 			if (!project || !projectState) {
 				return {issues: []};
@@ -2322,13 +2321,11 @@ export class APIServer {
 		};
 
 		coreService.on('sessionStateChanged', session => {
-			this.injectPendingTdPromptIfReady(session);
 			notifyUpdate(session);
 		});
 		coreService.on('sessionUpdated', notifyUpdate);
 		coreService.on('sessionCreated', notifyUpdate);
 		coreService.on('sessionDestroyed', session => {
-			this.clearPendingTdPromptInjection(session.id);
 			notifyUpdate(session);
 		});
 
@@ -2349,13 +2346,21 @@ export class APIServer {
 				const reader = new TdReader(state.dbPath);
 				try {
 					const reviewIssues = reader.listIssues({status: 'in_review'});
-					const newReviews = reviewIssues.filter(i => !knownReviewIds.has(i.id));
+					const newReviews = reviewIssues.filter(
+						i => !knownReviewIds.has(i.id),
+					);
 					if (newReviews.length > 0) {
 						newReviews.forEach(i => knownReviewIds.add(i.id));
 						this.io?.emit('td_review_ready', {
-							issues: newReviews.map(i => ({id: i.id, title: i.title, priority: i.priority})),
+							issues: newReviews.map(i => ({
+								id: i.id,
+								title: i.title,
+								priority: i.priority,
+							})),
 						});
-						logger.info(`API: ${newReviews.length} new task(s) ready for review`);
+						logger.info(
+							`API: ${newReviews.length} new task(s) ready for review`,
+						);
 					}
 					// Clean up IDs no longer in review
 					for (const id of knownReviewIds) {

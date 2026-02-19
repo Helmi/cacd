@@ -81,6 +81,7 @@ export function SettingsProject() {
   }
 
   const validProjects = projects.filter(p => p.isValid !== false)
+  const enabledAgents = agents.filter(agent => agent.enabled !== false)
 
   if (!currentProject) {
     return (
@@ -331,7 +332,12 @@ export function SettingsProject() {
         <div className="space-y-2">
           <Label htmlFor="project-agent-default" className="text-xs text-muted-foreground">Default Agent</Label>
           <Select
-            value={localConfig.agentDefaults?.agentId || '__none__'}
+            value={
+              localConfig.agentDefaults?.agentId &&
+              enabledAgents.some(agent => agent.id === localConfig.agentDefaults?.agentId)
+                ? localConfig.agentDefaults.agentId
+                : '__none__'
+            }
             onValueChange={(v) => setAgentDefault(v === '__none__' ? '' : v)}
           >
             <SelectTrigger id="project-agent-default" className="h-8">
@@ -339,7 +345,7 @@ export function SettingsProject() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none__">None</SelectItem>
-              {agents.map((agent) => (
+              {enabledAgents.map((agent) => (
                 <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
               ))}
             </SelectContent>
