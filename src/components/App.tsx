@@ -313,6 +313,12 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 			navigateWithClear('menu');
 			return;
 		}
+		if (agent.enabled === false) {
+			setError(`Agent is disabled: ${agent.name}`);
+			setSelectedWorktree(null);
+			navigateWithClear('menu');
+			return;
+		}
 
 		// Build command and args
 		const command =

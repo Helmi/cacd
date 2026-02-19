@@ -134,8 +134,13 @@ export function AddSessionScreen() {
   const taskListInputRef = useRef<HTMLInputElement>(null)
   const taskListDropdownRef = useRef<HTMLDivElement>(null)
 
+  const selectableAgents = useMemo(
+    () => agents.filter((agent) => agent.enabled !== false),
+    [agents]
+  )
+
   // Get the currently selected agent config
-  const selectedAgent = agents.find(a => a.id === selectedAgentId)
+  const selectedAgent = selectableAgents.find(a => a.id === selectedAgentId)
 
   // Check if this is a Claude agent
   const isClaudeAgent = useMemo(() => {
@@ -274,7 +279,7 @@ export function AddSessionScreen() {
   const preferredAgentId = useMemo(() => {
     const resolve = (candidate?: string) => {
       if (!candidate) return undefined
-      return agents.some(a => a.id === candidate) ? candidate : undefined
+      return selectableAgents.some(a => a.id === candidate) ? candidate : undefined
     }
 
     if (quickStartIntent === 'review') {
@@ -284,18 +289,18 @@ export function AddSessionScreen() {
         resolve(reviewDerivedAgentId) ||
         resolve(projectDefaultAgentId) ||
         resolve(globalDefaultAgentId) ||
-        agents[0]?.id
+        selectableAgents[0]?.id
       )
     }
 
     return (
       resolve(projectDefaultAgentId) ||
       resolve(globalDefaultAgentId) ||
-      agents[0]?.id
+      selectableAgents[0]?.id
     )
   }, [
     quickStartIntent,
-    agents,
+    selectableAgents,
     reviewConfigAgentId,
     rememberedReviewAgentId,
     reviewDerivedAgentId,
@@ -393,18 +398,21 @@ export function AddSessionScreen() {
 
   // Fetch agents on mount
   useEffect(() => {
-    if (agents.length === 0) {
+    if (selectableAgents.length === 0) {
       fetchAgents()
     }
-  }, [agents.length, fetchAgents])
+  }, [selectableAgents.length, fetchAgents])
 
   // Set default agent when agents are loaded
   useEffect(() => {
-    if (agents.length > 0 && !selectedAgentId) {
+    if (selectableAgents.length > 0 && !selectedAgentId) {
       const defaultAgent = preferredAgentId || ''
       setSelectedAgentId(defaultAgent)
     }
-  }, [agents, preferredAgentId, selectedAgentId])
+    if (selectedAgentId && !selectableAgents.some(a => a.id === selectedAgentId)) {
+      setSelectedAgentId(preferredAgentId || selectableAgents[0]?.id || '')
+    }
+  }, [selectableAgents, preferredAgentId, selectedAgentId])
 
   // Reset options when agent changes
   useEffect(() => {
@@ -1011,7 +1019,7 @@ export function AddSessionScreen() {
                     <div className="space-y-3 pt-4 border-t border-border">
                       <Label>Agent</Label>
                       <div className="grid grid-cols-3 gap-2">
-                        {agents.map((agent) => (
+                        {selectableAgents.map((agent) => (
                           <button
                             key={agent.id}
                             type="button"
@@ -1032,9 +1040,9 @@ export function AddSessionScreen() {
                           </button>
                         ))}
                       </div>
-                      {agents.length === 0 && (
+                      {selectableAgents.length === 0 && (
                         <p className="text-xs text-muted-foreground">
-                          Loading agents...
+                          No enabled agents available. Enable at least one in Settings.
                         </p>
                       )}
                     </div>

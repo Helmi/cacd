@@ -140,6 +140,7 @@ export function SettingsScreen() {
       name: '',
       kind: 'agent',
       command: '',
+      enabled: true,
       options: [],
     })
   }

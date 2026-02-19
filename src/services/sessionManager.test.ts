@@ -438,15 +438,16 @@ describe('SessionManager', () => {
 			shellCommand: string,
 			command: string,
 			args: string[],
+			initialPrompt?: string,
+			promptArg?: string,
 		) => string) =>
 			(
-				Reflect.get(
-					sessionManager,
-					'buildBootstrapCommand',
-				) as (
+				Reflect.get(sessionManager, 'buildBootstrapCommand') as (
 					shellCommand: string,
 					command: string,
 					args: string[],
+					initialPrompt?: string,
+					promptArg?: string,
 				) => string
 			).bind(sessionManager);
 
@@ -497,6 +498,44 @@ describe('SessionManager', () => {
 			expect(result).toBe(
 				"& 'my tool' --message 'don''t panic' '$env:PATH' ''",
 			);
+		});
+
+		it('should append startup prompt as positional argument by default', () => {
+			const buildBootstrapCommand = getBuildBootstrapCommand();
+			const result = buildBootstrapCommand(
+				'/bin/zsh',
+				'codex',
+				['--model', 'gpt-5'],
+				'hello world',
+			);
+
+			expect(result).toBe("codex --model gpt-5 'hello world'");
+		});
+
+		it('should append startup prompt using configured prompt flag', () => {
+			const buildBootstrapCommand = getBuildBootstrapCommand();
+			const result = buildBootstrapCommand(
+				'/bin/zsh',
+				'opencode',
+				['-m', 'openai/gpt-5'],
+				'review this',
+				'--prompt',
+			);
+
+			expect(result).toBe("opencode -m openai/gpt-5 --prompt 'review this'");
+		});
+
+		it('should skip startup prompt injection when promptArg is none', () => {
+			const buildBootstrapCommand = getBuildBootstrapCommand();
+			const result = buildBootstrapCommand(
+				'/bin/zsh',
+				'terminal',
+				['--login'],
+				'should-not-be-included',
+				'none',
+			);
+
+			expect(result).toBe('terminal --login');
 		});
 	});
 
@@ -557,6 +596,42 @@ describe('SessionManager', () => {
 				expect.objectContaining({cwd: '/test/worktree'}),
 			);
 			expect(mockPty.write).not.toHaveBeenCalled();
+		});
+
+		it('should use launcher script for complex startup prompts', async () => {
+			vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
+			vi.spyOn(
+				sessionManager as unknown as {
+					writePromptLauncherScript: (
+						worktreePath: string,
+						command: string,
+						args: string[],
+						initialPrompt: string,
+						promptArg?: string,
+					) => Promise<string>;
+				},
+				'writePromptLauncherScript',
+			).mockResolvedValue('/tmp/.cacd-startup-test.sh');
+
+			await Effect.runPromise(
+				sessionManager.createSessionWithAgentEffect(
+					'/test/worktree',
+					'claude',
+					[],
+					'claude',
+					'Agent Session',
+					'claude',
+					undefined,
+					'agent',
+					{
+						initialPrompt: 'Line 1\nLine 2',
+					},
+				),
+			);
+
+			const bootstrapCommand = mockPty.write.mock.calls[0]?.[0] as string;
+			expect(bootstrapCommand).toContain('bash');
+			expect(bootstrapCommand).toContain('/tmp/.cacd-startup-test.sh');
 		});
 	});
 

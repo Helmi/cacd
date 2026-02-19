@@ -443,7 +443,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const fetchAgents = useCallback(async () => {
     try {
       setAgentsLoading(true)
-      const res = await fetch('/api/agents', { credentials: 'include' })
+      const res = await fetch('/api/agents?includeDisabled=true', { credentials: 'include' })
       if (res.ok) {
         const data: AgentsConfig = await res.json()
         setAgents(data.agents)
@@ -653,6 +653,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const data = await res.json().catch(() => ({}))
         setError(data.error || 'Failed to save agent')
         return false
+      }
+
+      const data = await res.json().catch(() => ({}))
+      if (data.defaultChangedFrom && data.defaultChangedTo) {
+        const fromAgent = agents.find(a => a.id === data.defaultChangedFrom)
+        const toAgent = agents.find(a => a.id === data.defaultChangedTo)
+        setError(
+          `Default agent changed to ${toAgent?.name || data.defaultChangedTo} because ${fromAgent?.name || data.defaultChangedFrom} was disabled.`
+        )
       }
 
       await fetchAgents()

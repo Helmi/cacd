@@ -51,7 +51,7 @@ function getDefaultOptions(
 }
 
 const AgentSelector: React.FC<AgentSelectorProps> = ({onSelect, onCancel}) => {
-	const agents = configurationManager.getAgents();
+	const agents = configurationManager.getEnabledAgents();
 	const defaultAgent = configurationManager.getDefaultAgent();
 
 	const [viewMode, setViewMode] = useState<ViewMode>('agent-list');

@@ -36,6 +36,8 @@ const TERMINAL_AGENT: AgentConfig = {
 	description: 'Plain shell session',
 	kind: 'terminal',
 	command: '$SHELL',
+	enabled: true,
+	promptArg: 'none',
 	icon: 'terminal',
 	iconColor: '#6B7280',
 	options: [],
@@ -50,6 +52,7 @@ const DEFAULT_AGENT_PROFILES: Record<string, AgentConfig> = {
 		description: 'Anthropic Claude CLI for coding assistance',
 		kind: 'agent',
 		command: 'claude',
+		enabled: true,
 		icon: 'claude',
 		options: [
 			{
@@ -98,6 +101,7 @@ const DEFAULT_AGENT_PROFILES: Record<string, AgentConfig> = {
 		description: 'OpenAI Codex CLI',
 		kind: 'agent',
 		command: 'codex',
+		enabled: true,
 		icon: 'openai',
 		options: [
 			{
@@ -134,6 +138,7 @@ const DEFAULT_AGENT_PROFILES: Record<string, AgentConfig> = {
 		description: 'Google Gemini CLI',
 		kind: 'agent',
 		command: 'gemini',
+		enabled: true,
 		icon: 'gemini',
 		options: [
 			{
@@ -167,6 +172,7 @@ const DEFAULT_AGENT_PROFILES: Record<string, AgentConfig> = {
 		description: 'Pi Coding Agent (pi CLI)',
 		kind: 'agent',
 		command: 'pi',
+		enabled: true,
 		icon: 'pi',
 		options: [
 			{
@@ -243,6 +249,7 @@ const DEFAULT_AGENT_PROFILES: Record<string, AgentConfig> = {
 		description: 'Cursor Agent CLI',
 		kind: 'agent',
 		command: 'cursor agent',
+		enabled: true,
 		icon: 'cursor',
 		options: [
 			{
@@ -286,6 +293,7 @@ const DEFAULT_AGENT_PROFILES: Record<string, AgentConfig> = {
 		description: 'Droid CLI',
 		kind: 'agent',
 		command: 'droid',
+		enabled: true,
 		icon: 'droid',
 		options: [
 			{
@@ -303,6 +311,7 @@ const DEFAULT_AGENT_PROFILES: Record<string, AgentConfig> = {
 		description: 'Kilocode CLI',
 		kind: 'agent',
 		command: 'kilocode',
+		enabled: true,
 		icon: 'kilo',
 		options: [
 			{
@@ -343,6 +352,8 @@ const DEFAULT_AGENT_PROFILES: Record<string, AgentConfig> = {
 		description: 'Opencode CLI',
 		kind: 'agent',
 		command: 'opencode',
+		enabled: true,
+		promptArg: '--prompt',
 		icon: 'opencode',
 		options: [
 			{
@@ -369,6 +380,18 @@ const DEFAULT_AGENT_PROFILES: Record<string, AgentConfig> = {
 			},
 		],
 	},
+};
+
+const DEFAULT_PROMPT_ARG_BY_AGENT: Record<string, string | undefined> = {
+	claude: undefined,
+	codex: undefined,
+	gemini: undefined,
+	cursor: undefined,
+	pi: undefined,
+	kilocode: undefined,
+	droid: undefined,
+	opencode: '--prompt',
+	terminal: 'none',
 };
 
 export interface SetupOptions {
@@ -612,6 +635,8 @@ export async function runSetup(
 			name: agentInfo.name,
 			kind: 'agent' as const,
 			command: agentInfo.command,
+			enabled: true,
+			promptArg: DEFAULT_PROMPT_ARG_BY_AGENT[agentInfo.id],
 			icon: agentInfo.id,
 			options: [],
 		};

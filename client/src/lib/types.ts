@@ -120,6 +120,8 @@ export interface AgentConfig {
   command: string // Executable (e.g., 'claude', '$SHELL')
   baseArgs?: string[] // Fixed args always passed
   options: AgentOption[]
+  enabled?: boolean // Whether this agent is selectable for new sessions (defaults to true)
+  promptArg?: string // Startup prompt passing mode: positional, explicit flag (e.g. --prompt), or 'none'
   detectionStrategy?: string // For state detection (agents only)
   icon?: string // Brand icon ID or generic Lucide icon name
   iconColor?: string // Hex color (only for generic icons)
