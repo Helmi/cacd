@@ -97,6 +97,9 @@ interface AppState {
   tdIssues: TdIssue[]
   tdBoardView: Record<string, TdIssue[]>
   taskBoardOpen: boolean
+  conversationViewOpen: boolean
+  conversationInitialSessionId: string | null
+  conversationTaskFilterId: string | null
   tdReviewNotifications: Array<{id: string; title: string; priority: string}>
   projectConfig: ProjectConfig | null
   projectConfigPath: string | null
@@ -141,7 +144,16 @@ interface AppActions {
 
   // Session management
   createSession: (path: string, presetId?: string, sessionName?: string) => Promise<boolean>
-  createSessionWithAgent: (path: string, agentId: string, options?: Record<string, boolean | string>, sessionName?: string, taskListName?: string, tdTaskId?: string, promptTemplate?: string) => Promise<boolean>
+  createSessionWithAgent: (
+    path: string,
+    agentId: string,
+    options?: Record<string, boolean | string>,
+    sessionName?: string,
+    taskListName?: string,
+    tdTaskId?: string,
+    promptTemplate?: string,
+    intent?: 'work' | 'review' | 'manual'
+  ) => Promise<boolean>
   renameSession: (sessionId: string, name: string) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<void>
 
@@ -189,6 +201,8 @@ interface AppActions {
   fetchTdBoard: () => Promise<void>
   openTaskBoard: () => void
   closeTaskBoard: () => void
+  openConversationView: (context?: { sessionId?: string; taskId?: string }) => void
+  closeConversationView: () => void
   dismissTdReviewNotification: (issueId: string) => void
   dismissAllTdReviewNotifications: () => void
 
@@ -313,6 +327,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tdIssues, setTdIssues] = useState<TdIssue[]>([])
   const [tdBoardView, setTdBoardView] = useState<Record<string, TdIssue[]>>({})
   const [taskBoardOpen, setTaskBoardOpen] = useState(false)
+  const [conversationViewOpen, setConversationViewOpen] = useState(false)
+  const [conversationInitialSessionId, setConversationInitialSessionId] = useState<string | null>(null)
+  const [conversationTaskFilterId, setConversationTaskFilterId] = useState<string | null>(null)
   const [tdReviewNotifications, setTdReviewNotifications] = useState<Array<{id: string; title: string; priority: string}>>([])
   const [projectConfig, setProjectConfig] = useState<ProjectConfig | null>(null)
   const [projectConfigPath, setProjectConfigPath] = useState<string | null>(null)
@@ -626,8 +643,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const openTaskBoard = useCallback(() => setTaskBoardOpen(true), [])
+  const openTaskBoard = useCallback(() => {
+    setConversationViewOpen(false)
+    setConversationInitialSessionId(null)
+    setConversationTaskFilterId(null)
+    setTaskBoardOpen(true)
+  }, [])
   const closeTaskBoard = useCallback(() => setTaskBoardOpen(false), [])
+  const openConversationView = useCallback((context?: { sessionId?: string; taskId?: string }) => {
+    setTaskBoardOpen(false)
+    setConversationInitialSessionId(context?.sessionId || null)
+    setConversationTaskFilterId(context?.taskId || null)
+    setConversationViewOpen(true)
+  }, [])
+  const closeConversationView = useCallback(() => {
+    setConversationViewOpen(false)
+    setConversationInitialSessionId(null)
+    setConversationTaskFilterId(null)
+  }, [])
   const dismissTdReviewNotification = useCallback((issueId: string) => {
     setTdReviewNotifications(prev => prev.filter(n => n.id !== issueId))
   }, [])
@@ -974,14 +1007,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sessionName?: string,
     taskListName?: string,
     tdTaskId?: string,
-    promptTemplate?: string
+    promptTemplate?: string,
+    intent?: 'work' | 'review' | 'manual'
   ): Promise<boolean> => {
     try {
       const res = await fetch('/api/session/create-with-agent', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, agentId, options: options || {}, sessionName, taskListName, tdTaskId, promptTemplate })
+        body: JSON.stringify({ path, agentId, options: options || {}, sessionName, taskListName, tdTaskId, promptTemplate, intent })
       })
       const data = await res.json()
       if (!res.ok) {
@@ -1364,6 +1398,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     tdIssues,
     tdBoardView,
     taskBoardOpen,
+    conversationViewOpen,
+    conversationInitialSessionId,
+    conversationTaskFilterId,
     projectConfig,
     projectConfigPath,
     fetchTdStatus,
@@ -1377,6 +1414,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     fetchTdBoard,
     openTaskBoard,
     closeTaskBoard,
+    openConversationView,
+    closeConversationView,
     tdReviewNotifications,
     dismissTdReviewNotification,
     dismissAllTdReviewNotifications,

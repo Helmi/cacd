@@ -786,7 +786,8 @@ export function AddSessionScreen() {
         sessionName || undefined,
         taskListName || undefined,
         selectedTdTaskId || undefined,
-        selectedPromptTemplate || undefined
+        selectedPromptTemplate || undefined,
+        quickStartIntent || undefined
       )
 
       if (success) {

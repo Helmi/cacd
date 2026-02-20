@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
+import { useAppStore } from '@/lib/store'
 import type { TdIssueWithChildren, TdHandoffParsed, TdIssue } from '@/lib/types'
 import {
   X,
@@ -129,6 +130,7 @@ interface TaskDetailModalProps {
 }
 
 export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, onStartReview, onRefresh }: TaskDetailModalProps) {
+  const { openConversationView, currentProject } = useAppStore()
   const [issue, setIssue] = useState<TdIssueWithChildren | null>(null)
   const [loading, setLoading] = useState(true)
   const [isVisible, setIsVisible] = useState(false)
@@ -171,6 +173,33 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
   const StatusIcon = status?.icon || Circle
   const priority = issue ? priorityConfig[issue.priority] : null
   const labels = issue?.labels ? issue.labels.split(',').filter(Boolean) : []
+  const linkedSessions: Array<{ label: string; id: string }> = issue
+    ? [
+      { label: 'Implementer', id: issue.implementer_session },
+      { label: 'Reviewer', id: issue.reviewer_session },
+    ].filter((entry): entry is { label: string; id: string } => !!entry.id && entry.id.trim().length > 0)
+    : []
+
+  const resolveConversationSessionId = useCallback(async (tdSessionId: string): Promise<string | null> => {
+    if (!issue?.id) return null
+    try {
+      const params = new URLSearchParams({
+        tdSessionId,
+        taskId: issue.id,
+      })
+      if (currentProject?.path) {
+        params.set('projectPath', currentProject.path)
+      }
+      const res = await fetch(`/api/conversations/resolve-linked-session?${params.toString()}`, {
+        credentials: 'include',
+      })
+      if (!res.ok) return null
+      const data = (await res.json()) as { sessionId?: string | null }
+      return typeof data.sessionId === 'string' ? data.sessionId : null
+    } catch {
+      return null
+    }
+  }, [currentProject?.path, issue?.id])
 
   return (
     <>
@@ -233,6 +262,34 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
                   </span>
                 )}
               </div>
+
+              {linkedSessions.length > 0 && (
+                <div className="space-y-1">
+                  <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Linked Sessions
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {linkedSessions.map(linkedSession => (
+                      <Button
+                        key={linkedSession.id}
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-[11px] font-mono"
+                        onClick={async () => {
+                          const resolvedConversationId = await resolveConversationSessionId(linkedSession.id)
+                          openConversationView({
+                            sessionId: resolvedConversationId || linkedSession.id,
+                            taskId: issue.id,
+                          })
+                          handleClose()
+                        }}
+                      >
+                        {linkedSession.label}: {linkedSession.id}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Actions */}
               <div className="space-y-2">

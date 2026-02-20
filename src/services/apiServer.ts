@@ -8,7 +8,7 @@ import {logger} from '../utils/logger.js';
 import {configurationManager} from './configurationManager.js';
 import {projectManager} from './projectManager.js';
 import {authService} from './authService.js';
-import {ConfigurationData, TdConfig} from '../types/index.js';
+import {ConfigurationData, TdConfig, AgentConfig} from '../types/index.js';
 import {ValidationError} from '../types/errors.js';
 import {Effect} from 'effect';
 import path from 'path';
@@ -20,6 +20,7 @@ import {
 } from '../utils/gitStatus.js';
 import {randomUUID, randomBytes} from 'crypto';
 import {execFileSync} from 'child_process';
+import {existsSync} from 'fs';
 import {writeFile, mkdir, readdir, unlink, stat} from 'fs/promises';
 import {tmpdir} from 'os';
 import {generateRandomPort, isDevMode} from '../constants/env.js';
@@ -43,7 +44,9 @@ import {
 	type PromptScope,
 	type ProjectConfig,
 } from '../utils/projectConfig.js';
-import type {Session} from '../types/index.js';
+import {sessionStore, SessionIntent} from './sessionStore.js';
+import {adapterRegistry} from '../adapters/index.js';
+import type {Session, SessionState} from '../types/index.js';
 
 // --- Clipboard Image Paste Constants ---
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -128,6 +131,12 @@ interface EffectiveTdStartupConfig {
 	defaultPrompt?: string;
 	injectTaskContext: boolean;
 	injectTdUsage: boolean;
+}
+
+interface PendingTdPromptInjection {
+	prompt: string;
+	taskId?: string;
+	timeout: NodeJS.Timeout;
 }
 
 function renderTaskPromptTemplate(
@@ -251,6 +260,64 @@ function isValidTdTaskId(taskId: string): boolean {
 	return /^td-[a-z0-9]+$/i.test(normalized);
 }
 
+function resolveSessionIntent(intent?: string): SessionIntent {
+	return intent === 'work' || intent === 'review' ? intent : 'manual';
+}
+
+function inferAgentType(agent: AgentConfig): string {
+	if (agent.kind === 'terminal') {
+		return 'terminal';
+	}
+
+	const strategy = agent.detectionStrategy?.trim();
+	if (strategy) {
+		return strategy;
+	}
+
+	const command = agent.command.toLowerCase();
+	if (command.includes('claude')) return 'claude';
+	if (command.includes('codex')) return 'codex';
+	if (command.includes('gemini')) return 'gemini';
+	if (command.includes('cursor')) return 'cursor';
+	if (command.includes('pi')) return 'pi';
+	if (command.includes('droid')) return 'droid';
+	if (command.includes('kilo')) return 'kilocode';
+	if (command.includes('opencode')) return 'opencode';
+	return agent.id;
+}
+
+function resolveGitField(
+	worktreePath: string,
+	args: string[],
+): string | undefined {
+	try {
+		const output = execFileSync('git', ['-C', worktreePath, ...args], {
+			encoding: 'utf-8',
+			timeout: 3000,
+		}).trim();
+		return output.length > 0 ? output : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function resolveSessionCreatedAt(session: Session): number {
+	const idMatch = /^session-(\d+)-/.exec(session.id);
+	if (idMatch) {
+		const parsedMs = Number.parseInt(idMatch[1] || '', 10);
+		if (Number.isFinite(parsedMs) && parsedMs > 0) {
+			return Math.floor(parsedMs / 1000);
+		}
+	}
+
+	const activityMs = session.lastActivity?.getTime();
+	if (typeof activityMs === 'number' && Number.isFinite(activityMs) && activityMs > 0) {
+		return Math.floor(activityMs / 1000);
+	}
+
+	return Math.floor(Date.now() / 1000);
+}
+
 export class APIServer {
 	private app: FastifyInstance;
 	private io: Server | undefined;
@@ -259,11 +326,61 @@ export class APIServer {
 
 	// Track socket subscriptions to prevent duplicates in dev mode
 	private socketSubscriptions = new Map<string, string>(); // socketId -> sessionId
+	private pendingTdPromptInjections = new Map<string, PendingTdPromptInjection>();
+	private pendingFallbackSessionEndTimes = new Map<string, number>();
 
 	constructor() {
 		this.app = Fastify({logger: false});
 		this.token = randomUUID();
 		this.setupPromise = this.setup();
+	}
+
+	private clearPendingTdPromptInjection(sessionId: string): void {
+		const pending = this.pendingTdPromptInjections.get(sessionId);
+		if (!pending) return;
+		clearTimeout(pending.timeout);
+		this.pendingTdPromptInjections.delete(sessionId);
+	}
+
+	private queueTdPromptInjection(
+		sessionId: string,
+		prompt: string,
+		taskId?: string,
+	): void {
+		this.clearPendingTdPromptInjection(sessionId);
+
+		const timeout = setTimeout(() => {
+			if (!this.pendingTdPromptInjections.has(sessionId)) return;
+			this.pendingTdPromptInjections.delete(sessionId);
+			logger.warn(
+				`API: Timed out waiting for ready session state before TD startup prompt injection for session ${sessionId}${taskId ? ` (task ${taskId})` : ''}`,
+			);
+		}, 30000);
+
+		this.pendingTdPromptInjections.set(sessionId, {prompt, taskId, timeout});
+	}
+
+	private isReadyForTdPromptInjection(state: SessionState): boolean {
+		return state !== 'busy' && state !== 'pending_auto_approval';
+	}
+
+	private injectPendingTdPromptIfReady(session: Session): void {
+		const pending = this.pendingTdPromptInjections.get(session.id);
+		if (!pending) return;
+
+		const state = session.stateMutex.getSnapshot().state;
+		if (!this.isReadyForTdPromptInjection(state)) return;
+
+		try {
+			session.process.write(`${pending.prompt}\r`);
+			logger.info(
+				`API: Injected TD startup prompt for session ${session.id}${pending.taskId ? ` (task ${pending.taskId})` : ''}`,
+			);
+		} catch (err) {
+			logger.warn(`API: Failed TD startup prompt injection: ${err}`);
+		} finally {
+			this.clearPendingTdPromptInjection(session.id);
+		}
 	}
 
 	private async setup(): Promise<void> {
@@ -1145,6 +1262,318 @@ export class APIServer {
 			}));
 		});
 
+		this.app.get<{
+			Querystring: {
+				projectPath?: string;
+				worktreePath?: string;
+				taskId?: string;
+				agentType?: string;
+				search?: string;
+				limit?: string;
+				offset?: string;
+				dateFrom?: string;
+				dateTo?: string;
+			};
+		}>('/api/conversations', async request => {
+			const {
+				projectPath,
+				worktreePath,
+				taskId,
+				agentType,
+				search,
+				dateFrom,
+				dateTo,
+			} = request.query;
+			const limit = Math.max(
+				1,
+				Math.min(500, Number.parseInt(request.query.limit || '50', 10) || 50),
+			);
+			const offset = Math.max(
+				0,
+				Number.parseInt(request.query.offset || '0', 10) || 0,
+			);
+
+			const selectedProjectPath = coreService.getSelectedProject()?.path;
+			const effectiveProjectPath = projectPath || selectedProjectPath;
+			const parsedDateFrom =
+				typeof dateFrom === 'string' ? Number.parseInt(dateFrom, 10) : undefined;
+			const parsedDateTo =
+				typeof dateTo === 'string' ? Number.parseInt(dateTo, 10) : undefined;
+
+			const filters = {
+				projectPath: effectiveProjectPath,
+				worktreePath,
+				tdTaskId: taskId,
+				agentType,
+				search,
+				limit,
+				offset,
+				dateFrom: Number.isFinite(parsedDateFrom) ? parsedDateFrom : undefined,
+				dateTo: Number.isFinite(parsedDateTo) ? parsedDateTo : undefined,
+			};
+
+			let [storedSessions, total] = await Promise.all([
+				Promise.resolve(sessionStore.querySessions(filters)),
+				Promise.resolve(sessionStore.countSessions(filters)),
+			]);
+
+			if (search?.trim()) {
+				const hydrationCandidates = sessionStore
+					.querySessions({
+						...filters,
+						search: undefined,
+						limit: 500,
+						offset: 0,
+					})
+					.filter(
+						session =>
+							!session.contentPreview &&
+							!!session.agentSessionPath &&
+							existsSync(session.agentSessionPath),
+					);
+				if (hydrationCandidates.length > 0) {
+					await Promise.all(
+						hydrationCandidates.map(session =>
+							sessionStore.hydrateSessionContentPreview(session.id),
+						),
+					);
+					[storedSessions, total] = await Promise.all([
+						Promise.resolve(sessionStore.querySessions(filters)),
+						Promise.resolve(sessionStore.countSessions(filters)),
+					]);
+				}
+			}
+
+			const missingPreviews = storedSessions.filter(
+				session =>
+					!session.contentPreview &&
+					!!session.agentSessionPath &&
+					existsSync(session.agentSessionPath),
+			);
+			if (missingPreviews.length > 0) {
+				await Promise.all(
+					missingPreviews.map(session =>
+						sessionStore.hydrateSessionContentPreview(session.id),
+					),
+				);
+				storedSessions = sessionStore.querySessions(filters);
+			}
+
+			const activeSessions = new Map(
+				coreService
+					.sessionManager.getAllSessions()
+					.map(session => [session.id, session] as const),
+			);
+
+			const sessions = storedSessions.map(session => {
+				const liveSession = activeSessions.get(session.id);
+				const missingSessionFile =
+					!!session.agentSessionPath && !existsSync(session.agentSessionPath);
+				return {
+					...session,
+					isActive: !!liveSession,
+					state: liveSession?.stateMutex.getSnapshot().state || 'idle',
+					missingSessionFile,
+				};
+			});
+
+			return {
+				sessions,
+				total,
+				limit,
+				offset,
+			};
+		});
+
+		this.app.get<{
+			Querystring: {
+				tdSessionId?: string;
+				taskId?: string;
+				projectPath?: string;
+			};
+		}>('/api/conversations/resolve-linked-session', async (request, reply) => {
+			const tdSessionId = request.query.tdSessionId?.trim();
+			if (!tdSessionId) {
+				return reply.code(400).send({error: 'tdSessionId is required'});
+			}
+
+			const directSession = sessionStore.getSessionById(tdSessionId);
+			if (directSession) {
+				return {
+					sessionId: directSession.id,
+				};
+			}
+
+			const selectedProjectPath = coreService.getSelectedProject()?.path;
+			const effectiveProjectPath = request.query.projectPath || selectedProjectPath;
+			const resolutionAttempts = [
+				{
+					tdSessionId,
+					tdTaskId: request.query.taskId,
+					projectPath: effectiveProjectPath,
+				},
+				{tdSessionId, tdTaskId: request.query.taskId},
+				{tdSessionId, projectPath: effectiveProjectPath},
+				{tdSessionId},
+			];
+			let resolved = null;
+			for (const attempt of resolutionAttempts) {
+				resolved = sessionStore.getLatestByTdSessionId(attempt);
+				if (resolved) {
+					break;
+				}
+			}
+
+			return {
+				sessionId: resolved?.id || null,
+			};
+		});
+
+		const resolveConversationSession = (sessionId: string) => {
+			const directSession = sessionStore.getSessionById(sessionId);
+			if (directSession) {
+				return directSession;
+			}
+			if (sessionId.startsWith('ses_')) {
+				return sessionStore.getLatestByTdSessionId({tdSessionId: sessionId});
+			}
+			return null;
+		};
+
+		this.app.get<{
+			Params: {sessionId: string};
+		}>('/api/conversations/:sessionId', async (request, reply) => {
+			const {sessionId} = request.params;
+			const storedSession = resolveConversationSession(sessionId);
+			if (!storedSession) {
+				return reply.code(404).send({error: 'Session not found'});
+			}
+
+			if (
+				!storedSession.contentPreview &&
+				storedSession.agentSessionPath &&
+				existsSync(storedSession.agentSessionPath)
+			) {
+				await sessionStore.hydrateSessionContentPreview(storedSession.id);
+			}
+
+			const refreshed = sessionStore.getSessionById(storedSession.id) || storedSession;
+			const liveSession = coreService.sessionManager.getSession(storedSession.id);
+			const missingSessionFile =
+				!!refreshed.agentSessionPath && !existsSync(refreshed.agentSessionPath);
+
+			return {
+				session: {
+					...refreshed,
+					isActive: !!liveSession,
+					state: liveSession?.stateMutex.getSnapshot().state || 'idle',
+					missingSessionFile,
+				},
+			};
+		});
+
+		this.app.get<{
+			Params: {sessionId: string};
+			Querystring: {limit?: string; offset?: string};
+		}>('/api/conversations/:sessionId/messages', async (request, reply) => {
+			const {sessionId} = request.params;
+			const limit = Math.max(
+				1,
+				Math.min(1000, Number.parseInt(request.query.limit || '200', 10) || 200),
+			);
+			const offset = Math.max(
+				0,
+				Number.parseInt(request.query.offset || '0', 10) || 0,
+			);
+
+			const storedSession = resolveConversationSession(sessionId);
+			if (!storedSession) {
+				return reply.code(404).send({error: 'Session not found'});
+			}
+
+			if (!storedSession.agentSessionPath) {
+				return {
+					sessionId: storedSession.id,
+					session: storedSession,
+					metadata: {},
+					messages: [],
+					total: 0,
+					limit,
+					offset,
+					missingSessionFile: false,
+					subAgentSessions: [],
+				};
+			}
+
+			if (!existsSync(storedSession.agentSessionPath)) {
+				return {
+					sessionId: storedSession.id,
+					session: storedSession,
+					metadata: {},
+					messages: [],
+					total: 0,
+					limit,
+					offset,
+					missingSessionFile: true,
+					subAgentSessions: [],
+				};
+			}
+
+			const adapter =
+				adapterRegistry.getByAgentType(storedSession.agentType) ||
+				(() => {
+					const configuredAgent = configurationManager.getAgentById(
+						storedSession.agentProfileId,
+					);
+					return configuredAgent
+						? adapterRegistry.createGeneric(configuredAgent)
+						: null;
+				})();
+			if (!adapter) {
+				return {
+					sessionId: storedSession.id,
+					session: storedSession,
+					metadata: {},
+					messages: [],
+					total: 0,
+					limit,
+					offset,
+					missingSessionFile: false,
+					subAgentSessions: [],
+					error: `No adapter registered for ${storedSession.agentType}`,
+				};
+			}
+
+			try {
+				const [metadata, parsedMessages, subAgentSessions] = await Promise.all([
+					adapter.extractMetadata(storedSession.agentSessionPath),
+					adapter.parseMessages(storedSession.agentSessionPath),
+					adapter.findSubAgentSessions
+						? adapter.findSubAgentSessions(storedSession.agentSessionPath)
+						: Promise.resolve([]),
+				]);
+				const total = parsedMessages.length;
+				const messages = parsedMessages.slice(offset, offset + limit);
+
+				return {
+					sessionId: storedSession.id,
+					session: storedSession,
+					metadata,
+					messages,
+					total,
+					limit,
+					offset,
+					missingSessionFile: false,
+					subAgentSessions,
+				};
+			} catch (error) {
+				logger.warn(
+					`API: Failed to parse conversation messages for ${sessionId}: ${String(error)}`,
+				);
+				return reply.code(500).send({error: 'Failed to parse session messages'});
+			}
+		});
+
 		// Legacy /api/session/create endpoint removed - use /api/session/create-with-agent instead
 
 		this.app.post<{Body: {id: string}}>(
@@ -1176,6 +1605,13 @@ export class APIServer {
 				}
 
 				coreService.sessionManager.renameSession(id, name);
+				try {
+					sessionStore.updateSessionName(id, name);
+				} catch (error) {
+					logger.warn(
+						`API: Failed to update session name in store for ${id}: ${String(error)}`,
+					);
+				}
 				return {success: true};
 			},
 		);
@@ -1356,6 +1792,7 @@ export class APIServer {
 				taskListName?: string;
 				tdTaskId?: string;
 				promptTemplate?: string;
+				intent?: 'work' | 'review' | 'manual';
 			};
 		}>('/api/session/create-with-agent', async (request, reply) => {
 			const {
@@ -1366,8 +1803,10 @@ export class APIServer {
 				taskListName,
 				tdTaskId,
 				promptTemplate,
+				intent,
 			} = request.body;
 			const normalizedTdTaskId = tdTaskId?.trim();
+			const resolvedIntent = resolveSessionIntent(intent);
 			if (normalizedTdTaskId && !isValidTdTaskId(normalizedTdTaskId)) {
 				return reply.code(400).send({error: 'Invalid tdTaskId format'});
 			}
@@ -1432,6 +1871,7 @@ export class APIServer {
 				globalTdConfig,
 			);
 			let startupPromptToInject: string | null = null;
+			let linkedTdSessionId: string | undefined;
 
 			if (taskListName && isClaudeAgent) {
 				extraEnv['CLAUDE_TASK_LIST'] = taskListName;
@@ -1442,6 +1882,7 @@ export class APIServer {
 			if (normalizedTdTaskId && effectiveTdConfig.enabled) {
 				if (tdService.isAvailable()) {
 					const tdSessionId = `ses_${randomUUID().slice(0, 6)}`;
+					linkedTdSessionId = tdSessionId;
 					extraEnv['TD_SESSION_ID'] = tdSessionId;
 					extraEnv['TD_TASK_ID'] = normalizedTdTaskId;
 					logger.info(
@@ -1577,6 +2018,57 @@ export class APIServer {
 
 			const session = result.right;
 			coreService.sessionManager.setSessionActive(session.id, true);
+
+			const createdAt = Math.floor(Date.now() / 1000);
+			const branchName = resolveGitField(worktreePath, [
+				'branch',
+				'--show-current',
+			]);
+			const projectPath =
+				matchedProject?.path ||
+				resolveGitField(worktreePath, ['rev-parse', '--show-toplevel']);
+			const adapterForAgent =
+				adapterRegistry.getById(agent.id) ||
+				adapterRegistry.getByAgentType(inferAgentType(agent));
+			const agentType = adapterForAgent?.id || inferAgentType(agent);
+
+			try {
+				sessionStore.createSessionRecord({
+					id: session.id,
+					agentProfileId: agent.id,
+					agentProfileName: agent.name,
+					agentType,
+					agentOptions: options,
+					worktreePath,
+					branchName,
+					projectPath,
+					tdTaskId: normalizedTdTaskId,
+					tdSessionId: linkedTdSessionId,
+					sessionName: session.name,
+					intent: resolvedIntent,
+					createdAt,
+				});
+
+				sessionStore.scheduleAgentSessionDiscovery({
+					sessionId: session.id,
+					agentType,
+					worktreePath,
+					createdAt,
+				});
+			} catch (error) {
+				logger.warn(
+					`API: Failed to persist session metadata for ${session.id}: ${String(error)}`,
+				);
+			}
+
+			if (startupPromptToInject && agent.kind !== 'terminal') {
+				this.queueTdPromptInjection(
+					session.id,
+					startupPromptToInject,
+					normalizedTdTaskId,
+				);
+				this.injectPendingTdPromptIfReady(session);
+			}
 
 			return {
 				success: true,
@@ -2320,12 +2812,93 @@ export class APIServer {
 			});
 		};
 
+		const persistSessionMetadataIfMissing = (session: Session) => {
+			try {
+				if (sessionStore.getSessionById(session.id)) {
+					return;
+				}
+
+				const configuredAgent = session.agentId
+					? configurationManager.getAgentById(session.agentId)
+					: undefined;
+				const detectedAgentType =
+					configuredAgent
+						? (adapterRegistry.getById(configuredAgent.id)?.id ||
+							adapterRegistry.getByAgentType(inferAgentType(configuredAgent))
+								?.id ||
+							inferAgentType(configuredAgent))
+						: session.detectionStrategy || session.agentId || 'terminal';
+				const createdAt = resolveSessionCreatedAt(session);
+
+				sessionStore.createSessionRecord({
+					id: session.id,
+					agentProfileId: configuredAgent?.id || session.agentId || detectedAgentType,
+					agentProfileName:
+						configuredAgent?.name || session.agentId || detectedAgentType,
+					agentType: detectedAgentType,
+					agentOptions: {},
+					worktreePath: session.worktreePath,
+					branchName: resolveGitField(session.worktreePath, [
+						'branch',
+						'--show-current',
+					]),
+					projectPath: resolveGitField(session.worktreePath, [
+						'rev-parse',
+						'--show-toplevel',
+					]),
+					sessionName: session.name,
+					intent: 'manual',
+					createdAt,
+				});
+
+				sessionStore.scheduleAgentSessionDiscovery({
+					sessionId: session.id,
+					agentType: detectedAgentType,
+					worktreePath: session.worktreePath,
+					// Fallback path must allow linking already-existing transcript files
+					// (for resumed/history sessions) that may predate CACD session creation.
+				});
+
+				const pendingEndedAt = this.pendingFallbackSessionEndTimes.get(
+					session.id,
+				);
+				if (pendingEndedAt) {
+					sessionStore.markSessionEnded(session.id, pendingEndedAt);
+					this.pendingFallbackSessionEndTimes.delete(session.id);
+				}
+			} catch (error) {
+				logger.warn(
+					`API: Failed to persist fallback session metadata for ${session.id}: ${String(error)}`,
+				);
+			}
+		};
+
 		coreService.on('sessionStateChanged', session => {
+			this.injectPendingTdPromptIfReady(session);
 			notifyUpdate(session);
 		});
 		coreService.on('sessionUpdated', notifyUpdate);
-		coreService.on('sessionCreated', notifyUpdate);
+		coreService.on('sessionCreated', session => {
+			setTimeout(() => {
+				persistSessionMetadataIfMissing(session);
+			}, 500);
+			notifyUpdate(session);
+		});
 		coreService.on('sessionDestroyed', session => {
+			this.clearPendingTdPromptInjection(session.id);
+			sessionStore.cancelAgentSessionDiscovery(session.id);
+			const endedAt = Math.floor(Date.now() / 1000);
+			try {
+				sessionStore.markSessionEnded(session.id, endedAt);
+				if (!sessionStore.getSessionById(session.id)) {
+					this.pendingFallbackSessionEndTimes.set(session.id, endedAt);
+				}
+			} catch (error) {
+				logger.warn(
+					`API: Failed to mark session ${session.id} as ended in store: ${String(error)}`,
+				);
+				this.pendingFallbackSessionEndTimes.set(session.id, endedAt);
+			}
 			notifyUpdate(session);
 		});
 

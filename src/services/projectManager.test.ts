@@ -4,10 +4,16 @@ import {Effect, Either} from 'effect';
 
 // Mock modules before any other imports that might use them
 vi.mock('fs');
-vi.mock('os', () => ({
-	homedir: vi.fn(() => '/home/user'),
-	platform: vi.fn(() => 'linux'),
-}));
+vi.mock('os', () => {
+	const mockedOs = {
+		homedir: vi.fn(() => '/home/user'),
+		platform: vi.fn(() => 'linux'),
+	};
+	return {
+		...mockedOs,
+		default: mockedOs,
+	};
+});
 vi.mock('../utils/configDir.js', () => ({
 	getConfigDir: vi.fn(() => '/home/user/.config/cacd'),
 }));

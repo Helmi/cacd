@@ -44,6 +44,84 @@ export interface Session {
   agentId?: string
 }
 
+export interface ConversationSession {
+  id: string
+  agentProfileId: string
+  agentProfileName: string
+  agentType: string
+  agentOptions: Record<string, unknown>
+  agentSessionId: string | null
+  agentSessionPath: string | null
+  worktreePath: string
+  branchName: string | null
+  projectPath: string | null
+  tdTaskId: string | null
+  tdSessionId: string | null
+  sessionName: string | null
+  contentPreview: string | null
+  intent: 'work' | 'review' | 'manual'
+  createdAt: number
+  endedAt: number | null
+  isActive: boolean
+  state: string
+  missingSessionFile: boolean
+}
+
+export interface ConversationListResponse {
+  sessions: ConversationSession[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface ConversationToolCall {
+  name: string
+  input?: string
+  output?: string
+  isError?: boolean
+}
+
+export interface ConversationThinkingBlock {
+  content: string
+  tokenCount?: number
+}
+
+export interface ConversationMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  timestamp: number | null
+  content: string
+  preview: string
+  model?: string
+  toolCalls?: ConversationToolCall[]
+  thinkingBlocks?: ConversationThinkingBlock[]
+  rawType?: string
+}
+
+export interface ConversationSessionMetadata {
+  agentSessionId?: string
+  startedAt?: number
+  endedAt?: number
+  messageCount?: number
+  totalTokens?: number
+  estimatedCostUsd?: number
+  model?: string
+  options?: Record<string, unknown>
+}
+
+export interface ConversationMessagesResponse {
+  sessionId: string
+  session: ConversationSession
+  metadata: ConversationSessionMetadata
+  messages: ConversationMessage[]
+  total: number
+  limit: number
+  offset: number
+  missingSessionFile: boolean
+  subAgentSessions: string[]
+  error?: string
+}
+
 // Git status for a worktree
 export interface GitStatus {
   filesAdded: number

@@ -14,7 +14,6 @@ import {writeFile} from 'fs/promises';
 import {join} from 'path';
 import {configurationManager} from './configurationManager.js';
 import {executeStatusHook} from '../utils/hookExecutor.js';
-import {createStateDetector} from './stateDetector.js';
 import {
 	STATE_PERSISTENCE_DURATION_MS,
 	STATE_CHECK_INTERVAL_MS,
@@ -25,6 +24,7 @@ import {autoApprovalVerifier} from './autoApprovalVerifier.js';
 import {logger} from '../utils/logger.js';
 import {Mutex, createInitialSessionStateData} from '../utils/mutex.js';
 import {getDefaultShell, getPtyEnv} from '../utils/platform.js';
+import {adapterRegistry} from '../adapters/index.js';
 const {Terminal} = pkg;
 const execAsync = promisify(exec);
 const TERMINAL_CONTENT_MAX_LINES = 300;
@@ -284,12 +284,11 @@ ${commandTokens.join(' ')}
 	detectTerminalState(session: Session): SessionState {
 		// Create a detector based on the session's detection strategy
 		const strategy = session.detectionStrategy || 'claude';
-		const detector = createStateDetector(strategy);
 		const stateData = session.stateMutex.getSnapshot();
-		const detectedState = detector.detectState(
-			session.terminal,
-			stateData.state,
-		);
+		const adapter = adapterRegistry.getByStrategy(strategy);
+		const detectedState = adapter
+			? adapter.detectState(session.terminal, stateData.state)
+			: stateData.state;
 
 		// If auto-approval is enabled and state is waiting_input, convert to pending_auto_approval
 		if (

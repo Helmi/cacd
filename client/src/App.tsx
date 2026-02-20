@@ -5,6 +5,7 @@ import { SessionGrid } from '@/components/SessionGrid'
 import { InlineDiffViewer } from '@/components/InlineDiffViewer'
 import { FileViewer } from '@/components/FileViewer'
 import { TaskBoard } from '@/components/TaskBoard'
+import { ConversationView } from '@/components/ConversationView'
 import { ErrorBanner } from '@/components/ErrorBanner'
 import { AddProjectScreen } from '@/components/AddProjectScreen'
 import { AddWorktreeScreen } from '@/components/AddWorktreeScreen'
@@ -25,11 +26,16 @@ function getAccessToken(): string | null {
 }
 
 function MainContent() {
-  const { selectedSessions, viewingFileDiff, viewingFile, taskBoardOpen } = useAppStore()
+  const { selectedSessions, viewingFileDiff, viewingFile, taskBoardOpen, conversationViewOpen } = useAppStore()
 
   // Show task board when toggled
   if (taskBoardOpen) {
     return <TaskBoard />
+  }
+
+  // Show conversation view when toggled
+  if (conversationViewOpen) {
+    return <ConversationView />
   }
 
   // Show diff viewer when viewing a file diff
