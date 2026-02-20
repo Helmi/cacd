@@ -33,6 +33,7 @@ import {
   FolderPlus,
   GitBranch,
   ListTodo,
+  MessageSquare,
   MoreVertical,
   PanelLeftClose,
   Pencil,
@@ -67,6 +68,7 @@ export function Sidebar() {
     openAddSession,
     openSettings,
     openTaskBoard,
+    openConversationView,
     selectProject,
     updateProject,
     removeProject,
@@ -599,6 +601,17 @@ export function Sidebar() {
                             Task Board
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            onClick={async () => {
+                              const selected = await ensureProjectSelected(project.path)
+                              if (!selected) return
+                              openConversationView()
+                            }}
+                            disabled={isInvalid}
+                          >
+                            <MessageSquare className="h-3.5 w-3.5 mr-2" />
+                            Conversations
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
                             onClick={() => openAddWorktree(project.path)}
                             disabled={isInvalid}
                           >
@@ -660,6 +673,17 @@ export function Sidebar() {
                     >
                       <ListTodo className="h-3.5 w-3.5 mr-2" />
                       Task Board
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onClick={async () => {
+                        const selected = await ensureProjectSelected(project.path)
+                        if (!selected) return
+                        openConversationView()
+                      }}
+                      disabled={isInvalid}
+                    >
+                      <MessageSquare className="h-3.5 w-3.5 mr-2" />
+                      Conversations
                     </ContextMenuItem>
                     <ContextMenuItem
                       onClick={() => openAddWorktree(project.path)}

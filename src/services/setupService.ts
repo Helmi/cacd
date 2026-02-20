@@ -16,371 +16,64 @@ import {AgentConfig} from '../types/index.js';
 import {generateRandomPort} from '../constants/env.js';
 import {generateAccessToken} from '../utils/wordlist.js';
 import {hashPasscode, validatePasscode} from './authService.js';
+import {adapterRegistry} from '../adapters/index.js';
+import {getAgentProfileById} from './agentProfiles.js';
 
-// Agents we can detect (check if binary exists and responds to --version)
-const DETECTABLE_AGENTS = [
-	{id: 'claude', command: 'claude', name: 'Claude Code'},
-	{id: 'codex', command: 'codex', name: 'Codex CLI'},
-	{id: 'gemini', command: 'gemini', name: 'Gemini CLI'},
-	{id: 'pi', command: 'pi', name: 'Pi Coding Agent'},
-	{id: 'cursor', command: 'cursor agent', name: 'Cursor Agent'},
-	{id: 'droid', command: 'droid', name: 'Droid'},
-	{id: 'kilocode', command: 'kilocode', name: 'Kilocode'},
-	{id: 'opencode', command: 'opencode', name: 'Opencode'},
+const DETECTABLE_AGENT_IDS = [
+	'claude',
+	'codex',
+	'gemini',
+	'pi',
+	'cursor',
+	'droid',
+	'kilocode',
+	'opencode',
 ];
 
-// Terminal agent is always available (doesn't need detection)
-const TERMINAL_AGENT: AgentConfig = {
-	id: 'terminal',
-	name: 'Terminal',
-	description: 'Plain shell session',
-	kind: 'terminal',
-	command: '$SHELL',
-	enabled: true,
-	promptArg: 'none',
-	icon: 'terminal',
-	iconColor: '#6B7280',
-	options: [],
-};
+function getDetectableAgents(): Array<{id: string; name: string; command: string}> {
+	return DETECTABLE_AGENT_IDS.map(id => {
+		const adapter = adapterRegistry.getById(id);
+		return {
+			id,
+			name: adapter?.name || id,
+			command: adapter?.command || id,
+		};
+	});
+}
 
-// Default agent profiles with full options (same as configurationManager defaults)
-// Defined here to avoid importing configurationManager which auto-creates config
-const DEFAULT_AGENT_PROFILES: Record<string, AgentConfig> = {
-	claude: {
-		id: 'claude',
-		name: 'Claude Code',
-		description: 'Anthropic Claude CLI for coding assistance',
-		kind: 'agent',
-		command: 'claude',
+function cloneAgentOptions(options: AgentConfig['options']): AgentConfig['options'] {
+	return options.map(option => ({
+		...option,
+		choices: option.choices?.map(choice => ({...choice})),
+	}));
+}
+
+function createAgentConfigFromAdapter(adapterId: string): AgentConfig | null {
+	const adapter = adapterRegistry.getById(adapterId);
+	if (!adapter) return null;
+	const canonical = getAgentProfileById(adapterId);
+	const resolvedOptions =
+		adapter.defaultOptions.length > 0
+			? cloneAgentOptions(adapter.defaultOptions)
+			: canonical?.options
+				? cloneAgentOptions(canonical.options)
+				: [];
+
+	return {
+		id: canonical?.id || adapter.id,
+		name: canonical?.name || adapter.name,
+		description: canonical?.description || adapter.description,
+		kind: adapter.id === 'terminal' ? 'terminal' : 'agent',
+		command: adapter.command || canonical?.command || adapter.id,
+		baseArgs: adapter.baseArgs || canonical?.baseArgs,
+		options: resolvedOptions,
+		detectionStrategy: adapter.detectionStrategy || canonical?.detectionStrategy,
+		icon: canonical?.icon || adapter.icon,
+		iconColor: canonical?.iconColor || adapter.iconColor,
 		enabled: true,
-		icon: 'claude',
-		options: [
-			{
-				id: 'yolo',
-				flag: '--dangerously-skip-permissions',
-				label: 'YOLO Mode',
-				description: 'Skip all permission prompts',
-				type: 'boolean',
-				default: false,
-			},
-			{
-				id: 'continue',
-				flag: '--continue',
-				label: 'Continue',
-				description: 'Continue the most recent conversation',
-				type: 'boolean',
-				default: false,
-				group: 'resume-mode',
-			},
-			{
-				id: 'resume',
-				flag: '--resume',
-				label: 'Resume',
-				description: 'Resume a specific conversation by ID',
-				type: 'string',
-				group: 'resume-mode',
-			},
-			{
-				id: 'model',
-				flag: '--model',
-				label: 'Model',
-				description: 'Model to use',
-				type: 'string',
-				choices: [
-					{value: 'sonnet', label: 'Sonnet'},
-					{value: 'opus', label: 'Opus'},
-					{value: 'haiku', label: 'Haiku'},
-				],
-			},
-		],
-		detectionStrategy: 'claude',
-	},
-	codex: {
-		id: 'codex',
-		name: 'Codex CLI',
-		description: 'OpenAI Codex CLI',
-		kind: 'agent',
-		command: 'codex',
-		enabled: true,
-		icon: 'openai',
-		options: [
-			{
-				id: 'yolo',
-				flag: '--dangerously-bypass-approvals-and-sandbox',
-				label: 'YOLO Mode',
-				description: 'Skip all permission checks and sandbox (dangerous)',
-				type: 'boolean',
-				default: false,
-				group: 'auto-mode',
-			},
-			{
-				id: 'full-auto',
-				flag: '--full-auto',
-				label: 'Full Auto',
-				description: 'Auto-approve with workspace sandbox (safer)',
-				type: 'boolean',
-				default: false,
-				group: 'auto-mode',
-			},
-			{
-				id: 'model',
-				flag: '-m',
-				label: 'Model',
-				description: 'Model to use',
-				type: 'string',
-			},
-		],
-		detectionStrategy: 'codex',
-	},
-	gemini: {
-		id: 'gemini',
-		name: 'Gemini CLI',
-		description: 'Google Gemini CLI',
-		kind: 'agent',
-		command: 'gemini',
-		enabled: true,
-		icon: 'gemini',
-		options: [
-			{
-				id: 'yolo',
-				flag: '-y',
-				label: 'YOLO Mode',
-				description: 'Auto-approve all actions',
-				type: 'boolean',
-				default: false,
-			},
-			{
-				id: 'resume',
-				flag: '-r',
-				label: 'Resume',
-				description: 'Resume session (use "latest" or index)',
-				type: 'string',
-			},
-			{
-				id: 'model',
-				flag: '-m',
-				label: 'Model',
-				description: 'Model to use',
-				type: 'string',
-			},
-		],
-		detectionStrategy: 'gemini',
-	},
-	pi: {
-		id: 'pi',
-		name: 'Pi Coding Agent',
-		description: 'Pi Coding Agent (pi CLI)',
-		kind: 'agent',
-		command: 'pi',
-		enabled: true,
-		icon: 'pi',
-		options: [
-			{
-				id: 'tools',
-				flag: '--tools',
-				label: 'Tools',
-				description:
-					'Enabled tools (controls permissions). Default disables bash for safety.',
-				type: 'string',
-				default: 'read,edit,write,grep,find,ls',
-				choices: [
-					{value: 'read,grep,find,ls', label: 'Read-only'},
-					{value: 'read,edit,write,grep,find,ls', label: 'Safe (no bash)'},
-					{value: 'read,bash,edit,write', label: 'Default (includes bash)'},
-					{
-						value: 'read,bash,edit,write,grep,find,ls',
-						label: 'All tools',
-					},
-				],
-			},
-			{
-				id: 'continue',
-				flag: '--continue',
-				label: 'Continue',
-				description: 'Continue previous session',
-				type: 'boolean',
-				default: false,
-				group: 'resume-mode',
-			},
-			{
-				id: 'resume',
-				flag: '--resume',
-				label: 'Resume',
-				description: 'Select a session to resume',
-				type: 'boolean',
-				default: false,
-				group: 'resume-mode',
-			},
-			{
-				id: 'session',
-				flag: '--session',
-				label: 'Session File',
-				description: 'Use specific session file',
-				type: 'string',
-			},
-			{
-				id: 'session-dir',
-				flag: '--session-dir',
-				label: 'Session Dir',
-				description: 'Directory for session storage and lookup',
-				type: 'string',
-			},
-			{
-				id: 'thinking',
-				flag: '--thinking',
-				label: 'Thinking',
-				description: 'Thinking level',
-				type: 'string',
-				choices: [
-					{value: 'off', label: 'Off'},
-					{value: 'minimal', label: 'Minimal'},
-					{value: 'low', label: 'Low'},
-					{value: 'medium', label: 'Medium'},
-					{value: 'high', label: 'High'},
-					{value: 'xhigh', label: 'Extra High'},
-				],
-			},
-		],
-		detectionStrategy: 'pi',
-	},
-	cursor: {
-		id: 'cursor',
-		name: 'Cursor',
-		description: 'Cursor Agent CLI',
-		kind: 'agent',
-		command: 'cursor agent',
-		enabled: true,
-		icon: 'cursor',
-		options: [
-			{
-				id: 'force',
-				flag: '-f',
-				label: 'Force',
-				description: 'Force allow commands unless explicitly denied',
-				type: 'boolean',
-				default: false,
-			},
-			{
-				id: 'sandbox',
-				flag: '--sandbox',
-				label: 'Sandbox',
-				description: 'Sandbox mode',
-				type: 'string',
-				choices: [
-					{value: 'enabled', label: 'Enabled'},
-					{value: 'disabled', label: 'Disabled'},
-				],
-			},
-			{
-				id: 'resume',
-				flag: '--resume',
-				label: 'Resume',
-				description: 'Resume a chat session by ID',
-				type: 'string',
-			},
-			{
-				id: 'model',
-				flag: '--model',
-				label: 'Model',
-				description: 'Model to use',
-				type: 'string',
-			},
-		],
-	},
-	droid: {
-		id: 'droid',
-		name: 'Droid',
-		description: 'Droid CLI',
-		kind: 'agent',
-		command: 'droid',
-		enabled: true,
-		icon: 'droid',
-		options: [
-			{
-				id: 'resume',
-				flag: '-r',
-				label: 'Resume',
-				description: 'Resume session (defaults to last)',
-				type: 'string',
-			},
-		],
-	},
-	kilocode: {
-		id: 'kilocode',
-		name: 'Kilocode',
-		description: 'Kilocode CLI',
-		kind: 'agent',
-		command: 'kilocode',
-		enabled: true,
-		icon: 'kilo',
-		options: [
-			{
-				id: 'yolo',
-				flag: '--yolo',
-				label: 'YOLO Mode',
-				description: 'Auto-approve all tool permissions',
-				type: 'boolean',
-				default: false,
-			},
-			{
-				id: 'continue',
-				flag: '-c',
-				label: 'Continue',
-				description: 'Resume last conversation',
-				type: 'boolean',
-				default: false,
-			},
-			{
-				id: 'session',
-				flag: '-s',
-				label: 'Session',
-				description: 'Resume specific session by ID',
-				type: 'string',
-			},
-			{
-				id: 'model',
-				flag: '-mo',
-				label: 'Model',
-				description: 'Model to use',
-				type: 'string',
-			},
-		],
-	},
-	opencode: {
-		id: 'opencode',
-		name: 'Opencode',
-		description: 'Opencode CLI',
-		kind: 'agent',
-		command: 'opencode',
-		enabled: true,
-		promptArg: '--prompt',
-		icon: 'opencode',
-		options: [
-			{
-				id: 'continue',
-				flag: '-c',
-				label: 'Continue',
-				description: 'Resume last session',
-				type: 'boolean',
-				default: false,
-			},
-			{
-				id: 'session',
-				flag: '-s',
-				label: 'Session',
-				description: 'Resume specific session by ID',
-				type: 'string',
-			},
-			{
-				id: 'model',
-				flag: '-m',
-				label: 'Model',
-				description: 'Model (format: provider/model)',
-				type: 'string',
-			},
-		],
-	},
-};
+		promptArg: adapter.promptArg,
+	};
+}
 
 const DEFAULT_PROMPT_ARG_BY_AGENT: Record<string, string | undefined> = {
 	claude: undefined,
@@ -489,8 +182,9 @@ async function detectAgent(
 export async function detectInstalledAgents(): Promise<
 	{id: string; name: string; installed: boolean}[]
 > {
+	const detectableAgents = getDetectableAgents();
 	const results = await Promise.all(
-		DETECTABLE_AGENTS.map(async agent => ({
+		detectableAgents.map(async agent => ({
 			id: agent.id,
 			name: agent.name,
 			installed: await detectAgent(agent.command),
@@ -618,14 +312,15 @@ export async function runSetup(
 	}
 
 	// Create agent configs for detected agents
+	const detectableAgents = getDetectableAgents();
 	const agents: AgentConfig[] = detectedAgentIds.map(id => {
-		const agentInfo = DETECTABLE_AGENTS.find(a => a.id === id)!;
+		const agentInfo = detectableAgents.find(a => a.id === id)!;
 
 		if (useDefaultProfiles) {
-			// Use full default config with options from DEFAULT_AGENT_PROFILES
-			const profile = DEFAULT_AGENT_PROFILES[id];
+			// Source launch metadata from adapter registry.
+			const profile = createAgentConfigFromAdapter(id);
 			if (profile) {
-				return {...profile};
+				return profile;
 			}
 		}
 
@@ -643,7 +338,10 @@ export async function runSetup(
 	});
 
 	// Always add terminal
-	agents.push(TERMINAL_AGENT);
+	const terminalProfile = createAgentConfigFromAdapter('terminal');
+	if (terminalProfile) {
+		agents.push(terminalProfile);
+	}
 
 	// Handle web interface setup
 	let webEnabled = !options.noWeb;

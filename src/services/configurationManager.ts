@@ -21,6 +21,7 @@ import {
 	ValidationError,
 } from '../types/errors.js';
 import {getConfigDir} from '../utils/configDir.js';
+import {getAgentProfileById, getAgentProfilesByIds} from './agentProfiles.js';
 
 // Current schema version for agents config
 const AGENTS_SCHEMA_VERSION = 3;
@@ -45,185 +46,11 @@ const DEFAULT_TD_CONFIG: Required<
 	injectTdUsage: true,
 };
 
-// Default agent configurations shipped with CACD
-const DEFAULT_AGENTS: AgentConfig[] = [
-	{
-		id: 'claude',
-		name: 'Claude Code',
-		description: 'Anthropic Claude CLI for coding assistance',
-		kind: 'agent',
-		command: 'claude',
-		enabled: true,
-		icon: 'claude',
-		options: [
-			{
-				id: 'yolo',
-				flag: '--dangerously-skip-permissions',
-				label: 'YOLO Mode',
-				description: 'Skip all permission prompts',
-				type: 'boolean',
-				default: false,
-			},
-			{
-				id: 'continue',
-				flag: '--continue',
-				label: 'Continue',
-				description: 'Continue the most recent conversation',
-				type: 'boolean',
-				default: false,
-				group: 'resume-mode',
-			},
-			{
-				id: 'resume',
-				flag: '--resume',
-				label: 'Resume',
-				description: 'Resume a specific conversation by ID',
-				type: 'string',
-				group: 'resume-mode',
-			},
-			{
-				id: 'model',
-				flag: '--model',
-				label: 'Model',
-				description: 'Model to use',
-				type: 'string',
-				choices: [
-					{value: 'sonnet', label: 'Sonnet'},
-					{value: 'opus', label: 'Opus'},
-					{value: 'haiku', label: 'Haiku'},
-				],
-			},
-		],
-		detectionStrategy: 'claude',
-	},
-	{
-		id: 'codex',
-		name: 'Codex CLI',
-		description: 'OpenAI Codex CLI',
-		kind: 'agent',
-		command: 'codex',
-		enabled: true,
-		icon: 'openai',
-		options: [
-			{
-				id: 'model',
-				flag: '-m',
-				label: 'Model',
-				description: 'Model to use',
-				type: 'string',
-			},
-		],
-		detectionStrategy: 'codex',
-	},
-	{
-		id: 'gemini',
-		name: 'Gemini CLI',
-		description: 'Google Gemini CLI',
-		kind: 'agent',
-		command: 'gemini',
-		enabled: true,
-		icon: 'gemini',
-		options: [
-			{
-				id: 'model',
-				flag: '-m',
-				label: 'Model',
-				description: 'Model to use',
-				type: 'string',
-			},
-		],
-		detectionStrategy: 'gemini',
-	},
-	{
-		id: 'pi',
-		name: 'Pi Coding Agent',
-		description: 'Pi Coding Agent (pi CLI)',
-		kind: 'agent',
-		command: 'pi',
-		enabled: true,
-		icon: 'pi',
-		options: [
-			{
-				id: 'tools',
-				flag: '--tools',
-				label: 'Tools',
-				description:
-					'Enabled tools (controls permissions). Default disables bash for safety.',
-				type: 'string',
-				default: 'read,edit,write,grep,find,ls',
-				choices: [
-					{value: 'read,grep,find,ls', label: 'Read-only'},
-					{value: 'read,edit,write,grep,find,ls', label: 'Safe (no bash)'},
-					{value: 'read,bash,edit,write', label: 'Default (includes bash)'},
-					{
-						value: 'read,bash,edit,write,grep,find,ls',
-						label: 'All tools',
-					},
-				],
-			},
-			{
-				id: 'continue',
-				flag: '--continue',
-				label: 'Continue',
-				description: 'Continue previous session',
-				type: 'boolean',
-				default: false,
-				group: 'resume-mode',
-			},
-			{
-				id: 'resume',
-				flag: '--resume',
-				label: 'Resume',
-				description: 'Select a session to resume',
-				type: 'boolean',
-				default: false,
-				group: 'resume-mode',
-			},
-			{
-				id: 'session',
-				flag: '--session',
-				label: 'Session File',
-				description: 'Use specific session file',
-				type: 'string',
-			},
-			{
-				id: 'session-dir',
-				flag: '--session-dir',
-				label: 'Session Dir',
-				description: 'Directory for session storage and lookup',
-				type: 'string',
-			},
-			{
-				id: 'thinking',
-				flag: '--thinking',
-				label: 'Thinking',
-				description: 'Thinking level',
-				type: 'string',
-				choices: [
-					{value: 'off', label: 'Off'},
-					{value: 'minimal', label: 'Minimal'},
-					{value: 'low', label: 'Low'},
-					{value: 'medium', label: 'Medium'},
-					{value: 'high', label: 'High'},
-					{value: 'xhigh', label: 'Extra High'},
-				],
-			},
-		],
-		detectionStrategy: 'pi',
-	},
-	{
-		id: 'terminal',
-		name: 'Terminal',
-		description: 'Plain shell session',
-		kind: 'terminal',
-		command: '$SHELL',
-		enabled: true,
-		promptArg: 'none',
-		icon: 'terminal',
-		iconColor: '#6B7280',
-		options: [],
-	},
-];
+const CORE_DEFAULT_AGENT_IDS = ['claude', 'codex', 'gemini', 'pi', 'terminal'];
+
+function defaultAgents(): AgentConfig[] {
+	return getAgentProfilesByIds(CORE_DEFAULT_AGENT_IDS);
+}
 
 export interface SaveAgentResult {
 	success: boolean;
@@ -712,7 +539,7 @@ export class ConfigurationManager {
 			// Important: do NOT continuously re-add default agents, since users can delete agents.
 			if (schemaVersion < 2) {
 				// v2: add Pi default profile once
-				const piDefault = DEFAULT_AGENTS.find(a => a.id === 'pi');
+				const piDefault = getAgentProfileById('pi');
 				if (
 					piDefault &&
 					!this.config.agents.agents.some(a => a.id === piDefault.id)
@@ -749,7 +576,7 @@ export class ConfigurationManager {
 
 			// Merge with default agents (add defaults that aren't already present)
 			const mergedAgents = [...migratedAgents];
-			for (const defaultAgent of DEFAULT_AGENTS) {
+			for (const defaultAgent of defaultAgents()) {
 				if (!mergedAgents.some(a => a.id === defaultAgent.id)) {
 					mergedAgents.push(defaultAgent);
 				}
@@ -763,7 +590,7 @@ export class ConfigurationManager {
 		} else {
 			// Fresh install - use defaults
 			this.config.agents = {
-				agents: [...DEFAULT_AGENTS],
+				agents: defaultAgents(),
 				defaultAgentId: 'claude',
 				schemaVersion: AGENTS_SCHEMA_VERSION,
 			};
@@ -780,7 +607,7 @@ export class ConfigurationManager {
 	private migratePresetsToAgents(presets: CommandPreset[]): AgentConfig[] {
 		return presets.map((preset, index) => {
 			// Check if this matches a known default agent
-			const matchingDefault = DEFAULT_AGENTS.find(
+			const matchingDefault = defaultAgents().find(
 				d => d.command === preset.command && d.kind === 'agent',
 			);
 

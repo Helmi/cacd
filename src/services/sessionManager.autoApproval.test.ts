@@ -25,8 +25,10 @@ vi.mock('node-pty', () => ({
 	spawn: vi.fn(),
 }));
 
-vi.mock('./stateDetector.js', () => ({
-	createStateDetector: () => ({detectState: detectStateMock}),
+vi.mock('../adapters/index.js', () => ({
+	adapterRegistry: {
+		getByStrategy: vi.fn(() => ({detectState: detectStateMock})),
+	},
 }));
 
 vi.mock('./configurationManager.js', () => ({
