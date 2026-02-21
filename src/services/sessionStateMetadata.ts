@@ -4,7 +4,13 @@ type SessionStateMetadataSource = Pick<Session, 'stateMutex'>;
 type SessionUpdatePayloadSource = Pick<Session, 'id' | 'stateMutex'>;
 type ApiSessionPayloadSource = Pick<
 	Session,
-	'id' | 'name' | 'worktreePath' | 'isActive' | 'agentId' | 'stateMutex'
+	| 'id'
+	| 'name'
+	| 'worktreePath'
+	| 'isActive'
+	| 'agentId'
+	| 'stateMutex'
+	| 'process'
 >;
 
 export interface SessionStateMetadata {
@@ -45,6 +51,7 @@ export function toApiSessionPayload(session: ApiSessionPayloadSource): {
 	autoApprovalReason: string | undefined;
 	isActive: boolean;
 	agentId: string | undefined;
+	pid: number;
 } {
 	return {
 		id: session.id,
@@ -53,5 +60,6 @@ export function toApiSessionPayload(session: ApiSessionPayloadSource): {
 		...resolveSessionStateMetadata(session),
 		isActive: session.isActive,
 		agentId: session.agentId,
+		pid: session.process.pid,
 	};
 }

@@ -15,6 +15,7 @@ export interface ApiSession {
 	state: SessionState;
 	isActive: boolean;
 	agentId?: string;
+	pid?: number;
 	autoApprovalFailed?: boolean;
 	autoApprovalReason?: string;
 }

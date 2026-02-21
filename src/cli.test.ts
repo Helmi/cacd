@@ -386,6 +386,7 @@ describe('CLI', () => {
 				configurable: true,
 			});
 			vi.restoreAllMocks();
+			vi.unstubAllGlobals();
 			vi.resetModules();
 		});
 
@@ -754,6 +755,302 @@ describe('CLI', () => {
 			} finally {
 				consoleErrorSpy.mockRestore();
 				processExitSpy.mockRestore();
+			}
+		});
+
+		it('supports `cacd status --sessions --json`', async () => {
+			process.argv = [
+				'node',
+				'/tmp/unified-entry.tsx',
+				'status',
+				'--sessions',
+				'--json',
+			];
+			setupCommonMocks();
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile: vi.fn(),
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile: vi.fn(async () => 5151),
+				isProcessRunning: vi.fn(() => true),
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(() => ({
+					url: 'http://127.0.0.1:3000/token',
+					port: 3000,
+					configDir: '/tmp/cacd-test',
+					isCustomConfigDir: false,
+					isDevMode: false,
+				})),
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon: vi.fn(),
+				waitForDaemonPid: vi.fn(),
+				waitForDaemonApiReady: vi.fn(),
+			}));
+
+			const fetchMock = vi.fn(async (input: string | URL | Request) => {
+				const url = String(input);
+				if (url.endsWith('/api/sessions')) {
+					return new Response(
+						JSON.stringify([
+							{
+								id: 'session-1',
+								path: '/repo/.worktrees/feat-a',
+								state: 'busy',
+								isActive: true,
+								agentId: 'codex',
+								pid: 9001,
+							},
+						]),
+						{status: 200},
+					);
+				}
+
+				if (url.endsWith('/api/conversations/session-1')) {
+					return new Response(
+						JSON.stringify({
+							session: {
+								id: 'session-1',
+								agentProfileName: 'Codex',
+								agentOptions: {model: 'gpt-5'},
+								worktreePath: '/repo/.worktrees/feat-a',
+								branchName: 'feat-a',
+								tdTaskId: 'td-123',
+								createdAt: Math.floor(Date.now() / 1000) - 60,
+								state: 'busy',
+								isActive: true,
+							},
+						}),
+						{status: 200},
+					);
+				}
+
+				return new Response('{}', {status: 404});
+			});
+			vi.stubGlobal('fetch', fetchMock);
+
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+			const consoleLogSpy = vi
+				.spyOn(console, 'log')
+				.mockImplementation(() => {});
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				const output = consoleLogSpy.mock.calls.map(call => String(call[0])).join('\n');
+				expect(output).toContain('"running": true');
+				expect(output).toContain('"sessions"');
+				expect(output).toContain('"model": "gpt-5"');
+			} finally {
+				processExitSpy.mockRestore();
+				consoleLogSpy.mockRestore();
+			}
+		});
+
+		it('supports `cacd sessions show <id>`', async () => {
+			process.argv = ['node', '/tmp/unified-entry.tsx', 'sessions', 'show', 'session-1'];
+			setupCommonMocks();
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile: vi.fn(),
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile: vi.fn(),
+				isProcessRunning: vi.fn(),
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(),
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon: vi.fn(),
+				waitForDaemonPid: vi.fn(),
+				waitForDaemonApiReady: vi.fn(),
+			}));
+
+			const fetchMock = vi.fn(async (input: string | URL | Request) => {
+				const url = String(input);
+				if (url.endsWith('/api/sessions')) {
+					return new Response(
+						JSON.stringify([
+							{
+								id: 'session-1',
+								path: '/repo/.worktrees/feat-a',
+								state: 'waiting_input',
+								isActive: true,
+								agentId: 'codex',
+								pid: 7331,
+							},
+						]),
+						{status: 200},
+					);
+				}
+
+				if (url.endsWith('/api/conversations/session-1')) {
+					return new Response(
+						JSON.stringify({
+							session: {
+								id: 'session-1',
+								agentProfileName: 'Codex',
+								agentOptions: {model: 'gpt-5'},
+								worktreePath: '/repo/.worktrees/feat-a',
+								branchName: 'feat-a',
+								tdTaskId: 'td-555',
+								createdAt: Math.floor(Date.now() / 1000) - 180,
+								state: 'waiting_input',
+								isActive: true,
+							},
+						}),
+						{status: 200},
+					);
+				}
+
+				return new Response('{}', {status: 404});
+			});
+			vi.stubGlobal('fetch', fetchMock);
+
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+			const consoleLogSpy = vi
+				.spyOn(console, 'log')
+				.mockImplementation(() => {});
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				expect(consoleLogSpy).toHaveBeenCalledWith('ID:        session-1');
+				expect(consoleLogSpy).toHaveBeenCalledWith('Model:     gpt-5');
+				expect(consoleLogSpy).toHaveBeenCalledWith('Branch:    feat-a');
+				expect(consoleLogSpy).toHaveBeenCalledWith('Status:    waiting_input');
+				expect(consoleLogSpy).toHaveBeenCalledWith('PID:       7331');
+			} finally {
+				processExitSpy.mockRestore();
+				consoleLogSpy.mockRestore();
+			}
+		});
+
+		it('supports `cacd agents list --json`', async () => {
+			process.argv = ['node', '/tmp/unified-entry.tsx', 'agents', 'list', '--json'];
+			setupCommonMocks();
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile: vi.fn(),
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile: vi.fn(),
+				isProcessRunning: vi.fn(),
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(),
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon: vi.fn(),
+				waitForDaemonPid: vi.fn(),
+				waitForDaemonApiReady: vi.fn(),
+			}));
+
+			const fetchMock = vi.fn(async (input: string | URL | Request) => {
+				const url = String(input);
+				if (url.includes('/api/agents?includeDisabled=true')) {
+					return new Response(
+						JSON.stringify({
+							agents: [
+								{id: 'codex', name: 'Codex', kind: 'agent', enabled: true},
+								{id: 'claude', name: 'Claude', kind: 'agent', enabled: false},
+							],
+							defaultAgentId: 'codex',
+							schemaVersion: 1,
+						}),
+						{status: 200},
+					);
+				}
+
+				if (url.endsWith('/api/sessions')) {
+					return new Response(
+						JSON.stringify([
+							{
+								id: 'session-1',
+								path: '/repo/.worktrees/feat-a',
+								state: 'busy',
+								isActive: true,
+								agentId: 'codex',
+								pid: 1010,
+							},
+						]),
+						{status: 200},
+					);
+				}
+
+				return new Response('{}', {status: 404});
+			});
+			vi.stubGlobal('fetch', fetchMock);
+
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+			const consoleLogSpy = vi
+				.spyOn(console, 'log')
+				.mockImplementation(() => {});
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				const output = consoleLogSpy.mock.calls.map(call => String(call[0])).join('\n');
+				expect(output).toContain('"id": "codex"');
+				expect(output).toContain('"isDefault": true');
+				expect(output).toContain('"state": "busy"');
+			} finally {
+				processExitSpy.mockRestore();
+				consoleLogSpy.mockRestore();
+			}
+		});
+
+		it('gracefully handles daemon not running for query commands', async () => {
+			process.argv = ['node', '/tmp/unified-entry.tsx', 'sessions', 'list'];
+			setupCommonMocks();
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile: vi.fn(),
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile: vi.fn(),
+				isProcessRunning: vi.fn(),
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(),
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon: vi.fn(),
+				waitForDaemonPid: vi.fn(),
+				waitForDaemonApiReady: vi.fn(),
+			}));
+
+			const fetchError = new TypeError('fetch failed') as TypeError & {
+				cause?: {code: string};
+			};
+			fetchError.cause = {code: 'ECONNREFUSED'};
+			vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(fetchError)));
+
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+			const consoleErrorSpy = vi
+				.spyOn(console, 'error')
+				.mockImplementation(() => {});
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:1');
+				expect(consoleErrorSpy).toHaveBeenCalledWith(
+					'Failed to query sessions: No running CA⚡CD daemon found. Start it with `cacd start`.',
+				);
+			} finally {
+				processExitSpy.mockRestore();
+				consoleErrorSpy.mockRestore();
 			}
 		});
 	});
