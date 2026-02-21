@@ -1,13 +1,20 @@
 import React from 'react';
 import {render} from 'ink-testing-library';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
-import {Effect} from 'effect';
 import DeleteWorktree from './DeleteWorktree.js';
-import {WorktreeService} from '../services/worktreeService.js';
 import {Worktree} from '../types/index.js';
-import {GitError} from '../types/errors.js';
 
-vi.mock('../services/worktreeService.js');
+const {mockFetchWorktrees} = vi.hoisted(() => ({
+	mockFetchWorktrees: vi.fn(),
+}));
+
+vi.mock('./tuiApiClient.js', () => ({
+	tuiApiClient: {
+		fetchWorktrees: mockFetchWorktrees,
+	},
+	worktreeBelongsToProject: vi.fn(() => true),
+}));
+
 vi.mock('../services/shortcutManager.js', () => ({
 	shortcutManager: {
 		matchesShortcut: vi.fn(),
@@ -48,7 +55,7 @@ describe('DeleteWorktree - Effect Integration', () => {
 	});
 
 	it('should load worktrees using Effect-based method', async () => {
-		// GIVEN: Mock worktrees returned by Effect
+		// GIVEN: Mock worktrees returned by API client
 		const mockWorktrees: Worktree[] = [
 			{
 				path: '/test/worktree1',
@@ -64,15 +71,7 @@ describe('DeleteWorktree - Effect Integration', () => {
 			},
 		];
 
-		const mockEffect = Effect.succeed(mockWorktrees);
-		const mockGetWorktreesEffect = vi.fn(() => mockEffect);
-
-		vi.mocked(WorktreeService).mockImplementation(
-			() =>
-				({
-					getWorktreesEffect: mockGetWorktreesEffect,
-				}) as Partial<WorktreeService> as WorktreeService,
-		);
+		mockFetchWorktrees.mockResolvedValue(mockWorktrees);
 
 		const onComplete = vi.fn();
 		const onCancel = vi.fn();
@@ -85,8 +84,8 @@ describe('DeleteWorktree - Effect Integration', () => {
 		// Wait for Effect to execute
 		await new Promise(resolve => setTimeout(resolve, 50));
 
-		// THEN: Effect method should be called
-		expect(mockGetWorktreesEffect).toHaveBeenCalled();
+		// THEN: API method should be called
+		expect(mockFetchWorktrees).toHaveBeenCalled();
 
 		// AND: Worktrees should be displayed
 		const output = lastFrame();
@@ -95,21 +94,9 @@ describe('DeleteWorktree - Effect Integration', () => {
 	});
 
 	it('should handle GitError from getWorktreesEffect gracefully', async () => {
-		// GIVEN: Effect that fails with GitError
-		const mockError = new GitError({
-			command: 'git worktree list --porcelain',
-			exitCode: 128,
-			stderr: 'not a git repository',
-		});
-
-		const mockEffect = Effect.fail(mockError);
-		const mockGetWorktreesEffect = vi.fn(() => mockEffect);
-
-		vi.mocked(WorktreeService).mockImplementation(
-			() =>
-				({
-					getWorktreesEffect: mockGetWorktreesEffect,
-				}) as Partial<WorktreeService> as WorktreeService,
+		// GIVEN: API request that fails
+		mockFetchWorktrees.mockRejectedValue(
+			new Error('git worktree list --porcelain\nnot a git repository'),
 		);
 
 		const onComplete = vi.fn();
@@ -125,11 +112,8 @@ describe('DeleteWorktree - Effect Integration', () => {
 
 		// THEN: Error should be displayed
 		const output = lastFrame();
-		const hasError =
-			output?.includes('error') ||
-			output?.includes('Error') ||
-			output?.includes('not a git repository');
-		expect(hasError).toBe(true);
+		expect(output).toContain('Error loading worktrees:');
+		expect(output).toContain('not a git repository');
 	});
 
 	it('should filter out main worktree from deletable list', async () => {
@@ -149,15 +133,7 @@ describe('DeleteWorktree - Effect Integration', () => {
 			},
 		];
 
-		const mockEffect = Effect.succeed(mockWorktrees);
-		const mockGetWorktreesEffect = vi.fn(() => mockEffect);
-
-		vi.mocked(WorktreeService).mockImplementation(
-			() =>
-				({
-					getWorktreesEffect: mockGetWorktreesEffect,
-				}) as Partial<WorktreeService> as WorktreeService,
-		);
+		mockFetchWorktrees.mockResolvedValue(mockWorktrees);
 
 		const onComplete = vi.fn();
 		const onCancel = vi.fn();

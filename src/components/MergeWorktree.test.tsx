@@ -7,6 +7,18 @@ import {WorktreeService} from '../services/worktreeService.js';
 import {Worktree} from '../types/index.js';
 import {GitError} from '../types/errors.js';
 
+const {mockFetchWorktrees} = vi.hoisted(() => ({
+	mockFetchWorktrees: vi.fn(),
+}));
+
+vi.mock('./tuiApiClient.js', () => ({
+	tuiApiClient: {
+		fetchWorktrees: mockFetchWorktrees,
+		mergeWorktree: vi.fn(),
+	},
+	worktreeBelongsToProject: vi.fn(() => true),
+}));
+
 vi.mock('../services/worktreeService.js');
 vi.mock('../services/shortcutManager.js', () => ({
 	shortcutManager: {
@@ -64,15 +76,7 @@ describe('MergeWorktree - Effect Integration', () => {
 			},
 		];
 
-		const mockEffect = Effect.succeed(mockWorktrees);
-		const mockGetWorktreesEffect = vi.fn(() => mockEffect);
-
-		vi.mocked(WorktreeService).mockImplementation(
-			() =>
-				({
-					getWorktreesEffect: mockGetWorktreesEffect,
-				}) as Partial<WorktreeService> as WorktreeService,
-		);
+		mockFetchWorktrees.mockResolvedValue(mockWorktrees);
 
 		const onComplete = vi.fn();
 		const onCancel = vi.fn();
@@ -86,7 +90,7 @@ describe('MergeWorktree - Effect Integration', () => {
 		await new Promise(resolve => setTimeout(resolve, 50));
 
 		// THEN: Effect method should be called
-		expect(mockGetWorktreesEffect).toHaveBeenCalled();
+		expect(mockFetchWorktrees).toHaveBeenCalled();
 
 		// AND: Branches should be displayed for selection
 		const output = lastFrame();

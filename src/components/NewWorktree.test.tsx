@@ -3,6 +3,18 @@ import {render} from 'ink-testing-library';
 import NewWorktree from './NewWorktree.js';
 import {vi, describe, it, expect, beforeEach, afterEach} from 'vitest';
 
+const {mockFetchBranches, mockFetchDefaultBranch} = vi.hoisted(() => ({
+	mockFetchBranches: vi.fn(),
+	mockFetchDefaultBranch: vi.fn(),
+}));
+
+vi.mock('./tuiApiClient.js', () => ({
+	tuiApiClient: {
+		fetchBranches: mockFetchBranches,
+		fetchDefaultBranch: mockFetchDefaultBranch,
+	},
+}));
+
 // Mock node-pty to avoid native module issues in tests
 vi.mock('node-pty', () => ({
 	spawn: vi.fn(),
@@ -74,39 +86,29 @@ vi.mock('../hooks/useSearchMode.js', () => ({
 	}),
 }));
 
-// Mock WorktreeService
-vi.mock('../services/worktreeService.js', () => ({
-	WorktreeService: vi.fn(),
-}));
-
-describe('NewWorktree component Effect integration', () => {
+describe('NewWorktree component API integration', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		mockFetchBranches.mockResolvedValue(['main']);
+		mockFetchDefaultBranch.mockResolvedValue('main');
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
-	it('should show loading indicator while branches load', async () => {
-		const {Effect} = await import('effect');
-		const {WorktreeService} = await import('../services/worktreeService.js');
-
-		// Mock WorktreeService to return Effects that never resolve (simulating loading)
-		vi.mocked(WorktreeService).mockImplementation(
+	it('should show loading indicator while branches load', () => {
+		mockFetchBranches.mockImplementation(
 			() =>
-				({
-					getAllBranchesEffect: vi.fn(() =>
-						Effect.async<string[], never>(() => {
-							// Never resolves to simulate loading state
-						}),
-					),
-					getDefaultBranchEffect: vi.fn(() =>
-						Effect.async<string, never>(() => {
-							// Never resolves to simulate loading state
-						}),
-					),
-				}) as unknown as InstanceType<typeof WorktreeService>,
+				new Promise<string[]>(() => {
+					// keep pending to test loading state
+				}),
+		);
+		mockFetchDefaultBranch.mockImplementation(
+			() =>
+				new Promise<string>(() => {
+					// keep pending to test loading state
+				}),
 		);
 
 		const onComplete = vi.fn();
@@ -116,32 +118,16 @@ describe('NewWorktree component Effect integration', () => {
 			<NewWorktree onComplete={onComplete} onCancel={onCancel} />,
 		);
 
-		// Should immediately show loading state
 		const output = lastFrame();
 		expect(output).toContain('Loading branches...');
 		expect(output).toContain('Create New Worktree');
 	});
 
-	it('should display error message when branch loading fails with GitError', async () => {
-		const {Effect} = await import('effect');
-		const {GitError} = await import('../types/errors.js');
-		const {WorktreeService} = await import('../services/worktreeService.js');
-
-		const gitError = new GitError({
-			command: 'git branch --all',
-			exitCode: 128,
-			stderr: 'fatal: not a git repository',
-			stdout: '',
-		});
-
-		// Mock WorktreeService to fail with GitError
-		vi.mocked(WorktreeService).mockImplementation(
-			() =>
-				({
-					getAllBranchesEffect: vi.fn(() => Effect.fail(gitError)),
-					getDefaultBranchEffect: vi.fn(() => Effect.succeed('main')),
-				}) as unknown as InstanceType<typeof WorktreeService>,
+	it('should display error message when branch loading fails', async () => {
+		mockFetchBranches.mockRejectedValue(
+			new Error('git branch --all\nfatal: not a git repository'),
 		);
+		mockFetchDefaultBranch.mockResolvedValue('main');
 
 		const onComplete = vi.fn();
 		const onCancel = vi.fn();
@@ -150,7 +136,6 @@ describe('NewWorktree component Effect integration', () => {
 			<NewWorktree onComplete={onComplete} onCancel={onCancel} />,
 		);
 
-		// Wait for Effect to execute
 		await new Promise(resolve => setTimeout(resolve, 100));
 
 		const output = lastFrame();
@@ -159,59 +144,28 @@ describe('NewWorktree component Effect integration', () => {
 		expect(output).toContain('fatal: not a git repository');
 	});
 
-	it('should successfully load branches using Effect.all for parallel execution', async () => {
-		const {Effect} = await import('effect');
-		const {WorktreeService} = await import('../services/worktreeService.js');
-
+	it('should load branches and default branch in parallel', async () => {
 		const mockBranches = ['main', 'feature-1', 'feature-2'];
-		const mockDefaultBranch = 'main';
-
-		// Mock WorktreeService to succeed with both Effects
-		const getAllBranchesSpy = vi.fn(() => Effect.succeed(mockBranches));
-		const getDefaultBranchSpy = vi.fn(() => Effect.succeed(mockDefaultBranch));
-
-		vi.mocked(WorktreeService).mockImplementation(
-			() =>
-				({
-					getAllBranchesEffect: getAllBranchesSpy,
-					getDefaultBranchEffect: getDefaultBranchSpy,
-				}) as unknown as InstanceType<typeof WorktreeService>,
-		);
+		const mockDefault = 'main';
+		mockFetchBranches.mockResolvedValue(mockBranches);
+		mockFetchDefaultBranch.mockResolvedValue(mockDefault);
 
 		const onComplete = vi.fn();
 		const onCancel = vi.fn();
 
 		render(<NewWorktree onComplete={onComplete} onCancel={onCancel} />);
-
-		// Wait for Effect to execute
 		await new Promise(resolve => setTimeout(resolve, 100));
 
-		// Verify both Effect-based methods were called (parallel execution via Effect.all)
-		expect(getAllBranchesSpy).toHaveBeenCalled();
-		expect(getDefaultBranchSpy).toHaveBeenCalled();
+		expect(mockFetchBranches).toHaveBeenCalled();
+		expect(mockFetchDefaultBranch).toHaveBeenCalled();
 	});
 
-	it('should handle getDefaultBranchEffect failure and display error', async () => {
-		const {Effect} = await import('effect');
-		const {GitError} = await import('../types/errors.js');
-		const {WorktreeService} = await import('../services/worktreeService.js');
-
-		const gitError = new GitError({
-			command: 'git symbolic-ref refs/remotes/origin/HEAD',
-			exitCode: 128,
-			stderr: 'fatal: ref refs/remotes/origin/HEAD is not a symbolic ref',
-			stdout: '',
-		});
-
-		// Mock WorktreeService - branches succeed, default branch fails
-		vi.mocked(WorktreeService).mockImplementation(
-			() =>
-				({
-					getAllBranchesEffect: vi.fn(() =>
-						Effect.succeed(['main', 'develop']),
-					),
-					getDefaultBranchEffect: vi.fn(() => Effect.fail(gitError)),
-				}) as unknown as InstanceType<typeof WorktreeService>,
+	it('should handle default branch loading failure and display error', async () => {
+		mockFetchBranches.mockResolvedValue(['main', 'develop']);
+		mockFetchDefaultBranch.mockRejectedValue(
+			new Error(
+				'git symbolic-ref refs/remotes/origin/HEAD\nfatal: ref refs/remotes/origin/HEAD is not a symbolic ref',
+			),
 		);
 
 		const onComplete = vi.fn();
@@ -221,7 +175,6 @@ describe('NewWorktree component Effect integration', () => {
 			<NewWorktree onComplete={onComplete} onCancel={onCancel} />,
 		);
 
-		// Wait for Effect to execute
 		await new Promise(resolve => setTimeout(resolve, 100));
 
 		const output = lastFrame();
@@ -233,27 +186,17 @@ describe('NewWorktree component Effect integration', () => {
 	});
 
 	it('should handle empty branch list', async () => {
-		const {Effect} = await import('effect');
-		const {WorktreeService} = await import('../services/worktreeService.js');
 		const {configurationManager} = await import(
 			'../services/configurationManager.js'
 		);
-
-		// Mock autoDirectory to true so component starts at base-branch step
 		vi.spyOn(configurationManager, 'getWorktreeConfig').mockReturnValue({
 			autoDirectory: true,
 			autoDirectoryPattern: '../{project}-{branch}',
 			copySessionData: true,
 		});
 
-		// Mock WorktreeService to return empty branch list
-		vi.mocked(WorktreeService).mockImplementation(
-			() =>
-				({
-					getAllBranchesEffect: vi.fn(() => Effect.succeed([])),
-					getDefaultBranchEffect: vi.fn(() => Effect.succeed('main')),
-				}) as unknown as InstanceType<typeof WorktreeService>,
-		);
+		mockFetchBranches.mockResolvedValue([]);
+		mockFetchDefaultBranch.mockResolvedValue('main');
 
 		const onComplete = vi.fn();
 		const onCancel = vi.fn();
@@ -262,44 +205,25 @@ describe('NewWorktree component Effect integration', () => {
 			<NewWorktree onComplete={onComplete} onCancel={onCancel} />,
 		);
 
-		// Wait for Effect to execute
 		await new Promise(resolve => setTimeout(resolve, 100));
 
 		const output = lastFrame();
-
-		// Should show the component (base-branch step) even with empty branch list
-		// The component will display just the default branch
 		expect(output).toContain('Create New Worktree');
 		expect(output).toContain('Select base branch');
 	});
 
 	it('should display branches after successful loading', async () => {
-		const {Effect} = await import('effect');
-		const {WorktreeService} = await import('../services/worktreeService.js');
 		const {configurationManager} = await import(
 			'../services/configurationManager.js'
 		);
-
-		// Mock autoDirectory to true so component starts at base-branch step
 		vi.spyOn(configurationManager, 'getWorktreeConfig').mockReturnValue({
 			autoDirectory: true,
 			autoDirectoryPattern: '../{project}-{branch}',
 			copySessionData: true,
 		});
 
-		const mockBranches = ['main', 'feature-1', 'develop'];
-		const mockDefaultBranch = 'main';
-
-		// Mock WorktreeService to succeed
-		vi.mocked(WorktreeService).mockImplementation(
-			() =>
-				({
-					getAllBranchesEffect: vi.fn(() => Effect.succeed(mockBranches)),
-					getDefaultBranchEffect: vi.fn(() =>
-						Effect.succeed(mockDefaultBranch),
-					),
-				}) as unknown as InstanceType<typeof WorktreeService>,
-		);
+		mockFetchBranches.mockResolvedValue(['main', 'feature-1', 'develop']);
+		mockFetchDefaultBranch.mockResolvedValue('main');
 
 		const onComplete = vi.fn();
 		const onCancel = vi.fn();
@@ -308,51 +232,29 @@ describe('NewWorktree component Effect integration', () => {
 			<NewWorktree onComplete={onComplete} onCancel={onCancel} />,
 		);
 
-		// Wait for Effect to execute
 		await new Promise(resolve => setTimeout(resolve, 100));
 
 		const output = lastFrame();
-
-		// Should display the base-branch selection step with branches
 		expect(output).toContain('Create New Worktree');
 		expect(output).toContain('Select base branch');
 		expect(output).toContain('main (default)');
+		expect(output).toContain('feature-1');
 	});
 
-	it('should use Effect.match pattern for error handling', async () => {
-		const {Effect} = await import('effect');
-		const {GitError} = await import('../types/errors.js');
-		const {WorktreeService} = await import('../services/worktreeService.js');
-
-		const gitError = new GitError({
-			command: 'git branch --all',
-			exitCode: 1,
-			stderr: 'error message',
-			stdout: '',
+	it('should execute branch loading requests before showing errors', async () => {
+		let branchesRequested = false;
+		mockFetchBranches.mockImplementation(async () => {
+			branchesRequested = true;
+			throw new Error('branch load failed');
 		});
-
-		// Track Effect execution
-		let effectExecuted = false;
-		vi.mocked(WorktreeService).mockImplementation(
-			() =>
-				({
-					getAllBranchesEffect: vi.fn(() => {
-						effectExecuted = true;
-						return Effect.fail(gitError);
-					}),
-					getDefaultBranchEffect: vi.fn(() => Effect.succeed('main')),
-				}) as unknown as InstanceType<typeof WorktreeService>,
-		);
+		mockFetchDefaultBranch.mockResolvedValue('main');
 
 		const onComplete = vi.fn();
 		const onCancel = vi.fn();
 
 		render(<NewWorktree onComplete={onComplete} onCancel={onCancel} />);
-
-		// Wait for Effect to execute
 		await new Promise(resolve => setTimeout(resolve, 100));
 
-		// Verify Effect was executed (Effect.match pattern)
-		expect(effectExecuted).toBe(true);
+		expect(branchesRequested).toBe(true);
 	});
 });
