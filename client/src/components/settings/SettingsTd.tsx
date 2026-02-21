@@ -17,6 +17,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PromptTemplateVariableLegend } from './PromptTemplateVariableLegend'
 
 export function SettingsTd() {
   const { tdStatus, tdStatusLoading, fetchTdPrompts, saveTdPrompt, deleteTdPrompt, config, fetchData } = useAppStore()
@@ -313,6 +314,7 @@ export function SettingsTd() {
               placeholder="Prompt text. Supports variables like {{task.id}}, {{task.title}}, {{task.description}}"
               disabled={loadingPrompt}
             />
+            <PromptTemplateVariableLegend />
 
             <div className="flex items-center gap-2">
               <Button size="sm" onClick={handleSave} disabled={!canSave || saving}>
