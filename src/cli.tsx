@@ -58,9 +58,13 @@ const cli = meow(
     $ cacd tui                  Launch TUI (daemon must already be running)
     $ cacd daemon               Run daemon in foreground (for service managers)
     $ cacd setup                Run first-time setup wizard
-    $ cacd add [path]           Add a project (default: current directory)
-    $ cacd remove <path>        Remove a project from the list
-    $ cacd list                 List all tracked projects
+    $ cacd add [path]           Add a project (alias for 'cacd project add')
+    $ cacd remove <path>        Remove a project (alias for 'cacd project remove')
+    $ cacd list                 List projects (alias for 'cacd project list')
+    $ cacd project add [path]   Add a project
+    $ cacd project list         List tracked projects
+    $ cacd project remove <path> Remove a project
+    $ cacd project configure <path> [--name <name>] [--description <desc>]
     $ cacd auth <command>       Manage WebUI authentication
 
   Auth Commands
@@ -77,6 +81,8 @@ const cli = meow(
     --devc-up-command       Command to start devcontainer
     --devc-exec-command     Command to execute in devcontainer
     --json                  Output machine-readable JSON for query commands
+    --name <name>           Project name (for 'cacd project configure')
+    --description <desc>    Project description (for 'cacd project configure')
 
   Setup Options (for 'cacd setup')
     --no-web               Disable web interface
@@ -103,7 +109,8 @@ const cli = meow(
     $ cacd setup --port 8080      # Setup with custom port
     $ cacd add                    # Add current directory as project
     $ cacd add /path/to/project   # Add specific project
-    $ cacd list                   # Show tracked projects
+    $ cacd project list           # Show tracked projects
+    $ cacd project configure /path/to/project --name "My Project"
     $ cacd auth show              # Show WebUI access URL
 	`,
 	{
@@ -145,6 +152,12 @@ const cli = meow(
 			force: {
 				type: 'boolean',
 				default: false,
+			},
+			name: {
+				type: 'string',
+			},
+			description: {
+				type: 'string',
 			},
 		},
 	},
@@ -249,6 +262,7 @@ if (subcommand && !knownCommands.has(subcommand)) {
 			'  cacd add [path]    Add a project',
 			'  cacd remove <path> Remove a project',
 			'  cacd list          List projects',
+			'  cacd project ...   Project subcommands',
 			'  cacd auth <cmd>    Manage WebUI auth',
 			'  cacd tui           Launch TUI (daemon required)',
 			'  cacd daemon        Run API server in foreground',
@@ -270,6 +284,7 @@ if (subcommand && !knownCommands.has(subcommand)) {
 					'add',
 					'remove',
 					'list',
+					'project',
 					'auth',
 					'tui',
 					'daemon',

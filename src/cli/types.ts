@@ -13,6 +13,8 @@ export interface CliFlags {
 	skipProject: boolean;
 	force: boolean;
 	json: boolean;
+	name?: string;
+	description?: string;
 }
 
 export interface ParsedCliArgs {
@@ -26,6 +28,10 @@ export interface ProjectManagerAdapter {
 	getProjects(): Project[];
 	instance: {
 		validateProjects(): void;
+		updateProject(
+			projectPath: string,
+			updates: Partial<Pick<Project, 'name' | 'description'>>,
+		): Project | null;
 	};
 }
 
