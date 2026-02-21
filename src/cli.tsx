@@ -61,12 +61,19 @@ const cli = meow(
     $ cacd add [path]           Add a project (default: current directory)
     $ cacd remove <path>        Remove a project from the list
     $ cacd list                 List all tracked projects
+    $ cacd worktree <command>   Manage worktrees through daemon API
     $ cacd auth <command>       Manage WebUI authentication
 
   Auth Commands
     $ cacd auth show              Display access URL
     $ cacd auth reset-passcode    Reset your passcode
     $ cacd auth regenerate-token  Generate new access token (careful!)
+
+  Worktree Commands
+    $ cacd worktree create [--branch <name>] [--project <path>] [--task <td-task-id>]
+    $ cacd worktree list [--project <path>]
+    $ cacd worktree delete <path>
+    $ cacd worktree merge <path> [--target <branch>]
 
   Options
     --help                  Show help
@@ -76,7 +83,10 @@ const cli = meow(
     --sessions              Include active sessions in status output
     --devc-up-command       Command to start devcontainer
     --devc-exec-command     Command to execute in devcontainer
-    --json                  Output machine-readable JSON for query commands
+    --json                  Output machine-readable JSON for query/worktree commands
+    --branch <name>         Branch name for worktree create
+    --task <td-task-id>     Task id used as branch fallback for worktree create
+    --target <branch>       Target branch for worktree merge
 
   Setup Options (for 'cacd setup')
     --no-web               Disable web interface
@@ -104,6 +114,8 @@ const cli = meow(
     $ cacd add                    # Add current directory as project
     $ cacd add /path/to/project   # Add specific project
     $ cacd list                   # Show tracked projects
+    $ cacd worktree list          # List registered worktrees
+    $ cacd worktree merge /path/to/worktree --target main
     $ cacd auth show              # Show WebUI access URL
 	`,
 	{
@@ -136,6 +148,15 @@ const cli = meow(
 				default: false,
 			},
 			project: {
+				type: 'string',
+			},
+			branch: {
+				type: 'string',
+			},
+			task: {
+				type: 'string',
+			},
+			target: {
 				type: 'string',
 			},
 			skipProject: {
@@ -250,6 +271,7 @@ if (subcommand && !knownCommands.has(subcommand)) {
 			'  cacd remove <path> Remove a project',
 			'  cacd list          List projects',
 			'  cacd auth <cmd>    Manage WebUI auth',
+			'  cacd worktree <cmd> Manage worktrees via daemon API',
 			'  cacd tui           Launch TUI (daemon required)',
 			'  cacd daemon        Run API server in foreground',
 			'  cacd               Start daemon in background',
@@ -271,6 +293,7 @@ if (subcommand && !knownCommands.has(subcommand)) {
 					'remove',
 					'list',
 					'auth',
+					'worktree',
 					'tui',
 					'daemon',
 				],
