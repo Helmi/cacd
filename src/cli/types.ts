@@ -10,6 +10,9 @@ export interface CliFlags {
 	sessions: boolean;
 	noWeb: boolean;
 	project?: string;
+	branch?: string;
+	task?: string;
+	target?: string;
 	skipProject: boolean;
 	force: boolean;
 	json: boolean;
