@@ -21,7 +21,12 @@ import {
   FileText,
 } from 'lucide-react'
 import { cn, generateWorktreePath as generatePath } from '@/lib/utils'
-import type { AgentConfig, TdIssue, TdPromptTemplate } from '@/lib/types'
+import {
+  DEFAULT_TD_WORK_BRANCH_TEMPLATE,
+  renderTdBranchTemplate,
+  renderTdTemplate,
+} from '@/lib/tdBranchTemplate'
+import type { AgentConfig, ProjectConfig, TdIssue, TdPromptTemplate } from '@/lib/types'
 
 type QuickStartIntent = 'work' | 'review'
 
@@ -44,33 +49,6 @@ function getNestedString(source: unknown, path: string[]): string | undefined {
   return typeof current === 'string' && current.trim() ? current.trim() : undefined
 }
 
-function toSlug(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-
-function sanitizeBranchName(value: string): string {
-  return value
-    .replace(/\s+/g, '-')
-    .replace(/[^A-Za-z0-9._/\-]+/g, '-')
-    .replace(/\/+/g, '/')
-    .replace(/^-+|-+$/g, '')
-    .replace(/^\/+|\/+$/g, '')
-    .replace(/\.-|\.\./g, '.')
-}
-
-function renderTemplate(template: string, task: Pick<TdIssue, 'id' | 'title'>): string {
-  const titleSlug = toSlug(task.title || '')
-  return template
-    .replace(/\{\{\s*task\.id\s*\}\}/g, task.id)
-    .replace(/\{\{\s*task\.title\s*\}\}/g, task.title || '')
-    .replace(/\{\{\s*task\.title-slug\s*\}\}/g, titleSlug)
-    .replace(/\{\{\s*task\.title_slug\s*\}\}/g, titleSlug)
-}
-
 export function AddSessionScreen() {
   const {
     closeAddSession,
@@ -86,6 +64,7 @@ export function AddSessionScreen() {
     worktrees,
     projects,
     config,
+    currentProject,
     agents,
     defaultAgentId,
     sessions,
@@ -110,6 +89,8 @@ export function AddSessionScreen() {
   const [loadingBranches, setLoadingBranches] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedProjectConfig, setSelectedProjectConfig] = useState<ProjectConfig | null>(null)
+  const [selectedProjectConfigReady, setSelectedProjectConfigReady] = useState(false)
 
   // TD task linking state
   const [selectedTdTaskId, setSelectedTdTaskId] = useState<string>('')
@@ -123,8 +104,8 @@ export function AddSessionScreen() {
   // Prompt template state
   const [promptTemplates, setPromptTemplates] = useState<TdPromptTemplate[]>([])
   const [selectedPromptTemplate, setSelectedPromptTemplate] = useState<string>('')
-  const [branchTemplateApplied, setBranchTemplateApplied] = useState(false)
-  const [promptTemplateApplied, setPromptTemplateApplied] = useState(false)
+  const lastAutoBranchNameRef = useRef<string>('')
+  const lastAutoPromptTemplateRef = useRef<string>('')
 
   // Task list state (Claude-specific)
   const [taskListName, setTaskListName] = useState('')
@@ -166,15 +147,56 @@ export function AddSessionScreen() {
     ? addSessionIntent
     : null
 
+  useEffect(() => {
+    if (currentProject?.path === selectedProjectPath) {
+      setSelectedProjectConfig(projectConfig || {})
+      setSelectedProjectConfigReady(true)
+    }
+  }, [currentProject?.path, selectedProjectPath, projectConfig])
+
+  useEffect(() => {
+    if (!selectedProjectPath) {
+      setSelectedProjectConfig(null)
+      setSelectedProjectConfigReady(false)
+      return
+    }
+
+    let cancelled = false
+    setSelectedProjectConfig(null)
+    setSelectedProjectConfigReady(false)
+    fetch(`/api/project/config?projectPath=${encodeURIComponent(selectedProjectPath)}`, {
+      credentials: 'include',
+    })
+      .then(async (res) => {
+        if (!res.ok) return null
+        return res.json() as Promise<{ config?: ProjectConfig | null }>
+      })
+      .then((data) => {
+        if (cancelled) return
+        setSelectedProjectConfig(data?.config || {})
+        setSelectedProjectConfigReady(true)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSelectedProjectConfig(null)
+          setSelectedProjectConfigReady(true)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedProjectPath])
+
   const resolveConfigValue = useCallback((paths: string[][]): string | undefined => {
     for (const path of paths) {
-      const projectValue = getNestedString(projectConfig, path)
+      const projectValue = getNestedString(selectedProjectConfig, path)
       if (projectValue) return projectValue
       const globalValue = getNestedString(config.raw, path)
       if (globalValue) return globalValue
     }
     return undefined
-  }, [projectConfig, config.raw])
+  }, [selectedProjectConfig, config.raw])
 
   const workBranchTemplate = useMemo(() => {
     return resolveConfigValue([
@@ -184,7 +206,7 @@ export function AddSessionScreen() {
       ['quickstart', 'work', 'branchNameTemplate'],
       ['td', 'quickStart', 'work', 'branchTemplate'],
       ['td', 'workBranchTemplate'],
-    ]) || 'feature/{{task.id}}-{{task.title-slug}}'
+    ]) || DEFAULT_TD_WORK_BRANCH_TEMPLATE
   }, [resolveConfigValue])
 
   const workPromptDefault = useMemo(() => {
@@ -197,8 +219,8 @@ export function AddSessionScreen() {
       ['quickstart', 'work', 'prompt'],
       ['td', 'quickStart', 'work', 'promptTemplate'],
       ['td', 'defaultPrompt'],
-    ]) || projectConfig?.td?.defaultPrompt
-  }, [resolveConfigValue, projectConfig?.td?.defaultPrompt])
+    ]) || selectedProjectConfig?.td?.defaultPrompt
+  }, [resolveConfigValue, selectedProjectConfig?.td?.defaultPrompt])
 
   const reviewPromptDefault = useMemo(() => {
     return resolveConfigValue([
@@ -238,12 +260,12 @@ export function AddSessionScreen() {
 
   const projectDefaultAgentId = useMemo(() => {
     return (
-      getNestedString(projectConfig, ['quickStart', 'work', 'agentId']) ||
-      getNestedString(projectConfig, ['quickstart', 'work', 'agentId']) ||
-      getNestedString(projectConfig, ['agentDefaults', 'agentId']) ||
+      getNestedString(selectedProjectConfig, ['quickStart', 'work', 'agentId']) ||
+      getNestedString(selectedProjectConfig, ['quickstart', 'work', 'agentId']) ||
+      getNestedString(selectedProjectConfig, ['agentDefaults', 'agentId']) ||
       undefined
     )
-  }, [projectConfig])
+  }, [selectedProjectConfig])
 
   const globalDefaultAgentId = useMemo(() => {
     return (
@@ -271,10 +293,10 @@ export function AddSessionScreen() {
         ['td', 'quickStart', 'review', 'agentId'],
         ['td', 'reviewAgentId'],
       ]) ||
-      getNestedString(projectConfig, ['agentDefaults', 'agentId']) ||
+      getNestedString(selectedProjectConfig, ['agentDefaults', 'agentId']) ||
       undefined
     )
-  }, [resolveConfigValue, projectConfig])
+  }, [resolveConfigValue, selectedProjectConfig])
 
   const preferredAgentId = useMemo(() => {
     const resolve = (candidate?: string) => {
@@ -494,7 +516,7 @@ export function AddSessionScreen() {
         if (addSessionSessionName?.trim()) {
           setSessionName(addSessionSessionName.trim())
         } else if (quickStartIntent === 'review') {
-          setSessionName(renderTemplate(reviewSessionNameTemplate, {
+          setSessionName(renderTdTemplate(reviewSessionNameTemplate, {
             id: addSessionTdTaskId,
             title: '',
           }))
@@ -506,9 +528,9 @@ export function AddSessionScreen() {
   }, [addSessionTdTaskId, addSessionSessionName, tdEnabled, quickStartIntent, reviewSessionNameTemplate, sessionName])
 
   useEffect(() => {
-    setBranchTemplateApplied(false)
-    setPromptTemplateApplied(false)
-  }, [addSessionTdTaskId, quickStartIntent])
+    lastAutoBranchNameRef.current = ''
+    lastAutoPromptTemplateRef.current = ''
+  }, [selectedTdTaskId, quickStartIntent, selectedProjectPath])
 
   // Fetch prompt templates when td is enabled
   useEffect(() => {
@@ -523,30 +545,39 @@ export function AddSessionScreen() {
 
   useEffect(() => {
     if (
+      !selectedProjectConfigReady ||
       !tdEnabled ||
       !selectedTdTaskId ||
-      promptTemplateApplied ||
-      selectedPromptTemplate ||
       promptTemplates.length === 0
     ) {
       return
     }
 
-    if (!preferredPromptTemplate) {
-      setPromptTemplateApplied(true)
+    const normalizedTarget = preferredPromptTemplate?.toLowerCase()
+    const template = normalizedTarget
+      ? promptTemplates.find(t => t.name.toLowerCase() === normalizedTarget)
+      : null
+    const desiredTemplate = template?.name || promptTemplates[0]!.name
+    const currentTemplate = selectedPromptTemplate
+    const currentTemplateValid = promptTemplates.some(t => t.name === currentTemplate)
+
+    if (!currentTemplateValid) {
+      setSelectedPromptTemplate(desiredTemplate)
+      lastAutoPromptTemplateRef.current = desiredTemplate
       return
     }
 
-    const normalizedTarget = preferredPromptTemplate.toLowerCase()
-    const template = promptTemplates.find(t => t.name.toLowerCase() === normalizedTarget)
-    if (template) {
-      setSelectedPromptTemplate(template.name)
+    const canAutoReplace =
+      !currentTemplate ||
+      currentTemplate === lastAutoPromptTemplateRef.current
+    if (canAutoReplace && currentTemplate !== desiredTemplate) {
+      setSelectedPromptTemplate(desiredTemplate)
+      lastAutoPromptTemplateRef.current = desiredTemplate
     }
-    setPromptTemplateApplied(true)
   }, [
+    selectedProjectConfigReady,
     tdEnabled,
     selectedTdTaskId,
-    promptTemplateApplied,
     selectedPromptTemplate,
     promptTemplates,
     preferredPromptTemplate,
@@ -568,7 +599,7 @@ export function AddSessionScreen() {
       return
     }
 
-    setSessionName(renderTemplate(reviewSessionNameTemplate, selectedTdTask))
+    setSessionName(renderTdTemplate(reviewSessionNameTemplate, selectedTdTask))
   }, [
     quickStartIntent,
     selectedTdTask,
@@ -651,26 +682,30 @@ export function AddSessionScreen() {
 
   useEffect(() => {
     if (
+      !selectedProjectConfigReady ||
       quickStartIntent !== 'work' ||
       mode !== 'new' ||
-      !selectedTdTask ||
-      branchTemplateApplied ||
-      newBranchName.trim()
+      !selectedTdTask
     ) {
       return
     }
 
-    const rendered = sanitizeBranchName(renderTemplate(workBranchTemplate, selectedTdTask))
-    if (rendered) {
+    const rendered = renderTdBranchTemplate(workBranchTemplate, selectedTdTask)
+    const currentBranch = newBranchName.trim()
+    const canAutoReplace =
+      !currentBranch ||
+      currentBranch === lastAutoBranchNameRef.current
+
+    if (rendered && canAutoReplace) {
       setNewBranchName(rendered)
-      setBranchTemplateApplied(true)
+      lastAutoBranchNameRef.current = rendered
     }
   }, [
+    selectedProjectConfigReady,
     quickStartIntent,
     mode,
     selectedTdTask,
     workBranchTemplate,
-    branchTemplateApplied,
     newBranchName,
   ])
 
@@ -812,7 +847,8 @@ export function AddSessionScreen() {
     selectedProject?.isValid === false ||
     !selectedAgentId ||
     (mode === 'existing' && !selectedWorktreePath) ||
-    (mode === 'new' && (!baseBranch || !newBranchName.trim()))
+    (mode === 'new' && (!baseBranch || !newBranchName.trim())) ||
+    (tdEnabled && !!selectedTdTaskId && (promptTemplates.length === 0 || !selectedPromptTemplate))
 
   return (
     <>
@@ -1170,16 +1206,13 @@ export function AddSessionScreen() {
                       <div className="space-y-2">
                         <Label>Prompt Template</Label>
                         <Select
-                          value={selectedPromptTemplate || '__none__'}
-                          onValueChange={(v) => setSelectedPromptTemplate(v === '__none__' ? '' : v)}
+                          value={selectedPromptTemplate || promptTemplates[0]!.name}
+                          onValueChange={setSelectedPromptTemplate}
                         >
                           <SelectTrigger className="h-8">
-                            <SelectValue placeholder="None (default context only)" />
+                            <SelectValue placeholder="Select a prompt template" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="__none__">
-                              None
-                            </SelectItem>
                             {promptTemplates.map(t => (
                               <SelectItem key={t.name} value={t.name}>
                                 <div className="flex items-center gap-2">
@@ -1196,9 +1229,14 @@ export function AddSessionScreen() {
                           </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
-                          Apply a prompt template with task context
+                          Prompt template is required for TD-linked sessions.
                         </p>
                       </div>
+                    )}
+                    {tdEnabled && selectedTdTaskId && promptTemplates.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        No prompt templates found. Create one in Settings {`>`} TD Integration.
+                      </p>
                     )}
 
                     {/* Task List Name (Claude only) */}

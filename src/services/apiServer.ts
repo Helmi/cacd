@@ -42,6 +42,7 @@ import {
 	savePromptTemplateByScope,
 	deletePromptTemplateByScope,
 	type PromptScope,
+	type PromptTemplate,
 	type ProjectConfig,
 } from '../utils/projectConfig.js';
 import {sessionStore, SessionIntent} from './sessionStore.js';
@@ -128,7 +129,6 @@ const __dirname = path.dirname(__filename);
 interface EffectiveTdStartupConfig {
 	enabled: boolean;
 	autoStart: boolean;
-	defaultPrompt?: string;
 	injectTaskContext: boolean;
 	injectTdUsage: boolean;
 }
@@ -137,6 +137,77 @@ interface PendingTdPromptInjection {
 	prompt: string;
 	taskId?: string;
 	timeout: NodeJS.Timeout;
+}
+
+const TD_FALLBACK_DEFAULT_PROMPT_NAME = 'Begin Work on Task';
+const TD_FALLBACK_DEFAULT_PROMPT_CONTENT = [
+	'You are working on {{task.id}} - {{task.title}}.',
+	'',
+	'Description:',
+	'{{task.description}}',
+	'',
+	'Acceptance Criteria:',
+	'{{task.acceptance}}',
+	'',
+	'Status: {{task.status}}',
+	'Priority: {{task.priority}}',
+	'',
+	'Start by understanding scope, then implement minimal, correct changes.',
+].join('\n');
+
+function findPromptTemplateByName(
+	templates: PromptTemplate[],
+	templateName: string,
+): PromptTemplate | null {
+	const normalized = templateName.trim();
+	if (!normalized) return null;
+
+	const exactMatch = templates.find(t => t.name === normalized);
+	if (exactMatch) return exactMatch;
+
+	const lowered = normalized.toLowerCase();
+	return templates.find(t => t.name.toLowerCase() === lowered) ?? null;
+}
+
+function ensureGlobalTdDefaultPromptConfigured(): void {
+	try {
+		const tdConfig = configurationManager.getTdConfig();
+		let templates = loadPromptTemplatesByScope('', 'global');
+
+		if (templates.length === 0) {
+			savePromptTemplateByScope(
+				'',
+				'global',
+				TD_FALLBACK_DEFAULT_PROMPT_NAME,
+				TD_FALLBACK_DEFAULT_PROMPT_CONTENT,
+			);
+			templates = loadPromptTemplatesByScope('', 'global');
+		}
+
+		if (templates.length === 0) {
+			logger.warn('API: Unable to initialize TD global prompt templates');
+			return;
+		}
+
+		const configuredDefault = tdConfig.defaultPrompt?.trim();
+		if (
+			configuredDefault &&
+			findPromptTemplateByName(templates, configuredDefault)
+		) {
+			return;
+		}
+
+		const fallbackTemplate =
+			findPromptTemplateByName(templates, TD_FALLBACK_DEFAULT_PROMPT_NAME) ||
+			templates[0]!;
+		configurationManager.setTdConfig({
+			...tdConfig,
+			defaultPrompt: fallbackTemplate.name,
+		});
+		logger.info(`API: Set TD global default prompt to "${fallbackTemplate.name}"`);
+	} catch (error) {
+		logger.warn(`API: Failed to ensure TD global default prompt: ${error}`);
+	}
 }
 
 function renderTaskPromptTemplate(
@@ -152,58 +223,11 @@ function renderTaskPromptTemplate(
 		.replace(/\{\{task\.acceptance\}\}/g, taskDetail.acceptance || '');
 }
 
-function buildTaskContextMarkdown(
-	taskDetail: TdIssueWithChildren,
-	renderedPromptTemplate?: string,
-): string {
-	const lines: string[] = [
-		`# Task: ${taskDetail.id}`,
-		'',
-		`**${taskDetail.title}**`,
-		'',
-		`Status: ${taskDetail.status} | Priority: ${taskDetail.priority} | Type: ${taskDetail.type}`,
-		'',
-	];
-
-	if (taskDetail.description) {
-		lines.push('## Description', '', taskDetail.description, '');
-	}
-	if (taskDetail.acceptance) {
-		lines.push('## Acceptance Criteria', '', taskDetail.acceptance, '');
-	}
-	if (taskDetail.handoffs?.length > 0) {
-		const latest = taskDetail.handoffs[0]!;
-		lines.push('## Latest Handoff', '');
-		if (latest.done.length > 0) {
-			lines.push('### Done');
-			latest.done.forEach(item => lines.push(`- [x] ${item}`));
-			lines.push('');
-		}
-		if (latest.remaining.length > 0) {
-			lines.push('### Remaining');
-			latest.remaining.forEach(item => lines.push(`- [ ] ${item}`));
-			lines.push('');
-		}
-		if (latest.uncertain.length > 0) {
-			lines.push('### Uncertain');
-			latest.uncertain.forEach(item => lines.push(`- ??? ${item}`));
-			lines.push('');
-		}
-	}
-	if (renderedPromptTemplate) {
-		lines.push('## Instructions', '', renderedPromptTemplate, '');
-	}
-
-	return lines.join('\n');
-}
-
 function buildTdStartupPrompt(params: {
 	taskId: string;
-	taskContextMarkdown?: string;
-	renderedPromptTemplate?: string;
-	injectTaskContext: boolean;
+	renderedPromptTemplate?: string | null;
 	injectTdUsage: boolean;
-}): string | null {
+}): string {
 	const parts: string[] = [];
 
 	if (params.injectTdUsage) {
@@ -213,27 +237,10 @@ function buildTdStartupPrompt(params: {
 	}
 
 	parts.push(`This session is linked to td task ${params.taskId}.`);
-
-	if (params.injectTaskContext && params.taskContextMarkdown) {
-		parts.push(
-			'Read .td-task-context.md in this worktree before making changes.',
-		);
-	} else {
-		parts.push('Task context file is .td-task-context.md.');
+	if (params.renderedPromptTemplate?.trim()) {
+		parts.push(params.renderedPromptTemplate.trim());
 	}
-
-	if (
-		params.renderedPromptTemplate &&
-		(!params.injectTaskContext || !params.taskContextMarkdown)
-	) {
-		parts.push('Prompt instructions are included in .td-task-context.md.');
-	}
-
-	if (parts.length === 0) {
-		return null;
-	}
-
-	return parts.join(' ');
+	return parts.join('\n\n');
 }
 
 function resolveEffectiveTdStartupConfig(
@@ -243,8 +250,6 @@ function resolveEffectiveTdStartupConfig(
 	return {
 		enabled: projectConfig?.td?.enabled ?? globalTdConfig.enabled ?? true,
 		autoStart: projectConfig?.td?.autoStart ?? globalTdConfig.autoStart ?? true,
-		defaultPrompt:
-			projectConfig?.td?.defaultPrompt ?? globalTdConfig.defaultPrompt,
 		injectTaskContext:
 			projectConfig?.td?.injectTaskContext ??
 			globalTdConfig.injectTaskContext ??
@@ -454,6 +459,7 @@ export class APIServer {
 			);
 		}
 
+		ensureGlobalTdDefaultPromptConfigured();
 		this.setupRoutes();
 		this.setupSocketHandlers();
 		this.setupCoreListeners();
@@ -729,16 +735,35 @@ export class APIServer {
 			},
 		);
 
-		this.app.get('/api/project/config', async (request, reply) => {
-			const project = coreService.getSelectedProject();
-			if (!project) {
-				return reply.code(400).send({error: 'No project selected'});
-			}
+		this.app.get<{Querystring: {projectPath?: string}}>(
+			'/api/project/config',
+			async (request, reply) => {
+				const requestedProjectPath = request.query.projectPath?.trim();
+				let projectPath: string | null = null;
 
-			const config = loadProjectConfig(project.path) || {};
-			const configPath = getProjectConfigPath(project.path);
+				if (requestedProjectPath) {
+					const project = projectManager.instance.getProject(requestedProjectPath);
+					if (!project) {
+						return reply.code(404).send({error: 'Project not found in registry'});
+					}
+					if (project.isValid === false) {
+						return reply
+							.code(400)
+							.send({error: 'Project path is invalid or no longer exists'});
+					}
+					projectPath = project.path;
+				} else {
+					projectPath = coreService.getSelectedProject()?.path || null;
+					if (!projectPath) {
+						return reply.code(400).send({error: 'No project selected'});
+					}
+				}
+
+				const config = loadProjectConfig(projectPath) || {};
+				const configPath = getProjectConfigPath(projectPath);
 			return {config, configPath};
-		});
+			},
+		);
 
 		this.app.post<{Body: {config: Record<string, unknown>}}>(
 			'/api/project/config',
@@ -1880,6 +1905,8 @@ export class APIServer {
 
 			// TD startup context and prompt injection for task-linked sessions
 			if (normalizedTdTaskId && effectiveTdConfig.enabled) {
+				let shouldAutoStartTdTask = false;
+				let renderedPromptTemplate: string | null = null;
 				if (tdService.isAvailable()) {
 					const tdSessionId = `ses_${randomUUID().slice(0, 6)}`;
 					linkedTdSessionId = tdSessionId;
@@ -1888,91 +1915,126 @@ export class APIServer {
 					logger.info(
 						`API: Setting TD_SESSION_ID=${tdSessionId}, TD_TASK_ID=${normalizedTdTaskId}`,
 					);
-
-					// Auto-start the td task (set to in_progress) unless disabled in config
-					if (effectiveTdConfig.autoStart) {
-						try {
-							execFileSync(
-								'td',
-								[
-									'start',
-									normalizedTdTaskId,
-									'--session',
-									tdSessionId,
-									'-w',
-									worktreePath,
-								],
-								{
-									encoding: 'utf-8',
-									timeout: 5000,
-								},
-							);
-							logger.info(`API: Auto-started td task ${normalizedTdTaskId}`);
-						} catch (startErr) {
-							// Non-fatal: task might already be in_progress
-							logger.warn(
-								`API: td start failed (may already be started): ${startErr}`,
-							);
-						}
-					} else {
-						logger.info('API: td auto-start disabled by config');
-					}
+					shouldAutoStartTdTask = effectiveTdConfig.autoStart;
 				}
 
-				try {
-					let taskContextMarkdown: string | undefined;
-					let renderedPromptTemplate: string | undefined;
-					const tdState = tdService.resolveProjectState(worktreePath);
+				if (effectiveTdConfig.injectTaskContext) {
+					try {
+						const promptTemplates = loadPromptTemplatesByScope(
+							matchedProject?.path || '',
+							matchedProject ? 'effective' : 'global',
+						);
+						const explicitPromptTemplate = promptTemplate?.trim();
+						let selectedTemplate: PromptTemplate | null = null;
 
-					if (tdState.initialized && tdState.dbPath) {
+						if (explicitPromptTemplate) {
+							selectedTemplate = findPromptTemplateByName(
+								promptTemplates,
+								explicitPromptTemplate,
+							);
+							if (!selectedTemplate) {
+								return reply.code(400).send({
+									error: `Prompt template "${explicitPromptTemplate}" not found`,
+								});
+							}
+						} else {
+							const projectDefaultPrompt = projConfig?.td?.defaultPrompt?.trim();
+							const globalDefaultPrompt = globalTdConfig.defaultPrompt?.trim();
+							selectedTemplate =
+								(projectDefaultPrompt &&
+									findPromptTemplateByName(promptTemplates, projectDefaultPrompt)) ||
+								(globalDefaultPrompt &&
+									findPromptTemplateByName(promptTemplates, globalDefaultPrompt)) ||
+								null;
+							if (!selectedTemplate) {
+								if (promptTemplates.length > 0) {
+									selectedTemplate = promptTemplates[0]!;
+								} else {
+									return reply.code(400).send({
+										error:
+											'No default TD prompt is configured. Set one in Settings > TD Integration.',
+									});
+								}
+							}
+						}
+
+						if (!selectedTemplate.content?.trim()) {
+							return reply.code(400).send({
+								error: `Prompt template "${selectedTemplate.name}" has empty content`,
+							});
+						}
+
+						const tdState = tdService.resolveProjectState(worktreePath);
+						if (!tdState.initialized || !tdState.dbPath) {
+							return reply.code(400).send({
+								error:
+									'TD project state is not initialized. Initialize td before linking sessions to tasks.',
+							});
+						}
+
 						const reader = new TdReader(tdState.dbPath);
 						try {
 							const taskDetail = reader.getIssueWithDetails(normalizedTdTaskId);
-							if (taskDetail) {
-								const effectiveTemplate =
-									promptTemplate || effectiveTdConfig.defaultPrompt;
-
-								if (effectiveTemplate && matchedProject) {
-									const template = loadPromptTemplateByScope(
-										matchedProject.path,
-										'effective',
-										effectiveTemplate,
-									);
-									if (template?.content) {
-										renderedPromptTemplate = renderTaskPromptTemplate(
-											template.content,
-											taskDetail,
-										);
-									}
-								}
-
-								taskContextMarkdown = buildTaskContextMarkdown(
-									taskDetail,
-									renderedPromptTemplate,
-								);
-								await writeFile(
-									path.join(worktreePath, '.td-task-context.md'),
-									taskContextMarkdown,
-									'utf-8',
-								);
-								logger.info(
-									`API: Wrote .td-task-context.md to ${worktreePath}`,
-								);
+							if (!taskDetail) {
+								return reply.code(404).send({
+									error: `TD task ${normalizedTdTaskId} not found`,
+								});
 							}
+
+							renderedPromptTemplate = renderTaskPromptTemplate(
+								selectedTemplate.content,
+								taskDetail,
+							);
 						} finally {
 							reader.close();
 						}
+					} catch (err) {
+						logger.warn(`API: Failed to prepare TD startup prompt: ${err}`);
+						return reply
+							.code(500)
+							.send({error: 'Failed to prepare TD startup prompt'});
 					}
+				} else {
+					logger.info('API: TD task-context injection disabled by config');
+				}
 
+				if (effectiveTdConfig.injectTdUsage || effectiveTdConfig.injectTaskContext) {
 					startupPromptToInject = buildTdStartupPrompt({
 						taskId: normalizedTdTaskId,
-						taskContextMarkdown,
 						renderedPromptTemplate,
-						injectTaskContext: effectiveTdConfig.injectTaskContext,
 						injectTdUsage: effectiveTdConfig.injectTdUsage,
 					});
-				} catch (err) {
-					logger.warn(`API: Failed to prepare TD startup context: ${err}`);
+				}
+
+				// Auto-start only after all TD prompt/task validations succeeded.
+				if (shouldAutoStartTdTask && linkedTdSessionId) {
+					try {
+						execFileSync(
+							'td',
+							[
+								'start',
+								normalizedTdTaskId,
+								'--session',
+								linkedTdSessionId,
+								'-w',
+								worktreePath,
+							],
+							{
+								encoding: 'utf-8',
+								timeout: 5000,
+							},
+						);
+						logger.info(`API: Auto-started td task ${normalizedTdTaskId}`);
+					} catch (startErr) {
+						// Non-fatal: task might already be in_progress
+						logger.warn(
+							`API: td start failed (may already be started): ${startErr}`,
+						);
+					}
+				} else if (effectiveTdConfig.autoStart) {
+					logger.info('API: td auto-start skipped (td unavailable)');
+				} else {
+					logger.info('API: td auto-start disabled by config');
 				}
 			}
 

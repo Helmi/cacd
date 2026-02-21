@@ -1,6 +1,11 @@
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Button } from '@/components/ui/button'
+import {
+  DEFAULT_TD_WORK_BRANCH_TEMPLATE,
+  renderTdBranchTemplate,
+} from '@/lib/tdBranchTemplate'
 import type { AppConfig } from '@/lib/types'
 
 interface SettingsGeneralProps {
@@ -9,6 +14,34 @@ interface SettingsGeneralProps {
 }
 
 export function SettingsGeneral({ localConfig, setLocalConfig }: SettingsGeneralProps) {
+  const configuredBranchTemplate = localConfig.quickStart?.work?.branchTemplate || ''
+  const effectiveBranchTemplate = configuredBranchTemplate.trim() || DEFAULT_TD_WORK_BRANCH_TEMPLATE
+  const previewBranch = renderTdBranchTemplate(effectiveBranchTemplate, {
+    id: 'td-ab12cd',
+    title: 'Reconcile user agents config with adapter registry on startup',
+    type: 'feature',
+  })
+
+  const setGlobalBranchTemplate = (value: string) => {
+    const trimmed = value.trim()
+    const quickStart = { ...(localConfig.quickStart || {}) }
+    const work = { ...(quickStart.work || {}) }
+
+    if (trimmed) {
+      work.branchTemplate = trimmed
+      quickStart.work = work
+    } else {
+      delete work.branchTemplate
+      if (Object.keys(work).length > 0) quickStart.work = work
+      else delete quickStart.work
+    }
+
+    setLocalConfig({
+      ...localConfig,
+      quickStart: Object.keys(quickStart).length > 0 ? quickStart : undefined,
+    })
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -108,6 +141,39 @@ export function SettingsGeneral({ localConfig, setLocalConfig }: SettingsGeneral
             </p>
           </div>
         )}
+      </div>
+
+      <div className="space-y-3 border-t border-border pt-4">
+        <h3 className="text-sm font-medium">TD Quick Start</h3>
+        <div className="space-y-2">
+          <Label htmlFor="td-work-branch-template" className="text-sm">
+            Work Branch Template
+          </Label>
+          <Input
+            id="td-work-branch-template"
+            value={configuredBranchTemplate}
+            onChange={(e) => setGlobalBranchTemplate(e.target.value)}
+            className="h-8 text-sm font-mono"
+            placeholder={DEFAULT_TD_WORK_BRANCH_TEMPLATE}
+          />
+          <p className="text-xs text-muted-foreground">
+            Used when creating work branches from TD tasks. Variables: <code>{'{{task.id}}'}</code>,{' '}
+            <code>{'{{task.type-prefix}}'}</code>, <code>{'{{task.title-short-slug}}'}</code>,{' '}
+            <code>{'{{task.title-slug}}'}</code>.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Preview: <span className="font-mono">{previewBranch}</span>
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setGlobalBranchTemplate('')}
+            disabled={!configuredBranchTemplate.trim()}
+          >
+            Use Built-In Default
+          </Button>
+        </div>
       </div>
     </div>
   )

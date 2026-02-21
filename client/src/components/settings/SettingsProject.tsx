@@ -8,6 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { ProjectConfig, TdPromptTemplate } from '@/lib/types'
 import { CheckCircle2, XCircle, Play, Save, RefreshCw, Trash2, Plus, Code2, FolderGit2, ChevronRight, Check, Globe, FolderOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  DEFAULT_TD_WORK_BRANCH_TEMPLATE,
+  renderTdBranchTemplate,
+} from '@/lib/tdBranchTemplate'
 
 export function SettingsProject() {
   const {
@@ -15,6 +19,7 @@ export function SettingsProject() {
     currentProject,
     selectProject,
     tdStatus,
+    config,
     agents,
     projectConfig,
     projectConfigPath,
@@ -232,6 +237,36 @@ export function SettingsProject() {
 
   const tdEnabled = localConfig.td?.enabled !== false
   const tdAutoStart = localConfig.td?.autoStart !== false
+  const projectBranchTemplate = localConfig.quickStart?.work?.branchTemplate || ''
+  const globalBranchTemplate = config.quickStart?.work?.branchTemplate || ''
+  const effectiveProjectBranchTemplate = projectBranchTemplate.trim()
+    || globalBranchTemplate.trim()
+    || DEFAULT_TD_WORK_BRANCH_TEMPLATE
+  const previewProjectBranch = renderTdBranchTemplate(effectiveProjectBranchTemplate, {
+    id: 'td-ab12cd',
+    title: 'Reconcile user agents config with adapter registry on startup',
+    type: 'feature',
+  })
+
+  const setProjectBranchTemplate = (value: string) => {
+    const trimmed = value.trim()
+    const quickStart = { ...(localConfig.quickStart || {}) }
+    const work = { ...(quickStart.work || {}) }
+
+    if (trimmed) {
+      work.branchTemplate = trimmed
+      quickStart.work = work
+    } else {
+      delete work.branchTemplate
+      if (Object.keys(work).length > 0) quickStart.work = work
+      else delete quickStart.work
+    }
+
+    updateConfig({
+      ...localConfig,
+      quickStart: Object.keys(quickStart).length > 0 ? quickStart : undefined,
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -310,16 +345,37 @@ export function SettingsProject() {
         <Label className="text-muted-foreground">Defaults and Hooks</Label>
 
         <div className="space-y-2">
+          <Label htmlFor="project-work-branch-template" className="text-xs text-muted-foreground">
+            TD Work Branch Template Override
+          </Label>
+          <Input
+            id="project-work-branch-template"
+            value={projectBranchTemplate}
+            onChange={(e) => setProjectBranchTemplate(e.target.value)}
+            className="h-8 font-mono"
+            placeholder={globalBranchTemplate || DEFAULT_TD_WORK_BRANCH_TEMPLATE}
+          />
+          <p className="text-xs text-muted-foreground">
+            Leave empty to inherit global. Variables: <code>{'{{task.id}}'}</code>,{' '}
+            <code>{'{{task.type-prefix}}'}</code>, <code>{'{{task.title-short-slug}}'}</code>,{' '}
+            <code>{'{{task.title-slug}}'}</code>.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Effective preview: <span className="font-mono">{previewProjectBranch}</span>
+          </p>
+        </div>
+
+        <div className="space-y-2">
           <Label htmlFor="project-default-prompt" className="text-xs text-muted-foreground">Default Prompt Template</Label>
           <Select
-            value={localConfig.td?.defaultPrompt || '__none__'}
-            onValueChange={(v) => setDefaultPrompt(v === '__none__' ? '' : v)}
+            value={localConfig.td?.defaultPrompt || '__inherit__'}
+            onValueChange={(v) => setDefaultPrompt(v === '__inherit__' ? '' : v)}
           >
             <SelectTrigger id="project-default-prompt" className="h-8">
-              <SelectValue placeholder="None" />
+              <SelectValue placeholder="Inherit global default" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__none__">None</SelectItem>
+              <SelectItem value="__inherit__">Inherit global default</SelectItem>
               {effectivePrompts.map((prompt) => (
                 <SelectItem key={prompt.name} value={prompt.name}>
                   {prompt.name} {prompt.source === 'global' ? '(global)' : '(project)'}

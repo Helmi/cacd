@@ -29,6 +29,16 @@ export interface BackendConfig {
     customCommand?: string
     timeout?: number
   }
+  quickStart?: {
+    work?: {
+      branchTemplate?: string
+      [key: string]: unknown
+    }
+    review?: {
+      [key: string]: unknown
+    }
+    [key: string]: unknown
+  }
   port?: number
   [key: string]: unknown
 }
@@ -54,6 +64,7 @@ const DEFAULT_CONFIG: AppConfig = {
   worktreeHooks: {
     postCreation: '',
   },
+  quickStart: {},
 }
 
 /**
@@ -87,6 +98,10 @@ export function mapBackendToFrontend(backend: BackendConfig): AppConfig {
     worktreeHooks: {
       postCreation: backend.worktreeHooks?.post_creation?.enabled ? backend.worktreeHooks.post_creation.command : '',
     },
+
+    quickStart: (backend.quickStart && typeof backend.quickStart === 'object'
+      ? backend.quickStart
+      : DEFAULT_CONFIG.quickStart) as AppConfig['quickStart'],
 
     // Keep access to raw backend keys (quick-start defaults, experimental config, etc.)
     raw: backend as Record<string, unknown>,
@@ -126,6 +141,8 @@ export function mapFrontendToBackend(frontend: AppConfig): Partial<BackendConfig
     worktreeHooks: {
       post_creation: { command: frontend.worktreeHooks.postCreation, enabled: !!frontend.worktreeHooks.postCreation },
     },
+
+    quickStart: frontend.quickStart,
 
     // Note: Agents are managed separately via /api/agents endpoints
   }

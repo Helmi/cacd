@@ -19,6 +19,23 @@ export interface ProjectConfig {
 		teardown?: string;
 		[key: string]: unknown;
 	};
+	quickStart?: {
+		work?: {
+			branchTemplate?: string;
+			promptTemplate?: string;
+			agentId?: string;
+			sessionNameTemplate?: string;
+			[key: string]: unknown;
+		};
+		review?: {
+			branchTemplate?: string;
+			promptTemplate?: string;
+			agentId?: string;
+			sessionNameTemplate?: string;
+			[key: string]: unknown;
+		};
+		[key: string]: unknown;
+	};
 	td?: {
 		/** Enable td integration for this project (default: auto-detect) */
 		enabled?: boolean;

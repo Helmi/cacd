@@ -361,5 +361,6 @@ export interface AppConfig {
   // Hooks
   statusHooks: StatusHooks
   worktreeHooks: WorktreeHooks
+  quickStart?: QuickStartConfig
   raw?: Record<string, unknown>
 }

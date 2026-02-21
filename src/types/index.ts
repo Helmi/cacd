@@ -200,6 +200,20 @@ export interface TdConfig {
 	injectTdUsage?: boolean; // Inject td usage instructions on agent startup
 }
 
+export interface QuickStartFlowConfig {
+	branchTemplate?: string;
+	promptTemplate?: string;
+	agentId?: string;
+	sessionNameTemplate?: string;
+	[key: string]: unknown;
+}
+
+export interface QuickStartConfig {
+	work?: QuickStartFlowConfig;
+	review?: QuickStartFlowConfig;
+	[key: string]: unknown;
+}
+
 export interface DevcontainerConfig {
 	upCommand: string; // Command to start devcontainer
 	execCommand: string; // Command to execute in devcontainer
@@ -218,6 +232,7 @@ export interface ConfigurationData {
 		customCommand?: string; // Custom verification command; must output JSON matching AutoApprovalResponse
 		timeout?: number; // Timeout in seconds for auto-approval verification (default: 30)
 	};
+	quickStart?: QuickStartConfig;
 	td?: TdConfig; // TD startup defaults used across projects
 	port?: number; // Port for web interface (generated randomly on first run if not set)
 	webEnabled?: boolean; // Whether web interface is enabled
