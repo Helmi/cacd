@@ -35,6 +35,28 @@ interface ApiConversationSessionResponse {
 	session: ApiConversationSession;
 }
 
+interface ApiCreateSessionRequest {
+	path: string;
+	agentId: string;
+	options?: Record<string, boolean | string>;
+	sessionName?: string;
+	taskListName?: string;
+	tdTaskId?: string;
+	promptTemplate?: string;
+	intent?: 'work' | 'review' | 'manual';
+}
+
+interface ApiCreateSessionResponse {
+	success: boolean;
+	id: string;
+	name?: string;
+	agentId?: string;
+}
+
+interface ApiStopSessionResponse {
+	success: boolean;
+}
+
 interface ApiAgentsConfigResponse {
 	agents: Array<{
 		id: string;
@@ -170,6 +192,19 @@ async function fetchDaemonApi<T>(
 	try {
 		const client = createDaemonApiClient(context);
 		return await client.get<T>(path);
+	} catch (error) {
+		throw normalizeApiError(error);
+	}
+}
+
+async function postDaemonApi<T>(
+	context: CliCommandContext,
+	path: string,
+	body: unknown,
+): Promise<T> {
+	try {
+		const client = createDaemonApiClient(context);
+		return await client.post<T>(path, body);
 	} catch (error) {
 		throw normalizeApiError(error);
 	}
@@ -412,59 +447,364 @@ async function runStatusWithSessions(context: CliCommandContext): Promise<number
 	return 0;
 }
 
+async function outputSessionsList(
+	context: CliCommandContext,
+	commandRoot: 'session' | 'sessions',
+): Promise<number> {
+	let sessions: SessionSummary[];
+	try {
+		sessions = await listActiveSessionSummaries(context);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		context.formatter.writeError({
+			text: [`Failed to query sessions: ${message}`],
+			data: {
+				ok: false,
+				command: `${commandRoot} list`,
+				error: {
+					message,
+				},
+			},
+		});
+		return 1;
+	}
+
+	if (sessions.length === 0) {
+		context.formatter.write({
+			text: ['No active sessions'],
+			data: {
+				ok: true,
+				command: `${commandRoot} list`,
+				sessions: [],
+			},
+		});
+		return 0;
+	}
+
+	context.formatter.write({
+		text: buildTableLines(
+			['id', 'agent', 'model', 'branch', 'status', 'elapsed'],
+			sessions.map(session => [
+				session.id,
+				session.agent,
+				session.model,
+				session.branch,
+				session.status,
+				session.elapsed,
+			]),
+		),
+		data: {
+			ok: true,
+			command: `${commandRoot} list`,
+			sessions,
+		},
+	});
+	return 0;
+}
+
+async function outputSessionStatus(
+	context: CliCommandContext,
+	sessionId: string,
+	commandRoot: 'session' | 'sessions',
+	action: 'status' | 'show',
+): Promise<number> {
+	let liveSessions: ApiSessionPayload[];
+	try {
+		liveSessions = await fetchDaemonApi<ApiSessionPayload[]>(context, '/api/sessions');
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		context.formatter.writeError({
+			text: [`Failed to query sessions: ${message}`],
+			data: {
+				ok: false,
+				command: `${commandRoot} ${action}`,
+				error: {
+					message,
+				},
+			},
+		});
+		return 1;
+	}
+
+	const liveSession = liveSessions.find(session => session.id === sessionId);
+	const conversation = await fetchConversationSession(context, sessionId);
+	if (!liveSession && !conversation) {
+		context.formatter.writeError({
+			text: [`Session not found: ${sessionId}`],
+			data: {
+				ok: false,
+				command: `${commandRoot} ${action}`,
+				error: {
+					message: `Session not found: ${sessionId}`,
+				},
+			},
+		});
+		return 1;
+	}
+
+	const summary: SessionSummary = {
+		id: sessionId,
+		agent: conversation?.agentProfileName || liveSession?.agentId || 'unknown',
+		model: resolveSessionModel(conversation?.agentOptions),
+		branch: conversation?.branchName || '-',
+		status: liveSession?.state || conversation?.state || 'unknown',
+		elapsed: formatElapsedFromCreatedAt(conversation?.createdAt),
+		pid: liveSession?.pid ?? null,
+		tdTaskId: conversation?.tdTaskId || null,
+		worktreePath: conversation?.worktreePath || liveSession?.path || '-',
+	};
+
+	context.formatter.write({
+		text: [
+			`ID:        ${summary.id}`,
+			`Agent:     ${summary.agent}`,
+			`Model:     ${summary.model}`,
+			`Branch:    ${summary.branch}`,
+			`Status:    ${summary.status}`,
+			`PID:       ${summary.pid ?? '-'}`,
+			`Elapsed:   ${summary.elapsed}`,
+			`TD Task:   ${summary.tdTaskId ?? '-'}`,
+			`Worktree:  ${summary.worktreePath}`,
+		],
+		data: {
+			ok: true,
+			command: `${commandRoot} ${action}`,
+			session: summary,
+		},
+	});
+	return 0;
+}
+
+function parseSessionOptions(
+	rawOptionFlag: string | string[] | undefined,
+): {options: Record<string, boolean | string>; error?: string} {
+	const options: Record<string, boolean | string> = {};
+	const values =
+		typeof rawOptionFlag === 'string'
+			? [rawOptionFlag]
+			: Array.isArray(rawOptionFlag)
+				? rawOptionFlag
+				: [];
+
+	for (const entry of values) {
+		const trimmedEntry = entry.trim();
+		if (!trimmedEntry) {
+			continue;
+		}
+
+		const equalsIndex = trimmedEntry.indexOf('=');
+		if (equalsIndex === -1) {
+			options[trimmedEntry] = true;
+			continue;
+		}
+
+		const key = trimmedEntry.slice(0, equalsIndex).trim();
+		if (!key) {
+			return {
+				options: {},
+				error: `Invalid --option value: "${entry}". Expected <key> or <key>=<value>.`,
+			};
+		}
+
+		const rawValue = trimmedEntry.slice(equalsIndex + 1).trim();
+		const normalized = rawValue.toLowerCase();
+		if (normalized === 'true') {
+			options[key] = true;
+			continue;
+		}
+		if (normalized === 'false') {
+			options[key] = false;
+			continue;
+		}
+		options[key] = rawValue;
+	}
+
+	return {options};
+}
+
+function parseSessionIntent(intent: string | undefined): {
+	intent?: 'work' | 'review' | 'manual';
+	error?: string;
+} {
+	if (!intent) {
+		return {};
+	}
+
+	if (intent === 'work' || intent === 'review' || intent === 'manual') {
+		return {intent};
+	}
+
+	return {
+		error: `Invalid --intent value: ${intent}. Expected one of: work, review, manual.`,
+	};
+}
+
+async function runSessionCreateCommand(context: CliCommandContext): Promise<number> {
+	const agentId = context.parsedArgs.flags.agent?.trim();
+	if (!agentId) {
+		context.formatter.writeError({
+			text: [
+				'Error: Missing required --agent flag',
+				'Usage: cacd session create --agent <agent-id> [--model <model>] [--worktree <path>] [--task <td-task-id>] [--name <name>]',
+			],
+			data: {
+				ok: false,
+				command: 'session create',
+				error: {
+					message: 'Missing required --agent flag',
+					usage:
+						'cacd session create --agent <agent-id> [--model <model>] [--worktree <path>] [--task <td-task-id>] [--name <name>]',
+				},
+			},
+		});
+		return 1;
+	}
+
+	const worktreePath = context.parsedArgs.flags.worktree?.trim() || process.cwd();
+	const sessionName = context.parsedArgs.flags.name?.trim();
+	const model = context.parsedArgs.flags.model?.trim();
+	const taskId = context.parsedArgs.flags.task?.trim();
+	const taskListName = context.parsedArgs.flags.taskList?.trim();
+	const promptTemplate = context.parsedArgs.flags.promptTemplate?.trim();
+
+	const parsedIntent = parseSessionIntent(context.parsedArgs.flags.intent?.trim());
+	if (parsedIntent.error) {
+		context.formatter.writeError({
+			text: [parsedIntent.error],
+			data: {
+				ok: false,
+				command: 'session create',
+				error: {
+					message: parsedIntent.error,
+				},
+			},
+		});
+		return 1;
+	}
+
+	const parsedOptions = parseSessionOptions(context.parsedArgs.flags.option);
+	if (parsedOptions.error) {
+		context.formatter.writeError({
+			text: [parsedOptions.error],
+			data: {
+				ok: false,
+				command: 'session create',
+				error: {
+					message: parsedOptions.error,
+				},
+			},
+		});
+		return 1;
+	}
+
+	if (model) {
+		parsedOptions.options['model'] = model;
+	}
+
+	const payload: ApiCreateSessionRequest = {
+		path: worktreePath,
+		agentId,
+		options:
+			Object.keys(parsedOptions.options).length > 0
+				? parsedOptions.options
+				: undefined,
+		sessionName: sessionName || undefined,
+		taskListName: taskListName || undefined,
+		tdTaskId: taskId || undefined,
+		promptTemplate: promptTemplate || undefined,
+		intent: parsedIntent.intent,
+	};
+
+	let response: ApiCreateSessionResponse;
+	try {
+		response = await postDaemonApi<ApiCreateSessionResponse>(
+			context,
+			'/api/session/create-with-agent',
+			payload,
+		);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		context.formatter.writeError({
+			text: [`Failed to create session: ${message}`],
+			data: {
+				ok: false,
+				command: 'session create',
+				error: {
+					message,
+				},
+			},
+		});
+		return 1;
+	}
+
+	context.formatter.write({
+		text: [
+			`Session created: ${response.id}`,
+			`Agent:    ${response.agentId || agentId}`,
+			`Worktree: ${worktreePath}`,
+		],
+		data: {
+			ok: true,
+			command: 'session create',
+			session: {
+				id: response.id,
+				name: response.name ?? sessionName ?? null,
+				agentId: response.agentId || agentId,
+				worktreePath,
+				tdTaskId: taskId || null,
+				intent: parsedIntent.intent || null,
+				options: payload.options || {},
+			},
+		},
+	});
+	return 0;
+}
+
+async function runSessionStopCommand(
+	context: CliCommandContext,
+	sessionId: string,
+): Promise<number> {
+	try {
+		const response = await postDaemonApi<ApiStopSessionResponse>(
+			context,
+			'/api/session/stop',
+			{id: sessionId},
+		);
+		if (!response.success) {
+			throw new Error('Daemon returned an unsuccessful stop response.');
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		context.formatter.writeError({
+			text: [`Failed to stop session: ${message}`],
+			data: {
+				ok: false,
+				command: 'session stop',
+				error: {
+					message,
+				},
+			},
+		});
+		return 1;
+	}
+
+	context.formatter.write({
+		text: [`Session stopped: ${sessionId}`],
+		data: {
+			ok: true,
+			command: 'session stop',
+			id: sessionId,
+			stopped: true,
+		},
+	});
+	return 0;
+}
+
 async function runSessionsCommand(context: CliCommandContext): Promise<number> {
 	const action = context.parsedArgs.input[1] ?? 'list';
 
 	if (action === 'list') {
-		let sessions: SessionSummary[];
-		try {
-			sessions = await listActiveSessionSummaries(context);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			context.formatter.writeError({
-				text: [`Failed to query sessions: ${message}`],
-				data: {
-					ok: false,
-					command: 'sessions list',
-					error: {
-						message,
-					},
-				},
-			});
-			return 1;
-		}
-
-		if (sessions.length === 0) {
-			context.formatter.write({
-				text: ['No active sessions'],
-				data: {
-					ok: true,
-					command: 'sessions list',
-					sessions: [],
-				},
-			});
-			return 0;
-		}
-
-		context.formatter.write({
-			text: buildTableLines(
-				['id', 'agent', 'model', 'branch', 'status', 'elapsed'],
-				sessions.map(session => [
-					session.id,
-					session.agent,
-					session.model,
-					session.branch,
-					session.status,
-					session.elapsed,
-				]),
-			),
-			data: {
-				ok: true,
-				command: 'sessions list',
-				sessions,
-			},
-		});
-		return 0;
+		return outputSessionsList(context, 'sessions');
 	}
 
 	if (action === 'show') {
@@ -484,75 +824,7 @@ async function runSessionsCommand(context: CliCommandContext): Promise<number> {
 			return 1;
 		}
 
-		let liveSessions: ApiSessionPayload[];
-		try {
-			liveSessions = await fetchDaemonApi<ApiSessionPayload[]>(
-				context,
-				'/api/sessions',
-			);
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			context.formatter.writeError({
-				text: [`Failed to query sessions: ${message}`],
-				data: {
-					ok: false,
-					command: 'sessions show',
-					error: {
-						message,
-					},
-				},
-			});
-			return 1;
-		}
-
-		const liveSession = liveSessions.find(session => session.id === sessionId);
-		const conversation = await fetchConversationSession(context, sessionId);
-		if (!liveSession && !conversation) {
-			context.formatter.writeError({
-				text: [`Session not found: ${sessionId}`],
-				data: {
-					ok: false,
-					command: 'sessions show',
-					error: {
-						message: `Session not found: ${sessionId}`,
-					},
-				},
-			});
-			return 1;
-		}
-
-		const summary: SessionSummary = {
-			id: sessionId,
-			agent:
-				conversation?.agentProfileName || liveSession?.agentId || 'unknown',
-			model: resolveSessionModel(conversation?.agentOptions),
-			branch: conversation?.branchName || '-',
-			status: liveSession?.state || conversation?.state || 'unknown',
-			elapsed: formatElapsedFromCreatedAt(conversation?.createdAt),
-			pid: liveSession?.pid ?? null,
-			tdTaskId: conversation?.tdTaskId || null,
-			worktreePath: conversation?.worktreePath || liveSession?.path || '-',
-		};
-
-		context.formatter.write({
-			text: [
-				`ID:        ${summary.id}`,
-				`Agent:     ${summary.agent}`,
-				`Model:     ${summary.model}`,
-				`Branch:    ${summary.branch}`,
-				`Status:    ${summary.status}`,
-				`PID:       ${summary.pid ?? '-'}`,
-				`Elapsed:   ${summary.elapsed}`,
-				`TD Task:   ${summary.tdTaskId ?? '-'}`,
-				`Worktree:  ${summary.worktreePath}`,
-			],
-			data: {
-				ok: true,
-				command: 'sessions show',
-				session: summary,
-			},
-		});
-		return 0;
+		return outputSessionStatus(context, sessionId, 'sessions', 'show');
 	}
 
 	context.formatter.writeError({
@@ -568,6 +840,86 @@ async function runSessionsCommand(context: CliCommandContext): Promise<number> {
 			error: {
 				message: `Unknown sessions command: ${action}`,
 				available: ['list', 'show'],
+			},
+		},
+	});
+	return 1;
+}
+
+async function runSessionCommand(context: CliCommandContext): Promise<number> {
+	const action = context.parsedArgs.input[1] ?? 'list';
+
+	if (action === 'create') {
+		return runSessionCreateCommand(context);
+	}
+
+	if (action === 'list') {
+		return outputSessionsList(context, 'session');
+	}
+
+	if (action === 'status' || action === 'show') {
+		const sessionId = context.parsedArgs.input[2];
+		if (!sessionId) {
+			context.formatter.writeError({
+				text: [
+					'Error: Missing session id',
+					`Usage: cacd session ${action} <id>`,
+				],
+				data: {
+					ok: false,
+					command: `session ${action}`,
+					error: {
+						message: 'Missing session id',
+						usage: `cacd session ${action} <id>`,
+					},
+				},
+			});
+			return 1;
+		}
+
+		return outputSessionStatus(
+			context,
+			sessionId,
+			'session',
+			action === 'show' ? 'show' : 'status',
+		);
+	}
+
+	if (action === 'stop') {
+		const sessionId = context.parsedArgs.input[2];
+		if (!sessionId) {
+			context.formatter.writeError({
+				text: ['Error: Missing session id', 'Usage: cacd session stop <id>'],
+				data: {
+					ok: false,
+					command: 'session stop',
+					error: {
+						message: 'Missing session id',
+						usage: 'cacd session stop <id>',
+					},
+				},
+			});
+			return 1;
+		}
+
+		return runSessionStopCommand(context, sessionId);
+	}
+
+	context.formatter.writeError({
+		text: [
+			`Unknown session command: ${action}`,
+			'Available session commands:',
+			'  cacd session create --agent <agent-id> [--model <model>] [--worktree <path>] [--task <td-task-id>] [--name <name>]',
+			'  cacd session list',
+			'  cacd session status <id>',
+			'  cacd session stop <id>',
+		],
+		data: {
+			ok: false,
+			command: 'session',
+			error: {
+				message: `Unknown session command: ${action}`,
+				available: ['create', 'list', 'status', 'stop'],
 			},
 		},
 	});
@@ -688,6 +1040,10 @@ export async function runQueryCommand(context: CliCommandContext): Promise<numbe
 
 	if (context.subcommand === 'sessions') {
 		return runSessionsCommand(context);
+	}
+
+	if (context.subcommand === 'session') {
+		return runSessionCommand(context);
 	}
 
 	if (context.subcommand === 'agents') {

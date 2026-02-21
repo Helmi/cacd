@@ -10,6 +10,7 @@ const registry = new Map<string, CliCommandHandler>([
 	['status', runQueryCommand],
 	['restart', runDaemonLifecycleCommand],
 	['sessions', runQueryCommand],
+	['session', runQueryCommand],
 	['agents', runQueryCommand],
 	['add', runProjectCommand],
 	['remove', runProjectCommand],

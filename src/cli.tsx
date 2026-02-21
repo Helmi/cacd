@@ -51,8 +51,12 @@ const cli = meow(
     $ cacd stop                 Stop running daemon
     $ cacd status               Show daemon status
     $ cacd status --sessions    Show daemon status and active sessions
-    $ cacd sessions list        List active sessions
-    $ cacd sessions show <id>   Show one active session
+    $ cacd sessions list        List active sessions (legacy)
+    $ cacd sessions show <id>   Show one active session (legacy)
+    $ cacd session create --agent <id> [--worktree <path>] [--model <name>]
+    $ cacd session list         List active sessions
+    $ cacd session status <id>  Show one active session
+    $ cacd session stop <id>    Stop a running session
     $ cacd agents list          List agents and their active sessions
     $ cacd restart              Restart daemon
     $ cacd tui                  Launch TUI (daemon must already be running)
@@ -78,6 +82,17 @@ const cli = meow(
     --devc-exec-command     Command to execute in devcontainer
     --json                  Output machine-readable JSON for query commands
 
+  Session Create Options (for 'cacd session create')
+    --agent <id>            Agent profile ID (required)
+    --worktree <path>       Worktree path (defaults to current directory)
+    --model <name>          Convenience alias for option "model"
+    --task <td-task-id>     Link session to TD task ID
+    --name <name>           Session name
+    --task-list <name>      Claude task list name
+    --prompt-template <name> TD prompt template name
+    --intent <intent>       Session intent: work | review | manual
+    --option <key[=value]>  Agent option (repeatable, e.g. --option yolo --option model=gpt-5)
+
   Setup Options (for 'cacd setup')
     --no-web               Disable web interface
     --project <path>       Add specified path as first project
@@ -94,8 +109,12 @@ const cli = meow(
     $ cacd start                  # Start daemon in background
     $ cacd status                 # Check daemon status
     $ cacd status --sessions      # Show daemon + active sessions
-    $ cacd sessions list          # List active sessions
+    $ cacd sessions list          # List active sessions (legacy)
     $ cacd sessions show session-123
+    $ cacd session create --agent codex --worktree . --model gpt-5
+    $ cacd session list
+    $ cacd session status session-123
+    $ cacd session stop session-123
     $ cacd agents list --json
     $ cacd stop                   # Stop daemon
     $ cacd tui                    # Launch TUI (requires running daemon)
@@ -129,6 +148,35 @@ const cli = meow(
 			json: {
 				type: 'boolean',
 				default: false,
+			},
+			// Session create flags
+			agent: {
+				type: 'string',
+			},
+			model: {
+				type: 'string',
+			},
+			worktree: {
+				type: 'string',
+			},
+			task: {
+				type: 'string',
+			},
+			name: {
+				type: 'string',
+			},
+			taskList: {
+				type: 'string',
+			},
+			promptTemplate: {
+				type: 'string',
+			},
+			intent: {
+				type: 'string',
+			},
+			option: {
+				type: 'string',
+				isMultiple: true,
 			},
 			// Setup flags
 			noWeb: {
@@ -242,7 +290,8 @@ if (subcommand && !knownCommands.has(subcommand)) {
 			'  cacd start         Start daemon in background',
 			'  cacd stop          Stop daemon',
 			'  cacd status        Show daemon status',
-			'  cacd sessions      Query active sessions',
+			'  cacd sessions      Query active sessions (legacy)',
+			'  cacd session       Manage sessions (create/list/status/stop)',
 			'  cacd agents        Query configured agents',
 			'  cacd restart       Restart daemon',
 			'  cacd setup         Run first-time setup',
@@ -264,6 +313,7 @@ if (subcommand && !knownCommands.has(subcommand)) {
 					'stop',
 					'status',
 					'sessions',
+					'session',
 					'agents',
 					'restart',
 					'setup',
