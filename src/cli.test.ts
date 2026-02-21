@@ -177,15 +177,21 @@ describe('CLI', () => {
 				isDevModeConfig: vi.fn(() => false),
 			}));
 
-			vi.doMock('./utils/daemonLifecycle.js', () => ({
-				prepareDaemonPidFile,
-				cleanupDaemonPidFile,
-				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
-			}));
+				vi.doMock('./utils/daemonLifecycle.js', () => ({
+					prepareDaemonPidFile,
+					cleanupDaemonPidFile,
+					getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+					readDaemonPidFile: vi.fn(async () => undefined),
+					isProcessRunning: vi.fn(() => false),
+				}));
 
-			vi.doMock('./utils/daemonControl.js', () => ({
-				ensureDaemonForTui: vi.fn(),
-			}));
+				vi.doMock('./utils/daemonControl.js', () => ({
+					buildDaemonWebConfig: vi.fn(),
+					ensureDaemonForTui: vi.fn(),
+					spawnDetachedDaemon: vi.fn(),
+					waitForDaemonPid: vi.fn(),
+					waitForDaemonApiReady: vi.fn(),
+				}));
 
 			vi.doMock('./services/projectManager.js', () => ({
 				projectManager: {
