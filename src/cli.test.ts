@@ -280,53 +280,26 @@ describe('CLI', () => {
 		const originalStdinIsTTY = process.stdin.isTTY;
 		const originalStdoutIsTTY = process.stdout.isTTY;
 
-		afterEach(() => {
-			process.argv = [...originalArgv];
-			Object.defineProperty(process.stdin, 'isTTY', {
-				value: originalStdinIsTTY,
-				configurable: true,
-			});
-			Object.defineProperty(process.stdout, 'isTTY', {
-				value: originalStdoutIsTTY,
-				configurable: true,
-			});
-			vi.restoreAllMocks();
-			vi.resetModules();
-		});
-
-		it('passes external and hostname links to TUI in default cacd mode', async () => {
-			process.argv = ['node', '/tmp/unified-entry.tsx'];
-			Object.defineProperty(process.stdin, 'isTTY', {
-				value: true,
-				configurable: true,
-			});
-			Object.defineProperty(process.stdout, 'isTTY', {
-				value: true,
-				configurable: true,
-			});
-
-			const ensureDaemonForTui = vi.fn(async () => ({
-				webConfig: {
-					url: 'http://127.0.0.1:3000/token',
-					port: 3000,
-					configDir: '/tmp/cacd-test',
-					isCustomConfigDir: false,
-					isDevMode: false,
-				},
-				pidFilePath: '/tmp/cacd-test/daemon.pid',
-				pid: 1234,
-				started: false,
-			}));
-			const createElement = vi.fn(
-				(_component: unknown, props: Record<string, unknown>) => props,
-			);
-			const render = vi.fn(() => ({unmount: vi.fn()}));
-
+		const setupCommonMocks = () => {
 			vi.doMock('fs', async importOriginal => {
 				const actual = await importOriginal<typeof import('fs')>();
 				return {
 					...actual,
 					existsSync: vi.fn(() => true),
+				};
+			});
+			vi.doMock('fs/promises', async importOriginal => {
+				const actual = await importOriginal<typeof import('fs/promises')>();
+				return {
+					...actual,
+					mkdir: vi.fn(async () => {}),
+				};
+			});
+			vi.doMock('child_process', async importOriginal => {
+				const actual = await importOriginal<typeof import('child_process')>();
+				return {
+					...actual,
+					spawnSync: vi.fn(() => ({status: 0, stdout: '00:02:00\n'})),
 				};
 			});
 			vi.doMock('dgram', () => ({
@@ -357,20 +330,11 @@ describe('CLI', () => {
 					hostname: vi.fn(() => 'cacd-host'),
 				},
 			}));
-
 			vi.doMock('./utils/configDir.js', () => ({
 				initializeConfigDir: vi.fn(),
 				getConfigDir: vi.fn(() => '/tmp/cacd-test'),
 				isCustomConfigDir: vi.fn(() => false),
 				isDevModeConfig: vi.fn(() => false),
-			}));
-			vi.doMock('./utils/daemonLifecycle.js', () => ({
-				prepareDaemonPidFile: vi.fn(),
-				cleanupDaemonPidFile: vi.fn(),
-				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
-			}));
-			vi.doMock('./utils/daemonControl.js', () => ({
-				ensureDaemonForTui,
 			}));
 			vi.doMock('./services/projectManager.js', () => ({
 				projectManager: {
@@ -399,60 +363,337 @@ describe('CLI', () => {
 			}));
 			vi.doMock('./services/apiServer.js', () => ({
 				apiServer: {
-					start: vi.fn(),
+					start: vi.fn(async () => ({
+						port: 3000,
+						address: 'http://0.0.0.0:3000',
+					})),
 				},
 			}));
 			vi.doMock('./constants/env.js', () => ({
 				ENV_VARS: {PORT: 'CACD_PORT'},
 				generateRandomPort: vi.fn(() => 3010),
 			}));
-			vi.doMock('react', () => ({
-				default: {
-					createElement,
-				},
-			}));
-			vi.doMock('ink', () => ({
-				render,
-			}));
-			vi.doMock('./components/App.js', () => ({
-				default: vi.fn(),
+		};
+
+		afterEach(() => {
+			process.argv = [...originalArgv];
+			Object.defineProperty(process.stdin, 'isTTY', {
+				value: originalStdinIsTTY,
+				configurable: true,
+			});
+			Object.defineProperty(process.stdout, 'isTTY', {
+				value: originalStdoutIsTTY,
+				configurable: true,
+			});
+			vi.restoreAllMocks();
+			vi.resetModules();
+		});
+
+		it('treats bare `cacd` as `cacd start`', async () => {
+			process.argv = ['node', '/tmp/unified-entry.tsx'];
+			setupCommonMocks();
+
+			const readDaemonPidFile = vi.fn(async () => undefined);
+			const isProcessRunning = vi.fn(() => false);
+			const cleanupDaemonPidFile = vi.fn(async () => {});
+			const spawnDetachedDaemon = vi.fn(() => ({pid: 4242, unref: vi.fn()}));
+			const waitForDaemonPid = vi.fn(async () => 4242);
+			const waitForDaemonApiReady = vi.fn(async () => {});
+			const ensureDaemonForTui = vi.fn();
+			const buildDaemonWebConfig = vi.fn(() => ({
+				url: 'http://127.0.0.1:3000/token',
+				port: 3000,
+				configDir: '/tmp/cacd-test',
+				isCustomConfigDir: false,
+				isDevMode: false,
 			}));
 
-			const processExitSpy = vi
-				.spyOn(process, 'exit')
-				.mockImplementation((() => undefined) as never);
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile,
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile,
+				isProcessRunning,
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig,
+				ensureDaemonForTui,
+				spawnDetachedDaemon,
+				waitForDaemonPid,
+				waitForDaemonApiReady,
+			}));
+
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
 
 			try {
-				await import('./cli.js');
-
-				expect(ensureDaemonForTui).toHaveBeenCalledWith({
-					configDir: '/tmp/cacd-test',
-					port: 3000,
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				expect(spawnDetachedDaemon).toHaveBeenCalledWith(
+					'/tmp/unified-entry.tsx',
+					3000,
+					{logFilePath: '/tmp/cacd-test/daemon.log'},
+				);
+				expect(waitForDaemonPid).toHaveBeenCalled();
+				expect(waitForDaemonApiReady).toHaveBeenCalledWith({
+					baseUrl: 'http://127.0.0.1:3000',
 					accessToken: 'token',
+					deadline: expect.any(Number),
+					pollIntervalMs: 200,
+				});
+				expect(ensureDaemonForTui).not.toHaveBeenCalled();
+			} finally {
+				processExitSpy.mockRestore();
+			}
+		});
+
+		it('starts daemon for explicit `cacd start`', async () => {
+			process.argv = ['node', '/tmp/unified-entry.tsx', 'start'];
+			setupCommonMocks();
+
+			const readDaemonPidFile = vi.fn(async () => undefined);
+			const isProcessRunning = vi.fn(() => false);
+			const cleanupDaemonPidFile = vi.fn(async () => {});
+			const spawnDetachedDaemon = vi.fn(() => ({pid: 7777, unref: vi.fn()}));
+			const waitForDaemonPid = vi.fn(async () => 7777);
+			const waitForDaemonApiReady = vi.fn(async () => {});
+			const buildDaemonWebConfig = vi.fn(() => ({
+				url: 'http://127.0.0.1:3000/token',
+				port: 3000,
+				configDir: '/tmp/cacd-test',
+				isCustomConfigDir: false,
+				isDevMode: false,
+			}));
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile,
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile,
+				isProcessRunning,
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig,
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon,
+				waitForDaemonPid,
+				waitForDaemonApiReady,
+			}));
+
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				expect(processExitSpy).toHaveBeenCalledWith(0);
+				expect(spawnDetachedDaemon).toHaveBeenCalledWith(
+					'/tmp/unified-entry.tsx',
+					3000,
+					{logFilePath: '/tmp/cacd-test/daemon.log'},
+				);
+			} finally {
+				processExitSpy.mockRestore();
+			}
+		});
+
+		it('stops daemon with SIGTERM and cleans PID file', async () => {
+			process.argv = ['node', '/tmp/unified-entry.tsx', 'stop'];
+			setupCommonMocks();
+
+			const readDaemonPidFile = vi.fn(async () => 4242);
+			const isProcessRunning = vi
+				.fn()
+				.mockReturnValueOnce(true)
+				.mockReturnValueOnce(false);
+			const cleanupDaemonPidFile = vi.fn(async () => {});
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile,
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile,
+				isProcessRunning,
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(),
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon: vi.fn(),
+				waitForDaemonPid: vi.fn(),
+				waitForDaemonApiReady: vi.fn(),
+			}));
+
+			const processKillSpy = vi
+				.spyOn(process, 'kill')
+				.mockImplementation((() => true) as never);
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				expect(processKillSpy).toHaveBeenCalledWith(4242, 'SIGTERM');
+				expect(cleanupDaemonPidFile).toHaveBeenCalledWith(
+					'/tmp/cacd-test/daemon.pid',
+					4242,
+				);
+			} finally {
+				processKillSpy.mockRestore();
+				processExitSpy.mockRestore();
+			}
+		});
+
+		it('reports running daemon status', async () => {
+			process.argv = ['node', '/tmp/unified-entry.tsx', 'status'];
+			setupCommonMocks();
+
+			const readDaemonPidFile = vi.fn(async () => 5151);
+			const isProcessRunning = vi.fn(() => true);
+			const buildDaemonWebConfig = vi.fn(() => ({
+				url: 'http://127.0.0.1:3000/token',
+				port: 3000,
+				configDir: '/tmp/cacd-test',
+				isCustomConfigDir: false,
+				isDevMode: false,
+			}));
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile: vi.fn(),
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile,
+				isProcessRunning,
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig,
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon: vi.fn(),
+				waitForDaemonPid: vi.fn(),
+				waitForDaemonApiReady: vi.fn(),
+			}));
+
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+			const consoleLogSpy = vi
+				.spyOn(console, 'log')
+				.mockImplementation(() => {});
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				expect(consoleLogSpy).toHaveBeenCalledWith('Daemon is running');
+				expect(consoleLogSpy).toHaveBeenCalledWith('PID:          5151');
+				expect(consoleLogSpy).toHaveBeenCalledWith('Uptime:       00:02:00');
+			} finally {
+				processExitSpy.mockRestore();
+				consoleLogSpy.mockRestore();
+			}
+		});
+
+		it('reports stopped daemon status', async () => {
+			process.argv = ['node', '/tmp/unified-entry.tsx', 'status'];
+			setupCommonMocks();
+
+			const readDaemonPidFile = vi.fn(async () => undefined);
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile: vi.fn(),
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile,
+				isProcessRunning: vi.fn(() => false),
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(),
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon: vi.fn(),
+				waitForDaemonPid: vi.fn(),
+				waitForDaemonApiReady: vi.fn(),
+			}));
+
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+			const consoleLogSpy = vi
+				.spyOn(console, 'log')
+				.mockImplementation(() => {});
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				expect(consoleLogSpy).toHaveBeenCalledWith('Daemon is not running');
+			} finally {
+				processExitSpy.mockRestore();
+				consoleLogSpy.mockRestore();
+			}
+		});
+
+		it('restarts daemon by stopping then starting', async () => {
+			process.argv = ['node', '/tmp/unified-entry.tsx', 'restart'];
+			setupCommonMocks();
+
+			const readDaemonPidFile = vi
+				.fn<(_: string) => Promise<number | undefined>>()
+				.mockResolvedValueOnce(4242)
+				.mockResolvedValueOnce(undefined);
+			const isProcessRunning = vi
+				.fn()
+				.mockReturnValueOnce(true)
+				.mockReturnValueOnce(false);
+			const cleanupDaemonPidFile = vi.fn(async () => {});
+			const spawnDetachedDaemon = vi.fn(() => ({pid: 9090, unref: vi.fn()}));
+			const waitForDaemonPid = vi.fn(async () => 9090);
+			const waitForDaemonApiReady = vi.fn(async () => {});
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile,
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile,
+				isProcessRunning,
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(() => ({
+					url: 'http://127.0.0.1:3000/token',
+					port: 3000,
+					configDir: '/tmp/cacd-test',
 					isCustomConfigDir: false,
 					isDevMode: false,
-					autoStart: true,
-				});
+				})),
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon,
+				waitForDaemonPid,
+				waitForDaemonApiReady,
+			}));
 
-				const appProps = createElement.mock.calls[0]?.[1] as
-					| {
-							webConfig?: {
-								url: string;
-								externalUrl?: string;
-								hostname?: string;
-							};
-					  }
-					| undefined;
-				expect(appProps?.webConfig?.url).toBe('http://127.0.0.1:3000/token');
-				expect(appProps?.webConfig?.externalUrl).toBe(
-					'http://192.168.0.10:3000/token',
+			const processKillSpy = vi
+				.spyOn(process, 'kill')
+				.mockImplementation((() => true) as never);
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				expect(processKillSpy).toHaveBeenCalledWith(4242, 'SIGTERM');
+				expect(spawnDetachedDaemon).toHaveBeenCalledWith(
+					'/tmp/unified-entry.tsx',
+					3000,
+					{logFilePath: '/tmp/cacd-test/daemon.log'},
 				);
-				expect(appProps?.webConfig?.hostname).toBe(
-					'http://cacd-host:3000/token',
-				);
-				expect(render).toHaveBeenCalledTimes(1);
-				expect(processExitSpy).not.toHaveBeenCalled();
 			} finally {
+				processKillSpy.mockRestore();
 				processExitSpy.mockRestore();
 			}
 		});
@@ -467,65 +708,25 @@ describe('CLI', () => {
 				value: true,
 				configurable: true,
 			});
+			setupCommonMocks();
 
 			const ensureDaemonForTui = vi.fn(async () => {
 				throw new Error('No running CA⚡CD daemon found');
 			});
 
-			vi.doMock('fs', async importOriginal => {
-				const actual = await importOriginal<typeof import('fs')>();
-				return {
-					...actual,
-					existsSync: vi.fn(() => true),
-				};
-			});
-			vi.doMock('./utils/configDir.js', () => ({
-				initializeConfigDir: vi.fn(),
-				getConfigDir: vi.fn(() => '/tmp/cacd-test'),
-				isCustomConfigDir: vi.fn(() => false),
-				isDevModeConfig: vi.fn(() => false),
-			}));
 			vi.doMock('./utils/daemonLifecycle.js', () => ({
 				prepareDaemonPidFile: vi.fn(),
 				cleanupDaemonPidFile: vi.fn(),
 				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile: vi.fn(),
+				isProcessRunning: vi.fn(),
 			}));
 			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(),
 				ensureDaemonForTui,
-			}));
-			vi.doMock('./services/projectManager.js', () => ({
-				projectManager: {
-					addProject: vi.fn(),
-					removeProject: vi.fn(),
-					getProjects: vi.fn(() => []),
-					instance: {validateProjects: vi.fn()},
-				},
-			}));
-			vi.doMock('./services/worktreeConfigManager.js', () => ({
-				worktreeConfigManager: {
-					initialize: vi.fn(),
-				},
-			}));
-			vi.doMock('./services/configurationManager.js', () => ({
-				configurationManager: {
-					getConfiguration: vi.fn(() => ({accessToken: 'token'})),
-					getPort: vi.fn(() => 3000),
-					setPort: vi.fn(),
-				},
-			}));
-			vi.doMock('./services/globalSessionOrchestrator.js', () => ({
-				globalSessionOrchestrator: {
-					destroyAllSessions: vi.fn(),
-				},
-			}));
-			vi.doMock('./services/apiServer.js', () => ({
-				apiServer: {
-					start: vi.fn(),
-				},
-			}));
-			vi.doMock('./constants/env.js', () => ({
-				ENV_VARS: {PORT: 'CACD_PORT'},
-				generateRandomPort: vi.fn(() => 3010),
+				spawnDetachedDaemon: vi.fn(),
+				waitForDaemonPid: vi.fn(),
+				waitForDaemonApiReady: vi.fn(),
 			}));
 
 			const consoleErrorSpy = vi
