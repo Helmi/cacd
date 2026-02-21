@@ -25,10 +25,6 @@ function isFallbackEligibleApiError(error: unknown): boolean {
 		return false;
 	}
 
-	if (error.status === 404) {
-		return true;
-	}
-
 	return error.message.includes('Unable to connect to CACD daemon at');
 }
 
@@ -356,6 +352,7 @@ async function handleConfigure(
 	}
 
 	let updatedProject: Project | null = null;
+	let shouldFallbackToLocal = false;
 
 	try {
 		const client = createDaemonApiClient(context);
@@ -378,13 +375,27 @@ async function handleConfigure(
 			});
 			return 1;
 		}
+
+		shouldFallbackToLocal = true;
 	}
 
-	if (!updatedProject) {
+	if (shouldFallbackToLocal) {
 		updatedProject = context.services.projectManager.instance.updateProject(
 			projectPath,
 			updates,
 		);
+	} else if (!updatedProject) {
+		context.formatter.writeError({
+			text: ['Failed to configure project: daemon returned no updated project'],
+			data: {
+				ok: false,
+				command: commandLabel,
+				error: {
+					message: 'Failed to configure project: daemon returned no updated project',
+				},
+			},
+		});
+		return 1;
 	}
 
 	if (!updatedProject) {
