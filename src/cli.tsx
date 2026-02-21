@@ -48,6 +48,10 @@ const cli = meow(
     $ cacd start                Start daemon in background
     $ cacd stop                 Stop running daemon
     $ cacd status               Show daemon status
+    $ cacd status --sessions    Show daemon status and active sessions
+    $ cacd sessions list        List active sessions
+    $ cacd sessions show <id>   Show one active session
+    $ cacd agents list          List agents and their active sessions
     $ cacd restart              Restart daemon
     $ cacd tui                  Launch TUI (daemon must already be running)
     $ cacd daemon               Run daemon in foreground (for service managers)
@@ -67,6 +71,8 @@ const cli = meow(
     --version               Show version
     --port <number>         Port for web interface (overrides config/env)
     --headless              Run API server only (legacy alias for 'daemon')
+    --sessions              Include active sessions in status output
+    --json                  Output machine-readable JSON for query commands
     --devc-up-command       Command to start devcontainer
     --devc-exec-command     Command to execute in devcontainer
 
@@ -85,6 +91,10 @@ const cli = meow(
     $ cacd                        # Start daemon in background
     $ cacd start                  # Start daemon in background
     $ cacd status                 # Check daemon status
+    $ cacd status --sessions      # Show daemon + active sessions
+    $ cacd sessions list          # List active sessions
+    $ cacd sessions show session-123
+    $ cacd agents list --json
     $ cacd stop                   # Stop daemon
     $ cacd tui                    # Launch TUI (requires running daemon)
     $ cacd daemon                 # Foreground daemon mode for systemd/launchd
@@ -101,6 +111,14 @@ const cli = meow(
 				type: 'number',
 			},
 			headless: {
+				type: 'boolean',
+				default: false,
+			},
+			sessions: {
+				type: 'boolean',
+				default: false,
+			},
+			json: {
 				type: 'boolean',
 				default: false,
 			},
@@ -403,6 +421,8 @@ if (
 		'start',
 		'stop',
 		'status',
+		'sessions',
+		'agents',
 		'restart',
 		'add',
 		'remove',
@@ -419,6 +439,8 @@ if (
 	console.error('  cacd start         Start daemon in background');
 	console.error('  cacd stop          Stop daemon');
 	console.error('  cacd status        Show daemon status');
+	console.error('  cacd sessions      Query active sessions');
+	console.error('  cacd agents        Query configured agents');
 	console.error('  cacd restart       Restart daemon');
 	console.error('  cacd setup         Run first-time setup');
 	console.error('  cacd add [path]    Add a project');
@@ -644,6 +666,273 @@ async function stopDaemon(): Promise<{stopped: boolean; pid?: number}> {
 	throw new Error(`Timed out waiting for daemon PID ${pid} to stop.`);
 }
 
+interface DaemonStatusOutput {
+	running: boolean;
+	pid?: number;
+	webConfig?: DaemonWebConfig;
+	uptime?: string;
+}
+
+interface ApiSessionPayload {
+	id: string;
+	name?: string;
+	path: string;
+	state: string;
+	autoApprovalFailed?: boolean;
+	autoApprovalReason?: string;
+	isActive: boolean;
+	agentId?: string;
+	pid?: number;
+}
+
+interface ApiConversationSession {
+	id: string;
+	agentProfileName: string;
+	agentOptions: Record<string, unknown>;
+	worktreePath: string;
+	branchName: string | null;
+	tdTaskId: string | null;
+	createdAt: number;
+	state: string;
+	isActive: boolean;
+}
+
+interface ApiConversationSessionResponse {
+	session: ApiConversationSession;
+}
+
+interface ApiAgentsConfigResponse {
+	agents: Array<{
+		id: string;
+		name: string;
+		kind: 'agent' | 'terminal';
+		enabled?: boolean;
+	}>;
+	defaultAgentId: string;
+	schemaVersion: number;
+}
+
+interface SessionSummary {
+	id: string;
+	agent: string;
+	model: string;
+	branch: string;
+	status: string;
+	elapsed: string;
+	pid: number | null;
+	tdTaskId: string | null;
+	worktreePath: string;
+}
+
+function buildDaemonApiBaseUrl(): string {
+	return `http://127.0.0.1:${port}`;
+}
+
+function buildDaemonApiHeaders(): Record<string, string> {
+	const headers: Record<string, string> = {};
+	if (accessToken) {
+		headers['x-access-token'] = accessToken;
+	}
+	return headers;
+}
+
+function isErrnoError(error: unknown): error is Error & {code?: string} {
+	return error instanceof Error && 'code' in error;
+}
+
+function isDaemonConnectionError(error: unknown): boolean {
+	if (isErrnoError(error) && error.code === 'ECONNREFUSED') {
+		return true;
+	}
+
+	if (
+		error instanceof TypeError &&
+		error.cause &&
+		typeof error.cause === 'object' &&
+		'code' in error.cause &&
+		error.cause.code === 'ECONNREFUSED'
+	) {
+		return true;
+	}
+
+	return false;
+}
+
+function extractApiError(payload: unknown): string | undefined {
+	if (!payload || typeof payload !== 'object') {
+		return undefined;
+	}
+
+	const maybeError = (payload as {error?: unknown}).error;
+	return typeof maybeError === 'string' ? maybeError : undefined;
+}
+
+async function fetchDaemonApi<T>(path: string): Promise<T> {
+	const url = `${buildDaemonApiBaseUrl()}${path}`;
+	let response: Response;
+
+	try {
+		response = await fetch(url, {
+			headers: buildDaemonApiHeaders(),
+		});
+	} catch (error) {
+		if (isDaemonConnectionError(error)) {
+			throw new Error(
+				'No running CA⚡CD daemon found. Start it with `cacd start`.',
+			);
+		}
+
+		throw error;
+	}
+
+	let payload: unknown = undefined;
+	try {
+		payload = await response.json();
+	} catch {
+		// Ignore parse failures for non-JSON responses
+	}
+
+	if (!response.ok) {
+		if (response.status === 401 || response.status === 403) {
+			throw new Error(
+				'Daemon API authentication failed. Verify local config token and daemon state.',
+			);
+		}
+
+		const apiError = extractApiError(payload);
+		const suffix = apiError ? `: ${apiError}` : '';
+		throw new Error(`Daemon API request failed (${response.status})${suffix}`);
+	}
+
+	return payload as T;
+}
+
+function formatElapsedFromCreatedAt(createdAtSeconds: number | undefined): string {
+	if (!createdAtSeconds || !Number.isFinite(createdAtSeconds)) {
+		return '-';
+	}
+
+	const elapsed = Math.max(0, Math.floor(Date.now() / 1000) - createdAtSeconds);
+	const days = Math.floor(elapsed / 86400);
+	const hours = Math.floor((elapsed % 86400) / 3600);
+	const minutes = Math.floor((elapsed % 3600) / 60);
+	const seconds = elapsed % 60;
+
+	if (days > 0) {
+		return `${days}d ${hours}h`;
+	}
+	if (hours > 0) {
+		return `${hours}h ${minutes}m`;
+	}
+	if (minutes > 0) {
+		return `${minutes}m ${seconds}s`;
+	}
+	return `${seconds}s`;
+}
+
+function resolveSessionModel(agentOptions: Record<string, unknown> | undefined): string {
+	if (!agentOptions) {
+		return '-';
+	}
+
+	const preferredKeys = ['model', 'modelName', 'selectedModel'];
+	for (const key of preferredKeys) {
+		const value = agentOptions[key];
+		if (typeof value === 'string' && value.trim().length > 0) {
+			return value.trim();
+		}
+	}
+
+	const modelEntry = Object.entries(agentOptions).find(([key, value]) => {
+		return key.toLowerCase().includes('model') && typeof value === 'string';
+	});
+	if (modelEntry && typeof modelEntry[1] === 'string') {
+		const value = modelEntry[1].trim();
+		return value.length > 0 ? value : '-';
+	}
+
+	return '-';
+}
+
+function printTable(headers: string[], rows: string[][]): void {
+	const widths = headers.map((header, index) => {
+		const rowWidths = rows.map(row => row[index]?.length ?? 0);
+		return Math.max(header.length, ...rowWidths);
+	});
+
+	const formatRow = (cells: string[]) =>
+		cells.map((cell, index) => cell.padEnd(widths[index] || 0)).join('  ');
+
+	console.log(formatRow(headers));
+	console.log(widths.map(width => '-'.repeat(width)).join('  '));
+	for (const row of rows) {
+		console.log(formatRow(row));
+	}
+}
+
+async function getDaemonStatusOutput(): Promise<DaemonStatusOutput> {
+	const pid = await readDaemonPidFile(daemonPidFilePath);
+	if (pid === undefined || !isProcessRunning(pid)) {
+		if (pid !== undefined) {
+			await cleanupDaemonPidFile(daemonPidFilePath, pid);
+		}
+		return {running: false};
+	}
+
+	const baseConfig = buildDaemonWebConfig({
+		configDir,
+		port,
+		accessToken,
+		isCustomConfigDir: customConfigDir,
+		isDevMode: devModeActive,
+	});
+
+	return {
+		running: true,
+		pid,
+		webConfig: await withNetworkLinks(baseConfig, accessToken),
+		uptime: getProcessUptime(pid),
+	};
+}
+
+async function fetchConversationSession(
+	sessionId: string,
+): Promise<ApiConversationSession | null> {
+	try {
+		const response = await fetchDaemonApi<ApiConversationSessionResponse>(
+			`/api/conversations/${encodeURIComponent(sessionId)}`,
+		);
+		return response.session;
+	} catch {
+		return null;
+	}
+}
+
+async function buildSessionSummary(
+	session: ApiSessionPayload,
+): Promise<SessionSummary> {
+	const conversation = await fetchConversationSession(session.id);
+	const model = resolveSessionModel(conversation?.agentOptions);
+
+	return {
+		id: session.id,
+		agent: conversation?.agentProfileName || session.agentId || '-',
+		model,
+		branch: conversation?.branchName || '-',
+		status: session.state,
+		elapsed: formatElapsedFromCreatedAt(conversation?.createdAt),
+		pid: session.pid ?? null,
+		tdTaskId: conversation?.tdTaskId || null,
+		worktreePath: conversation?.worktreePath || session.path,
+	};
+}
+
+async function listActiveSessionSummaries(): Promise<SessionSummary[]> {
+	const sessions = await fetchDaemonApi<ApiSessionPayload[]>('/api/sessions');
+	const summaries = await Promise.all(sessions.map(session => buildSessionSummary(session)));
+	return summaries.sort((a, b) => a.id.localeCompare(b.id));
+}
+
 if (subcommand === 'start') {
 	let result: {pid: number; started: boolean; webConfig: DaemonWebConfig};
 	try {
@@ -688,33 +977,13 @@ if (subcommand === 'stop') {
 }
 
 if (subcommand === 'status') {
-	let statusOutput: {
-		running: boolean;
-		pid?: number;
-		webConfig?: DaemonWebConfig;
-		uptime?: string;
-	};
+	let statusOutput: DaemonStatusOutput;
+	let sessions: SessionSummary[] = [];
+
 	try {
-		const pid = await readDaemonPidFile(daemonPidFilePath);
-		if (pid === undefined || !isProcessRunning(pid)) {
-			if (pid !== undefined) {
-				await cleanupDaemonPidFile(daemonPidFilePath, pid);
-			}
-			statusOutput = {running: false};
-		} else {
-			const baseConfig = buildDaemonWebConfig({
-				configDir,
-				port,
-				accessToken,
-				isCustomConfigDir: customConfigDir,
-				isDevMode: devModeActive,
-			});
-			statusOutput = {
-				running: true,
-				pid,
-				webConfig: await withNetworkLinks(baseConfig, accessToken),
-				uptime: getProcessUptime(pid),
-			};
+		statusOutput = await getDaemonStatusOutput();
+		if (statusOutput.running && cli.flags.sessions) {
+			sessions = await listActiveSessionSummaries();
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -722,10 +991,30 @@ if (subcommand === 'status') {
 		process.exit(1);
 	}
 
+	if (cli.flags.json) {
+		console.log(
+			JSON.stringify(
+				{
+					...statusOutput,
+					configDir,
+					pidFilePath: daemonPidFilePath,
+					logFilePath: daemonLogPath,
+					sessions: cli.flags.sessions ? sessions : undefined,
+				},
+				null,
+				2,
+			),
+		);
+		process.exit(0);
+	}
+
 	if (!statusOutput.running) {
 		console.log('Daemon is not running');
 		console.log(`Config Dir: ${configDir}`);
 		console.log(`PID File:   ${daemonPidFilePath}`);
+		if (cli.flags.sessions) {
+			console.log('Active sessions: 0');
+		}
 		process.exit(0);
 	}
 
@@ -741,6 +1030,196 @@ if (subcommand === 'status') {
 	if (statusOutput.uptime) {
 		console.log(`Uptime:       ${statusOutput.uptime}`);
 	}
+
+	if (cli.flags.sessions) {
+		console.log('');
+		if (sessions.length === 0) {
+			console.log('Active sessions: 0');
+		} else {
+			console.log(`Active sessions (${sessions.length}):`);
+			printTable(
+				['id', 'agent', 'model', 'branch', 'status', 'elapsed'],
+				sessions.map(session => [
+					session.id,
+					session.agent,
+					session.model,
+					session.branch,
+					session.status,
+					session.elapsed,
+				]),
+			);
+		}
+	}
+
+	process.exit(0);
+}
+
+if (subcommand === 'sessions') {
+	const action = cli.input[1] ?? 'list';
+
+	if (action === 'list') {
+		let sessions: SessionSummary[];
+		try {
+			sessions = await listActiveSessionSummaries();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(`Failed to query sessions: ${message}`);
+			process.exit(1);
+		}
+
+		if (cli.flags.json) {
+			console.log(JSON.stringify({sessions}, null, 2));
+			process.exit(0);
+		}
+
+		if (sessions.length === 0) {
+			console.log('No active sessions');
+			process.exit(0);
+		}
+
+		printTable(
+			['id', 'agent', 'model', 'branch', 'status', 'elapsed'],
+			sessions.map(session => [
+				session.id,
+				session.agent,
+				session.model,
+				session.branch,
+				session.status,
+				session.elapsed,
+			]),
+		);
+		process.exit(0);
+	}
+
+	if (action === 'show') {
+		const sessionId = cli.input[2];
+		if (!sessionId) {
+			console.error('Error: Missing session id');
+			console.error('Usage: cacd sessions show <id>');
+			process.exit(1);
+		}
+
+		let liveSessions: ApiSessionPayload[];
+		try {
+			liveSessions = await fetchDaemonApi<ApiSessionPayload[]>('/api/sessions');
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.error(`Failed to query sessions: ${message}`);
+			process.exit(1);
+		}
+
+		const liveSession = liveSessions.find(session => session.id === sessionId);
+		const conversation = await fetchConversationSession(sessionId);
+		if (!liveSession && !conversation) {
+			console.error(`Session not found: ${sessionId}`);
+			process.exit(1);
+		}
+
+		const summary: SessionSummary = {
+			id: sessionId,
+			agent:
+				conversation?.agentProfileName || liveSession?.agentId || 'unknown',
+			model: resolveSessionModel(conversation?.agentOptions),
+			branch: conversation?.branchName || '-',
+			status: liveSession?.state || conversation?.state || 'unknown',
+			elapsed: formatElapsedFromCreatedAt(conversation?.createdAt),
+			pid: liveSession?.pid ?? null,
+			tdTaskId: conversation?.tdTaskId || null,
+			worktreePath: conversation?.worktreePath || liveSession?.path || '-',
+		};
+
+		if (cli.flags.json) {
+			console.log(JSON.stringify(summary, null, 2));
+			process.exit(0);
+		}
+
+		console.log(`ID:        ${summary.id}`);
+		console.log(`Agent:     ${summary.agent}`);
+		console.log(`Model:     ${summary.model}`);
+		console.log(`Branch:    ${summary.branch}`);
+		console.log(`Status:    ${summary.status}`);
+		console.log(`PID:       ${summary.pid ?? '-'}`);
+		console.log(`Elapsed:   ${summary.elapsed}`);
+		console.log(`TD Task:   ${summary.tdTaskId ?? '-'}`);
+		console.log(`Worktree:  ${summary.worktreePath}`);
+		process.exit(0);
+	}
+
+	console.error(`Unknown sessions command: ${action}`);
+	console.error('Available sessions commands:');
+	console.error('  cacd sessions list');
+	console.error('  cacd sessions show <id>');
+	process.exit(1);
+}
+
+if (subcommand === 'agents') {
+	const action = cli.input[1] ?? 'list';
+	if (action !== 'list') {
+		console.error(`Unknown agents command: ${action}`);
+		console.error('Available agents commands:');
+		console.error('  cacd agents list');
+		process.exit(1);
+	}
+
+	let agentsConfig: ApiAgentsConfigResponse;
+	let sessions: ApiSessionPayload[];
+	try {
+		[agentsConfig, sessions] = await Promise.all([
+			fetchDaemonApi<ApiAgentsConfigResponse>('/api/agents?includeDisabled=true'),
+			fetchDaemonApi<ApiSessionPayload[]>('/api/sessions'),
+		]);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(`Failed to query agents: ${message}`);
+		process.exit(1);
+	}
+
+	const sessionsByAgent = new Map<string, ApiSessionPayload[]>();
+	for (const session of sessions) {
+		const key = session.agentId || 'unknown';
+		const group = sessionsByAgent.get(key) || [];
+		group.push(session);
+		sessionsByAgent.set(key, group);
+	}
+
+	const payload = agentsConfig.agents.map(agent => ({
+		id: agent.id,
+		name: agent.name,
+		kind: agent.kind,
+		enabled: agent.enabled !== false,
+		isDefault: agentsConfig.defaultAgentId === agent.id,
+		sessions: (sessionsByAgent.get(agent.id) || []).map(session => ({
+			id: session.id,
+			state: session.state,
+			pid: session.pid ?? null,
+		})),
+	}));
+
+	if (cli.flags.json) {
+		console.log(JSON.stringify({agents: payload}, null, 2));
+		process.exit(0);
+	}
+
+	if (payload.length === 0) {
+		console.log('No agents configured');
+		process.exit(0);
+	}
+
+	printTable(
+		['id', 'name', 'kind', 'enabled', 'default', 'sessions'],
+		payload.map(agent => [
+			agent.id,
+			agent.name,
+			agent.kind,
+			agent.enabled ? 'yes' : 'no',
+			agent.isDefault ? 'yes' : 'no',
+			agent.sessions.length === 0
+				? '-'
+				: agent.sessions
+						.map(session => `${session.id}(${session.state})`)
+						.join(', '),
+		]),
+	);
 	process.exit(0);
 }
 

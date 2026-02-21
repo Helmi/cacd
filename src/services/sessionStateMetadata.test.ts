@@ -17,7 +17,13 @@ type SessionSnapshot = Pick<
 
 type SessionLike = Pick<
 	Session,
-	'id' | 'name' | 'worktreePath' | 'isActive' | 'agentId' | 'stateMutex'
+	| 'id'
+	| 'name'
+	| 'worktreePath'
+	| 'isActive'
+	| 'agentId'
+	| 'stateMutex'
+	| 'process'
 >;
 
 function createSession(
@@ -30,6 +36,7 @@ function createSession(
 		worktreePath: '/repo/.worktrees/feat',
 		isActive: true,
 		agentId: 'codex',
+		process: {pid: 4321} as Session['process'],
 		stateMutex: new Mutex({
 			...createInitialSessionStateData(),
 			state: 'idle',
@@ -61,6 +68,7 @@ describe('sessionStateMetadata', () => {
 			autoApprovalReason: 'Approval verifier denied',
 			isActive: false,
 			agentId: 'codex',
+			pid: 4321,
 		});
 	});
 
