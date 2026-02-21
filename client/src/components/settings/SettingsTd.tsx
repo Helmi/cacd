@@ -3,6 +3,7 @@ import { useAppStore } from '@/lib/store'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { TdPromptTemplate } from '@/lib/types'
 import {
   CheckCircle2,
@@ -18,15 +19,63 @@ import {
 import { cn } from '@/lib/utils'
 
 export function SettingsTd() {
-  const { tdStatus, tdStatusLoading, fetchTdPrompts, saveTdPrompt, deleteTdPrompt } = useAppStore()
+  const { tdStatus, tdStatusLoading, fetchTdPrompts, saveTdPrompt, deleteTdPrompt, config, fetchData } = useAppStore()
   const [prompts, setPrompts] = useState<TdPromptTemplate[]>([])
   const [selectedPrompt, setSelectedPrompt] = useState<string>('')
+  const [defaultPrompt, setDefaultPrompt] = useState<string>('')
   const [promptName, setPromptName] = useState('')
   const [promptContent, setPromptContent] = useState('')
   const [saving, setSaving] = useState(false)
+  const [savingDefaultPrompt, setSavingDefaultPrompt] = useState(false)
   const [loadingPrompt, setLoadingPrompt] = useState(false)
 
   const availability = tdStatus?.availability
+  const configuredDefaultPrompt = useMemo(() => {
+    const raw = config.raw
+    if (!raw || typeof raw !== 'object') return ''
+    const td = (raw as Record<string, unknown>).td
+    if (!td || typeof td !== 'object' || Array.isArray(td)) return ''
+    const defaultPromptValue = (td as Record<string, unknown>).defaultPrompt
+    return typeof defaultPromptValue === 'string' ? defaultPromptValue.trim() : ''
+  }, [config.raw])
+
+  const saveDefaultPrompt = useCallback(async (nextDefaultPrompt: string) => {
+    const trimmed = nextDefaultPrompt.trim()
+    if (!trimmed) return false
+
+    const raw = config.raw
+    const rawTd =
+      raw &&
+      typeof raw === 'object' &&
+      (raw as Record<string, unknown>).td &&
+      typeof (raw as Record<string, unknown>).td === 'object' &&
+      !Array.isArray((raw as Record<string, unknown>).td)
+        ? ((raw as Record<string, unknown>).td as Record<string, unknown>)
+        : {}
+
+    setSavingDefaultPrompt(true)
+    try {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          td: {
+            ...rawTd,
+            defaultPrompt: trimmed,
+          },
+        }),
+      })
+      if (!res.ok) return false
+      setDefaultPrompt(trimmed)
+      await fetchData()
+      return true
+    } catch {
+      return false
+    } finally {
+      setSavingDefaultPrompt(false)
+    }
+  }, [config.raw, fetchData])
 
   const refreshPrompts = useCallback(async () => {
     const data = await fetchTdPrompts('global')
@@ -70,6 +119,22 @@ export function SettingsTd() {
       .catch(() => setPromptContent(''))
       .finally(() => setLoadingPrompt(false))
   }, [selectedPrompt])
+
+  useEffect(() => {
+    if (prompts.length === 0) {
+      setDefaultPrompt('')
+      return
+    }
+
+    if (configuredDefaultPrompt && prompts.some(p => p.name === configuredDefaultPrompt)) {
+      setDefaultPrompt(configuredDefaultPrompt)
+      return
+    }
+
+    const fallback = prompts[0]!.name
+    setDefaultPrompt(fallback)
+    void saveDefaultPrompt(fallback)
+  }, [prompts, configuredDefaultPrompt, saveDefaultPrompt])
 
   const canSave = useMemo(() => promptName.trim().length > 0, [promptName])
 
@@ -167,6 +232,32 @@ export function SettingsTd() {
       </div>
 
       <div className="space-y-3 border-t border-border pt-4">
+        <div className="space-y-2">
+          <Label className="text-muted-foreground">Default Prompt Template</Label>
+          {prompts.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Create a global prompt template first.</p>
+          ) : (
+            <Select
+              value={defaultPrompt || prompts[0]!.name}
+              onValueChange={(value) => void saveDefaultPrompt(value)}
+            >
+              <SelectTrigger className="h-8" disabled={savingDefaultPrompt}>
+                <SelectValue placeholder="Select default prompt" />
+              </SelectTrigger>
+              <SelectContent>
+                {prompts.map((prompt) => (
+                  <SelectItem key={prompt.name} value={prompt.name}>
+                    {prompt.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Used automatically for TD-linked sessions when no prompt is explicitly selected.
+          </p>
+        </div>
+
         <div className="flex items-center justify-between">
           <Label className="text-muted-foreground">Global Prompt Templates</Label>
           <div className="flex items-center gap-1">
