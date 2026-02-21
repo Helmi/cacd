@@ -13,6 +13,15 @@ export interface CliFlags {
 	skipProject: boolean;
 	force: boolean;
 	json: boolean;
+	agent?: string;
+	model?: string;
+	worktree?: string;
+	task?: string;
+	name?: string;
+	taskList?: string;
+	promptTemplate?: string;
+	intent?: string;
+	option?: string | string[];
 }
 
 export interface ParsedCliArgs {

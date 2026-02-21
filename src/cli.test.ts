@@ -939,6 +939,235 @@ describe('CLI', () => {
 			}
 		});
 
+		it('supports `cacd session create --agent <id>`', async () => {
+			process.argv = [
+				'node',
+				'/tmp/unified-entry.tsx',
+				'session',
+				'create',
+				'--agent',
+				'codex',
+				'--worktree',
+				'/repo/.worktrees/feat-a',
+				'--model',
+				'gpt-5',
+				'--task',
+				'td-555',
+				'--name',
+				'Feature A',
+				'--intent',
+				'work',
+				'--option',
+				'yolo',
+				'--json',
+			];
+			setupCommonMocks();
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile: vi.fn(),
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile: vi.fn(),
+				isProcessRunning: vi.fn(),
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(),
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon: vi.fn(),
+				waitForDaemonPid: vi.fn(),
+				waitForDaemonApiReady: vi.fn(),
+			}));
+
+			const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+				const url = String(input);
+				if (url.endsWith('/api/session/create-with-agent')) {
+					const payload = JSON.parse(String(init?.body || '{}')) as {
+						agentId: string;
+						path: string;
+						options: Record<string, boolean | string>;
+						tdTaskId?: string;
+						sessionName?: string;
+						intent?: string;
+					};
+					expect(payload.agentId).toBe('codex');
+					expect(payload.path).toBe('/repo/.worktrees/feat-a');
+					expect(payload.options).toEqual({model: 'gpt-5', yolo: true});
+					expect(payload.tdTaskId).toBe('td-555');
+					expect(payload.sessionName).toBe('Feature A');
+					expect(payload.intent).toBe('work');
+
+					return new Response(
+						JSON.stringify({
+							success: true,
+							id: 'session-42',
+							name: 'Feature A',
+							agentId: 'codex',
+						}),
+						{status: 200},
+					);
+				}
+
+				return new Response('{}', {status: 404});
+			});
+			vi.stubGlobal('fetch', fetchMock);
+
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+			const consoleLogSpy = vi
+				.spyOn(console, 'log')
+				.mockImplementation(() => {});
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				const output = consoleLogSpy.mock.calls.map(call => String(call[0])).join('\n');
+				expect(output).toContain('"command": "session create"');
+				expect(output).toContain('"id": "session-42"');
+			} finally {
+				processExitSpy.mockRestore();
+				consoleLogSpy.mockRestore();
+			}
+		});
+
+		it('supports `cacd session status <id>`', async () => {
+			process.argv = ['node', '/tmp/unified-entry.tsx', 'session', 'status', 'session-1'];
+			setupCommonMocks();
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile: vi.fn(),
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile: vi.fn(),
+				isProcessRunning: vi.fn(),
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(),
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon: vi.fn(),
+				waitForDaemonPid: vi.fn(),
+				waitForDaemonApiReady: vi.fn(),
+			}));
+
+			const fetchMock = vi.fn(async (input: string | URL | Request) => {
+				const url = String(input);
+				if (url.endsWith('/api/sessions')) {
+					return new Response(
+						JSON.stringify([
+							{
+								id: 'session-1',
+								path: '/repo/.worktrees/feat-a',
+								state: 'busy',
+								isActive: true,
+								agentId: 'codex',
+								pid: 1234,
+							},
+						]),
+						{status: 200},
+					);
+				}
+
+				if (url.endsWith('/api/conversations/session-1')) {
+					return new Response(
+						JSON.stringify({
+							session: {
+								id: 'session-1',
+								agentProfileName: 'Codex',
+								agentOptions: {model: 'gpt-5'},
+								worktreePath: '/repo/.worktrees/feat-a',
+								branchName: 'feat-a',
+								tdTaskId: 'td-123',
+								createdAt: Math.floor(Date.now() / 1000) - 120,
+								state: 'busy',
+								isActive: true,
+							},
+						}),
+						{status: 200},
+					);
+				}
+
+				return new Response('{}', {status: 404});
+			});
+			vi.stubGlobal('fetch', fetchMock);
+
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+			const consoleLogSpy = vi
+				.spyOn(console, 'log')
+				.mockImplementation(() => {});
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				expect(consoleLogSpy).toHaveBeenCalledWith('ID:        session-1');
+				expect(consoleLogSpy).toHaveBeenCalledWith('Status:    busy');
+				expect(consoleLogSpy).toHaveBeenCalledWith('PID:       1234');
+			} finally {
+				processExitSpy.mockRestore();
+				consoleLogSpy.mockRestore();
+			}
+		});
+
+		it('supports `cacd session stop <id> --json`', async () => {
+			process.argv = [
+				'node',
+				'/tmp/unified-entry.tsx',
+				'session',
+				'stop',
+				'session-9',
+				'--json',
+			];
+			setupCommonMocks();
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile: vi.fn(),
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile: vi.fn(),
+				isProcessRunning: vi.fn(),
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(),
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon: vi.fn(),
+				waitForDaemonPid: vi.fn(),
+				waitForDaemonApiReady: vi.fn(),
+			}));
+
+			const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+				const url = String(input);
+				if (url.endsWith('/api/session/stop')) {
+					const payload = JSON.parse(String(init?.body || '{}')) as {id: string};
+					expect(payload.id).toBe('session-9');
+					return new Response(JSON.stringify({success: true}), {status: 200});
+				}
+				return new Response('{}', {status: 404});
+			});
+			vi.stubGlobal('fetch', fetchMock);
+
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+			const consoleLogSpy = vi
+				.spyOn(console, 'log')
+				.mockImplementation(() => {});
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				const output = consoleLogSpy.mock.calls.map(call => String(call[0])).join('\n');
+				expect(output).toContain('"command": "session stop"');
+				expect(output).toContain('"stopped": true');
+			} finally {
+				processExitSpy.mockRestore();
+				consoleLogSpy.mockRestore();
+			}
+		});
+
 		it('supports `cacd agents list --json`', async () => {
 			process.argv = ['node', '/tmp/unified-entry.tsx', 'agents', 'list', '--json'];
 			setupCommonMocks();
