@@ -58,6 +58,14 @@ const cli = meow(
     $ cacd session status <id>  Show one active session
     $ cacd session stop <id>    Stop a running session
     $ cacd agents list          List agents and their active sessions
+    $ cacd ui focus <id>        Set active/focused session in WebUI state
+    $ cacd ui send <id> <msg>   UI hook stub (not yet supported by daemon API)
+    $ cacd ui approve <id>      UI hook stub (not yet supported by daemon API)
+    $ cacd ui notify <msg>      UI hook stub (not yet supported by daemon API)
+    $ cacd focus <id>           Alias for cacd ui focus <id>
+    $ cacd send <id> <msg>      Alias for cacd ui send ... (stub)
+    $ cacd approve <id>         Alias for cacd ui approve ... (stub)
+    $ cacd notify <msg>         Alias for cacd ui notify ... (stub)
     $ cacd restart              Restart daemon
     $ cacd tui                  Launch TUI (daemon must already be running)
     $ cacd daemon               Run daemon in foreground (for service managers)
@@ -126,6 +134,8 @@ const cli = meow(
     $ cacd session status session-123
     $ cacd session stop session-123
     $ cacd agents list --json
+    $ cacd ui focus session-123   # Set focused session in UI/daemon state
+    $ cacd focus session-123      # Alias for ui focus
     $ cacd stop                   # Stop daemon
     $ cacd tui                    # Launch TUI (requires running daemon)
     $ cacd daemon                 # Foreground daemon mode for systemd/launchd
@@ -314,6 +324,12 @@ if (subcommand && !knownCommands.has(subcommand)) {
 			'  cacd sessions      Query active sessions (legacy)',
 			'  cacd session       Manage sessions (create/list/status/stop)',
 			'  cacd agents        Query configured agents',
+			'  cacd ui            Trigger UI workflow hooks (focus/send/approve/notify)',
+			'  cacd trigger       Alias for `cacd ui`',
+			'  cacd focus         Alias for `cacd ui focus`',
+			'  cacd send          Alias for `cacd ui send` (stub)',
+			'  cacd approve       Alias for `cacd ui approve` (stub)',
+			'  cacd notify        Alias for `cacd ui notify` (stub)',
 			'  cacd restart       Restart daemon',
 			'  cacd setup         Run first-time setup',
 			'  cacd add [path]    Add a project',
@@ -337,6 +353,12 @@ if (subcommand && !knownCommands.has(subcommand)) {
 					'sessions',
 					'session',
 					'agents',
+					'ui',
+					'trigger',
+					'focus',
+					'send',
+					'approve',
+					'notify',
 					'restart',
 					'setup',
 					'add',

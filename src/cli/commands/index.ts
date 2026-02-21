@@ -3,6 +3,7 @@ import {runDaemonLifecycleCommand} from './daemonLifecycle.js';
 import {runProjectCommand} from './project.js';
 import {runQueryCommand} from './query.js';
 import {runWorktreeCommand} from './worktree.js';
+import {runUiCommand} from './ui.js';
 import type {CliCommandContext, CliCommandHandler} from '../types.js';
 
 const registry = new Map<string, CliCommandHandler>([
@@ -18,6 +19,12 @@ const registry = new Map<string, CliCommandHandler>([
 	['list', runProjectCommand],
 	['auth', runAuthCommand],
 	['worktree', runWorktreeCommand],
+	['ui', runUiCommand],
+	['trigger', runUiCommand],
+	['send', runUiCommand],
+	['approve', runUiCommand],
+	['focus', runUiCommand],
+	['notify', runUiCommand],
 ]);
 
 export function getRegisteredCommands(): string[] {
