@@ -1,11 +1,7 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useMemo, useCallback} from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
-import {Effect} from 'effect';
-import {Worktree, Session, GitProject, Project} from '../types/index.js';
-import {WorktreeService} from '../services/worktreeService.js';
-import {SessionManager} from '../services/sessionManager.js';
-import {GitError} from '../types/errors.js';
+import {Worktree, GitProject, Project, SessionState} from '../types/index.js';
 import {STATUS_ICONS, STATUS_LABELS} from '../constants/statusIcons.js';
 import {useGitStatus} from '../hooks/useGitStatus.js';
 import {
@@ -13,16 +9,18 @@ import {
 	calculateColumnPositions,
 	assembleWorktreeLabel,
 } from '../utils/worktreeUtils.js';
-import {projectManager} from '../services/projectManager.js';
 import TextInputWrapper from './TextInputWrapper.js';
 import {useSearchMode} from '../hooks/useSearchMode.js';
-import {globalSessionOrchestrator} from '../services/globalSessionOrchestrator.js';
 import {configurationManager} from '../services/configurationManager.js';
 import Header from './Header.js';
+import {
+	tuiApiClient,
+	type ApiSession,
+	worktreeBelongsToProject,
+} from './tuiApiClient.js';
 
 interface MenuProps {
-	sessionManager: SessionManager;
-	worktreeService: WorktreeService;
+	projectPath: string;
 	onSelectWorktree: (worktree: Worktree) => void;
 	onSelectRecentProject?: (project: GitProject) => void;
 	error?: string | null;
@@ -73,17 +71,46 @@ const createSeparatorWithText = (
 	return '─'.repeat(leftDashes) + textWithSpaces + '─'.repeat(rightDashes);
 };
 
-/**
- * Format GitError for display
- * Extracts relevant error information using pattern matching
- */
-const formatGitError = (error: GitError): string => {
-	return `Git command failed: ${error.command} (exit ${error.exitCode})\n${error.stderr}`;
-};
+function formatProjectSessionCounts(
+	projectPath: string,
+	sessions: ApiSession[],
+): string {
+	const counts: Record<SessionState, number> = {
+		idle: 0,
+		busy: 0,
+		waiting_input: 0,
+		pending_auto_approval: 0,
+	};
+	let total = 0;
+
+	for (const session of sessions) {
+		if (!worktreeBelongsToProject(session.path, projectPath)) {
+			continue;
+		}
+		counts[session.state]++;
+		total++;
+	}
+
+	if (total === 0) {
+		return '';
+	}
+
+	const parts: string[] = [];
+	if (counts.idle > 0) {
+		parts.push(`${counts.idle} Idle`);
+	}
+	if (counts.busy > 0) {
+		parts.push(`${counts.busy} Busy`);
+	}
+	if (counts.waiting_input > 0) {
+		parts.push(`${counts.waiting_input} Waiting`);
+	}
+
+	return parts.length > 0 ? ` (${parts.join(' / ')})` : '';
+}
 
 const Menu: React.FC<MenuProps> = ({
-	sessionManager,
-	worktreeService,
+	projectPath,
 	onSelectWorktree,
 	onSelectRecentProject,
 	error,
@@ -95,110 +122,94 @@ const Menu: React.FC<MenuProps> = ({
 	const [defaultBranch, setDefaultBranch] = useState<string | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const worktrees = useGitStatus(baseWorktrees, defaultBranch);
-	const [sessions, setSessions] = useState<Session[]>([]);
+	const [sessions, setSessions] = useState<ApiSession[]>([]);
 	const [items, setItems] = useState<MenuItem[]>([]);
 	const [otherProjects, setOtherProjects] = useState<Project[]>([]);
 	const limit = 10;
 
-	// Get worktree configuration for sorting
 	const worktreeConfig = configurationManager.getWorktreeConfig();
 
-	// Use the search mode hook
 	const {isSearchMode, searchQuery, selectedIndex, setSearchQuery} =
 		useSearchMode(items.length, {
 			isDisabled: !!error || !!loadError,
 		});
 
-	useEffect(() => {
-		let cancelled = false;
+	const loadData = useCallback(async () => {
+		try {
+			const [allWorktrees, allSessions, projects, resolvedDefaultBranch] =
+				await Promise.all([
+					tuiApiClient.fetchWorktrees(),
+					tuiApiClient.fetchSessions(),
+					tuiApiClient.fetchProjects(),
+					tuiApiClient.fetchDefaultBranch(projectPath),
+				]);
 
-		// Load worktrees and default branch using Effect composition
-		// Chain getWorktreesEffect and getDefaultBranchEffect using Effect.flatMap
-		const loadWorktreesAndBranch = Effect.flatMap(
-			worktreeService.getWorktreesEffect({
-				sortByLastSession: worktreeConfig.sortByLastSession,
-			}),
-			worktrees =>
-				Effect.map(worktreeService.getDefaultBranchEffect(), defaultBranch => ({
-					worktrees,
-					defaultBranch,
-				})),
-		);
+			const projectWorktrees = allWorktrees.filter(worktree =>
+				worktreeBelongsToProject(worktree.path, projectPath),
+			);
 
-		Effect.runPromise(
-			Effect.match(loadWorktreesAndBranch, {
-				onFailure: (error: GitError) => ({
-					success: false as const,
-					error,
-				}),
-				onSuccess: ({worktrees, defaultBranch}) => ({
-					success: true as const,
-					worktrees,
-					defaultBranch,
-				}),
-			}),
-		)
-			.then(result => {
-				if (!cancelled) {
-					if (result.success) {
-						// Update sessions after worktrees are loaded
-						const allSessions = sessionManager.getAllSessions();
-						setSessions(allSessions);
-
-						// Update worktree session status
-						result.worktrees.forEach(wt => {
-							wt.hasSession = allSessions.some(s => s.worktreePath === wt.path);
-						});
-
-						setBaseWorktrees(result.worktrees);
-						setDefaultBranch(result.defaultBranch);
-						setLoadError(null);
-					} else {
-						// Handle GitError with pattern matching
-						setLoadError(formatGitError(result.error));
-					}
-				}
-			})
-			.catch((err: unknown) => {
-				// This catch should not normally be reached with Effect.match
-				if (!cancelled) {
-					setLoadError(String(err));
-				}
+			projectWorktrees.forEach(worktree => {
+				worktree.hasSession = allSessions.some(
+					session => session.path === worktree.path,
+				);
 			});
 
-		// Load other projects (filter out current project)
-		const allProjects = projectManager.getProjects();
-		const currentProjectPath = worktreeService.getGitRootPath();
-		const filteredProjects = allProjects.filter(
-			(project: Project) => project.path !== currentProjectPath,
-		);
-		setOtherProjects(filteredProjects);
-
-		// Listen for session changes
-		const handleSessionChange = () => {
-			const allSessions = sessionManager.getAllSessions();
+			setBaseWorktrees(projectWorktrees);
+			setDefaultBranch(resolvedDefaultBranch);
 			setSessions(allSessions);
-		};
-		sessionManager.on('sessionCreated', handleSessionChange);
-		sessionManager.on('sessionDestroyed', handleSessionChange);
-		sessionManager.on('sessionStateChanged', handleSessionChange);
-
-		return () => {
-			cancelled = true;
-			sessionManager.off('sessionCreated', handleSessionChange);
-			sessionManager.off('sessionDestroyed', handleSessionChange);
-			sessionManager.off('sessionStateChanged', handleSessionChange);
-		};
-	}, [sessionManager, worktreeService, worktreeConfig.sortByLastSession]);
+			setOtherProjects(projects.filter(project => project.path !== projectPath));
+			setLoadError(null);
+		} catch (loadDataError) {
+			setLoadError(
+				loadDataError instanceof Error
+					? loadDataError.message
+					: String(loadDataError),
+			);
+		}
+	}, [projectPath, worktreeConfig.sortByLastSession]);
 
 	useEffect(() => {
-		// Prepare worktree items and calculate layout
-		const items = prepareWorktreeItems(worktrees, sessions);
-		const columnPositions = calculateColumnPositions(items);
+		void loadData();
+	}, [loadData]);
 
-		// Filter worktrees based on search query
-		const filteredItems = searchQuery
-			? items.filter(item => {
+	useEffect(() => {
+		const handleSessionUpdate = () => {
+			tuiApiClient
+				.fetchSessions()
+				.then(updatedSessions => {
+					setSessions(updatedSessions);
+					setBaseWorktrees(previousWorktrees =>
+						previousWorktrees.map(worktree => ({
+							...worktree,
+							hasSession: updatedSessions.some(
+								session => session.path === worktree.path,
+							),
+						})),
+					);
+				})
+				.catch(() => {
+					/* ignore transient refresh errors */
+				});
+		};
+
+		tuiApiClient.on('session_update', handleSessionUpdate);
+		return () => {
+			tuiApiClient.off('session_update', handleSessionUpdate);
+		};
+	}, []);
+
+	useEffect(() => {
+		const worktreeItems = prepareWorktreeItems(
+			worktrees,
+			sessions.map(session => ({
+				worktreePath: session.path,
+				state: session.state,
+			})),
+		);
+		const columnPositions = calculateColumnPositions(worktreeItems);
+
+		const filteredWorktreeItems = searchQuery
+			? worktreeItems.filter(item => {
 					const branchName = item.worktree.branch || '';
 					const searchLower = searchQuery.toLowerCase();
 					return (
@@ -206,13 +217,11 @@ const Menu: React.FC<MenuProps> = ({
 						item.worktree.path.toLowerCase().includes(searchLower)
 					);
 				})
-			: items;
+			: worktreeItems;
 
-		// Build menu items with proper alignment
 		const menuItems: MenuItem[] = [];
 
-		// Add "Worktrees" section header for current project (only if we have worktrees and not in search mode)
-		if (filteredItems.length > 0 && !isSearchMode) {
+		if (filteredWorktreeItems.length > 0 && !isSearchMode) {
 			menuItems.push({
 				type: 'common',
 				label: createSeparatorWithText('Worktrees'),
@@ -220,11 +229,8 @@ const Menu: React.FC<MenuProps> = ({
 			});
 		}
 
-		// Add worktree items
-		filteredItems.forEach((item, index) => {
+		filteredWorktreeItems.forEach((item, index) => {
 			const label = assembleWorktreeLabel(item, columnPositions);
-
-			// Only show numbers for worktrees (0-9) when not in search mode
 			const numberPrefix = !isSearchMode && index < 10 ? `${index} ❯ ` : '❯ ';
 
 			menuItems.push({
@@ -235,16 +241,13 @@ const Menu: React.FC<MenuProps> = ({
 			});
 		});
 
-		// Filter other projects based on search query
 		const filteredOtherProjects = searchQuery
 			? otherProjects.filter(project =>
 					project.name.toLowerCase().includes(searchQuery.toLowerCase()),
 				)
 			: otherProjects;
 
-		// Add menu options only when not in search mode
 		if (!isSearchMode) {
-			// Add actions section first (before other projects)
 			const actionMenuItems: MenuItem[] = [
 				{
 					type: 'common',
@@ -279,7 +282,6 @@ const Menu: React.FC<MenuProps> = ({
 			];
 			menuItems.push(...actionMenuItems);
 
-			// Add other projects section if there are other tracked projects
 			if (filteredOtherProjects.length > 0) {
 				menuItems.push({
 					type: 'common',
@@ -287,23 +289,16 @@ const Menu: React.FC<MenuProps> = ({
 					value: 'other-projects-separator',
 				});
 
-				// Add other projects
-				// Calculate available number shortcuts for projects
-				const worktreeCount = filteredItems.length;
+				const worktreeCount = filteredWorktreeItems.length;
 				const availableNumbersForProjects = worktreeCount < 10;
 
 				filteredOtherProjects.forEach((project, index) => {
-					// Get session counts for this project
-					const projectSessions = globalSessionOrchestrator.getProjectSessions(
+					const countsFormatted = formatProjectSessionCounts(
 						project.path,
+						sessions,
 					);
-					const counts = SessionManager.getSessionCounts(projectSessions);
-					const countsFormatted = SessionManager.formatSessionCounts(counts);
-
-					// Show warning for invalid projects
 					const invalidIndicator = project.isValid === false ? ' ⚠️' : '';
 
-					// Assign number shortcuts to projects if worktrees < 10
 					let label = project.name + invalidIndicator + countsFormatted;
 					if (availableNumbersForProjects) {
 						const projectNumber = worktreeCount + index;
@@ -320,61 +315,50 @@ const Menu: React.FC<MenuProps> = ({
 						type: 'project',
 						label,
 						value: `project-${index}`,
-						project: project,
+						project,
 					});
 				});
 			}
 		}
-		setItems(menuItems);
-	}, [
-		worktrees,
-		sessions,
-		defaultBranch,
-		otherProjects,
-		searchQuery,
-		isSearchMode,
-	]);
 
-	// Handle hotkeys
+		setItems(menuItems);
+	}, [worktrees, sessions, defaultBranch, otherProjects, searchQuery, isSearchMode]);
+
 	useInput((input, _key) => {
-		// Skip in test environment to avoid stdin.ref error
 		if (!process.stdin.setRawMode) {
 			return;
 		}
 
-		// Dismiss error on any key press when error is shown
 		if (error && onDismissError) {
 			onDismissError();
 			return;
 		}
 
-		// Dismiss load error on any key press when load error is shown
 		if (loadError) {
 			setLoadError(null);
 			return;
 		}
 
-		// Don't process other keys if in search mode (handled by useSearchMode)
 		if (isSearchMode) {
 			return;
 		}
 
 		const keyPressed = input.toLowerCase();
 
-		// Handle number keys 0-9 for worktree selection
 		if (/^[0-9]$/.test(keyPressed)) {
-			const index = parseInt(keyPressed);
-			// Get filtered worktree items
-			const worktreeItems = items.filter(item => item.type === 'worktree');
-			const projectItems = items.filter(item => item.type === 'project');
+			const index = Number.parseInt(keyPressed, 10);
+			const worktreeItems = items.filter(
+				(item): item is WorktreeItem => item.type === 'worktree',
+			);
+			const projectItems = items.filter(
+				(item): item is ProjectItem => item.type === 'project',
+			);
 
-			// Check if it's a worktree
 			if (index < worktreeItems.length && worktreeItems[index]) {
 				onSelectWorktree(worktreeItems[index].worktree);
 				return;
 			}
 
-			// Check if it's a recent project (when worktrees < 10)
 			if (worktreeItems.length < 10) {
 				const projectIndex = index - worktreeItems.length;
 				if (
@@ -390,7 +374,6 @@ const Menu: React.FC<MenuProps> = ({
 
 		switch (keyPressed) {
 			case 'n':
-				// Trigger new worktree action
 				onSelectWorktree({
 					path: '',
 					branch: '',
@@ -399,7 +382,6 @@ const Menu: React.FC<MenuProps> = ({
 				});
 				break;
 			case 'm':
-				// Trigger merge worktree action
 				onSelectWorktree({
 					path: 'MERGE_WORKTREE',
 					branch: '',
@@ -408,7 +390,6 @@ const Menu: React.FC<MenuProps> = ({
 				});
 				break;
 			case 'd':
-				// Trigger delete worktree action
 				onSelectWorktree({
 					path: 'DELETE_WORKTREE',
 					branch: '',
@@ -417,7 +398,6 @@ const Menu: React.FC<MenuProps> = ({
 				});
 				break;
 			case 'c':
-				// Trigger configuration action
 				onSelectWorktree({
 					path: 'CONFIGURATION',
 					branch: '',
@@ -426,7 +406,6 @@ const Menu: React.FC<MenuProps> = ({
 				});
 				break;
 			case 'b':
-				// Always go back to project list - unified project management
 				onSelectWorktree({
 					path: 'EXIT_APPLICATION',
 					branch: '',
@@ -439,9 +418,9 @@ const Menu: React.FC<MenuProps> = ({
 
 	const handleSelect = (item: MenuItem) => {
 		if (item.value.endsWith('-separator') || item.value === 'recent-header') {
-			// Do nothing for separators and headers
-		} else if (item.type === 'project') {
-			// Handle project selection
+			return;
+		}
+		if (item.type === 'project') {
 			if (onSelectRecentProject) {
 				const gitProject: GitProject = {
 					path: item.project.path,
@@ -451,55 +430,54 @@ const Menu: React.FC<MenuProps> = ({
 				};
 				onSelectRecentProject(gitProject);
 			}
-		} else if (item.value === 'new-worktree') {
-			// Handle in parent component
+			return;
+		}
+		if (item.value === 'new-worktree') {
 			onSelectWorktree({
 				path: '',
 				branch: '',
 				isMainWorktree: false,
 				hasSession: false,
 			});
-		} else if (item.value === 'merge-worktree') {
-			// Handle in parent component - use special marker
+			return;
+		}
+		if (item.value === 'merge-worktree') {
 			onSelectWorktree({
 				path: 'MERGE_WORKTREE',
 				branch: '',
 				isMainWorktree: false,
 				hasSession: false,
 			});
-		} else if (item.value === 'delete-worktree') {
-			// Handle in parent component - use special marker
+			return;
+		}
+		if (item.value === 'delete-worktree') {
 			onSelectWorktree({
 				path: 'DELETE_WORKTREE',
 				branch: '',
 				isMainWorktree: false,
 				hasSession: false,
 			});
-		} else if (item.value === 'configuration') {
-			// Handle in parent component - use special marker
+			return;
+		}
+		if (item.value === 'configuration') {
 			onSelectWorktree({
 				path: 'CONFIGURATION',
 				branch: '',
 				isMainWorktree: false,
 				hasSession: false,
 			});
-		} else if (item.value === 'exit') {
-			// Handle in parent component - use special marker
+			return;
+		}
+		if (item.value === 'exit' || item.value === 'back-to-projects') {
 			onSelectWorktree({
 				path: 'EXIT_APPLICATION',
 				branch: '',
 				isMainWorktree: false,
 				hasSession: false,
 			});
-		} else if (item.value === 'back-to-projects') {
-			// Handle in parent component - use special marker
-			onSelectWorktree({
-				path: 'EXIT_APPLICATION',
-				branch: '',
-				isMainWorktree: false,
-				hasSession: false,
-			});
-		} else if (item.type === 'worktree') {
+			return;
+		}
+		if (item.type === 'worktree') {
 			onSelectWorktree(item.worktree);
 		}
 	};
@@ -531,7 +509,6 @@ const Menu: React.FC<MenuProps> = ({
 					<Text color="yellow">No worktrees match your search</Text>
 				</Box>
 			) : isSearchMode ? (
-				// In search mode, show the items as a list without SelectInput
 				<Box flexDirection="column">
 					{items.slice(0, limit).map((item, index) => (
 						<Text

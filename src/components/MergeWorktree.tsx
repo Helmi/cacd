@@ -1,13 +1,13 @@
 import React, {useState, useEffect} from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
-import {Effect} from 'effect';
-import {WorktreeService} from '../services/worktreeService.js';
 import Confirmation, {SimpleConfirmation} from './Confirmation.js';
 import {shortcutManager} from '../services/shortcutManager.js';
-import {GitError} from '../types/errors.js';
+import {Worktree} from '../types/index.js';
+import {tuiApiClient, worktreeBelongsToProject} from './tuiApiClient.js';
 
 interface MergeWorktreeProps {
+	projectPath?: string;
 	onComplete: () => void;
 	onCancel: () => void;
 }
@@ -27,6 +27,7 @@ interface BranchItem {
 }
 
 const MergeWorktree: React.FC<MergeWorktreeProps> = ({
+	projectPath,
 	onComplete,
 	onCancel,
 }) => {
@@ -37,9 +38,9 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 	const [originalBranchItems, setOriginalBranchItems] = useState<BranchItem[]>(
 		[],
 	);
+	const [worktrees, setWorktrees] = useState<Worktree[]>([]);
 	const [useRebase, setUseRebase] = useState(false);
 	const [mergeError, setMergeError] = useState<string | null>(null);
-	const [worktreeService] = useState(() => new WorktreeService());
 	const [isLoading, setIsLoading] = useState(true);
 	const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -48,13 +49,17 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 
 		const loadWorktrees = async () => {
 			try {
-				const loadedWorktrees = await Effect.runPromise(
-					worktreeService.getWorktreesEffect(),
-				);
+				const loadedWorktrees = await tuiApiClient.fetchWorktrees();
+				const scopedWorktrees = projectPath
+					? loadedWorktrees.filter(worktree =>
+							worktreeBelongsToProject(worktree.path, projectPath),
+						)
+					: loadedWorktrees;
 
 				if (!cancelled) {
+					setWorktrees(scopedWorktrees);
 					// Create branch items for selection
-					const items = loadedWorktrees.map(wt => ({
+					const items = scopedWorktrees.map(wt => ({
 						label:
 							(wt.branch ? wt.branch.replace('refs/heads/', '') : 'detached') +
 							(wt.isMainWorktree ? ' (main)' : ''),
@@ -69,23 +74,19 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 			} catch (err) {
 				if (!cancelled) {
 					const errorMessage =
-						err instanceof GitError
-							? `Git error: ${err.stderr}`
-							: err instanceof Error
-								? err.message
-								: String(err);
+						err instanceof Error ? err.message : String(err);
 					setLoadError(errorMessage);
 					setIsLoading(false);
 				}
 			}
 		};
 
-		loadWorktrees();
+		void loadWorktrees();
 
 		return () => {
 			cancelled = true;
 		};
-	}, [worktreeService]);
+	}, [projectPath]);
 
 	useInput((input, key) => {
 		if (shortcutManager.matchesShortcut('cancel', input, key)) {
@@ -122,12 +123,10 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 
 		const performMerge = async () => {
 			try {
-				await Effect.runPromise(
-					worktreeService.mergeWorktreeEffect(
-						sourceBranch,
-						targetBranch,
-						useRebase,
-					),
+				await tuiApiClient.mergeWorktree({
+					sourceBranch,
+					targetBranch,
+					useRebase,
 				);
 
 				// Merge successful, ask about deleting source branch
@@ -135,18 +134,14 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 			} catch (err) {
 				// Merge failed, show error
 				const errorMessage =
-					err instanceof GitError
-						? `${err.command} failed: ${err.stderr}`
-						: err instanceof Error
-							? err.message
-							: 'Merge operation failed';
+					err instanceof Error ? err.message : 'Merge operation failed';
 				setMergeError(errorMessage);
 				setStep('merge-error');
 			}
 		};
 
-		performMerge();
-	}, [step, sourceBranch, targetBranch, useRebase, worktreeService]);
+		void performMerge();
+	}, [step, sourceBranch, targetBranch, useRebase]);
 
 	if (isLoading) {
 		return (
@@ -352,10 +347,6 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 				message={deleteMessage}
 				onConfirm={async () => {
 					try {
-						// Find the worktree path for the source branch
-						const worktrees = await Effect.runPromise(
-							worktreeService.getWorktreesEffect(),
-						);
 						const sourceWorktree = worktrees.find(
 							wt =>
 								wt.branch &&
@@ -363,21 +354,19 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 						);
 
 						if (sourceWorktree) {
-							await Effect.runPromise(
-								worktreeService.deleteWorktreeEffect(sourceWorktree.path, {
-									deleteBranch: true,
-								}),
-							);
+							await tuiApiClient.deleteWorktree({
+								path: sourceWorktree.path,
+								deleteBranch: true,
+								projectPath,
+							});
 						}
 
 						onComplete();
 					} catch (err) {
 						const errorMessage =
-							err instanceof GitError
-								? `Delete failed: ${err.stderr}`
-								: err instanceof Error
-									? err.message
-									: 'Failed to delete worktree';
+							err instanceof Error
+								? err.message
+								: 'Failed to delete worktree';
 						setMergeError(errorMessage);
 						setStep('merge-error');
 					}

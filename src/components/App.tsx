@@ -1,6 +1,5 @@
 import React, {useState, useEffect, useCallback} from 'react';
 import {useApp, Box, Text, useInput} from 'ink';
-import {Effect} from 'effect';
 import Menu from './Menu.js';
 import ProjectList from './ProjectList.js';
 import Session from './Session.js';
@@ -11,20 +10,15 @@ import Configuration from './Configuration.js';
 import AgentSelector from './AgentSelector.js';
 import RemoteBranchSelector from './RemoteBranchSelector.js';
 import LoadingSpinner from './LoadingSpinner.js';
-import {SessionManager} from '../services/sessionManager.js';
 import {globalSessionOrchestrator} from '../services/globalSessionOrchestrator.js';
-import {WorktreeService} from '../services/worktreeService.js';
 import {
 	Worktree,
-	Session as ISession,
 	DevcontainerConfig,
 	GitProject,
 	AmbiguousBranchError,
 	RemoteBranchMatch,
 } from '../types/index.js';
-import {type AppError} from '../types/errors.js';
-import {configurationManager} from '../services/configurationManager.js';
-import {coreService} from '../services/coreService.js';
+import {tuiApiClient, type ApiSession} from './tuiApiClient.js';
 
 type View =
 	| 'menu'
@@ -55,43 +49,18 @@ interface AppProps {
 
 const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 	const {exit} = useApp();
-	// Always start with project-list - unified project management
 	const [view, setView] = useState<View>('project-list');
-	const [sessionManager, setSessionManager] = useState<SessionManager>(
-		coreService.sessionManager,
-	);
-	const [worktreeService, setWorktreeService] = useState(
-		coreService.worktreeService,
-	);
-	const [activeSession, setActiveSession] = useState<ISession | null>(null);
+	const [sessions, setSessions] = useState<ApiSession[]>([]);
+	const [activeSession, setActiveSession] = useState<ApiSession | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [menuKey, setMenuKey] = useState(0); // Force menu refresh
+	const [menuKey, setMenuKey] = useState(0);
 	const [selectedWorktree, setSelectedWorktree] = useState<Worktree | null>(
 		null,
-	); // Store selected worktree for agent selection
+	);
 	const [selectedProject, setSelectedProject] = useState<GitProject | null>(
 		null,
-	); // Store selected project in multi-project mode
+	);
 
-	useEffect(() => {
-		const handleServiceUpdate = ({
-			sessionManager,
-			worktreeService,
-		}: {
-			sessionManager: SessionManager;
-			worktreeService: WorktreeService;
-		}) => {
-			setSessionManager(sessionManager);
-			setWorktreeService(worktreeService);
-		};
-
-		coreService.on('servicesUpdated', handleServiceUpdate);
-		return () => {
-			coreService.off('servicesUpdated', handleServiceUpdate);
-		};
-	}, []);
-
-	// State for remote branch disambiguation
 	const [pendingWorktreeCreation, setPendingWorktreeCreation] = useState<{
 		path: string;
 		branch: string;
@@ -101,36 +70,20 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 		ambiguousError: AmbiguousBranchError;
 	} | null>(null);
 
-	// State for loading context - track flags for message composition
 	const [loadingContext, setLoadingContext] = useState<{
 		copySessionData?: boolean;
 		deleteBranch?: boolean;
 	}>({});
 
-	// Helper function to format error messages based on error type using _tag discrimination
-	const formatErrorMessage = (error: AppError): string => {
-		switch (error._tag) {
-			case 'ProcessError':
-				return `Process error: ${error.message}`;
-			case 'ConfigError':
-				return `Configuration error (${error.reason}): ${error.details}`;
-			case 'GitError':
-				return `Git command failed: ${error.command} (exit ${error.exitCode})\n${error.stderr}`;
-			case 'FileSystemError':
-				return `File ${error.operation} failed for ${error.path}: ${error.cause}`;
-			case 'ValidationError':
-				return `Validation failed for ${error.field}: ${error.constraint}`;
-		}
-	};
+	const getErrorMessage = (issue: unknown): string =>
+		issue instanceof Error ? issue.message : String(issue);
 
-	// Helper function to clear terminal screen
 	const clearScreen = () => {
 		if (process.stdout.isTTY) {
 			process.stdout.write('\x1B[2J\x1B[H');
 		}
 	};
 
-	// Helper function to navigate with screen clearing
 	const navigateWithClear = useCallback(
 		(newView: View, callback?: () => void) => {
 			clearScreen();
@@ -138,44 +91,94 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 			setTimeout(() => {
 				setView(newView);
 				if (callback) callback();
-			}, 10); // Small delay to ensure screen clear is processed
+			}, 10);
 		},
 		[],
 	);
 
 	useEffect(() => {
-		// Listen for session exits to return to menu automatically
-		const handleSessionExit = (session: ISession) => {
-			// If the exited session is the active one, return to menu
-			setActiveSession(current => {
-				if (current && session.id === current.id) {
-					// Session that exited is the active one, trigger return to menu
-					setActiveSession(null);
-					setError(null);
+		let mounted = true;
+		tuiApiClient.configureFromWebConfig(webConfig);
+		tuiApiClient.connectSocket();
 
-					// If we have a selected project, return to worktree menu, else project list
-					const targetView = selectedProject ? 'menu' : 'project-list';
-
-					navigateWithClear(targetView, () => {
-						setMenuKey(prev => prev + 1);
-						process.stdin.resume();
-						process.stdin.setEncoding('utf8');
-					});
+		const refreshSessions = async () => {
+			try {
+				const loadedSessions = await tuiApiClient.fetchSessions();
+				if (mounted) {
+					setSessions(loadedSessions);
 				}
-				return current;
-			});
+			} catch {
+				/* ignore transient refresh failures */
+			}
 		};
 
-		sessionManager.on('sessionExit', handleSessionExit);
+		const loadInitialState = async () => {
+			try {
+				const [state, loadedSessions] = await Promise.all([
+					tuiApiClient.fetchState(),
+					tuiApiClient.fetchSessions(),
+				]);
 
-		// Re-attach listener when session manager changes
+				if (!mounted) {
+					return;
+				}
+
+				setSelectedProject(state.selectedProject);
+				setSessions(loadedSessions);
+				setError(null);
+			} catch (loadError) {
+				if (mounted) {
+					setError(
+						`Failed to connect to daemon: ${getErrorMessage(loadError)}`,
+					);
+				}
+			}
+		};
+
+		const handleSessionUpdate = () => {
+			void refreshSessions();
+		};
+
+		tuiApiClient.on('session_update', handleSessionUpdate);
+		void loadInitialState();
+
 		return () => {
-			sessionManager.off('sessionExit', handleSessionExit);
-			// Don't destroy sessions on unmount - they persist in memory
+			mounted = false;
+			tuiApiClient.off('session_update', handleSessionUpdate);
+			tuiApiClient.disconnectSocket();
 		};
-	}, [sessionManager, selectedProject, navigateWithClear]);
+	}, [webConfig]);
 
-	// Helper function to parse ambiguous branch error and create AmbiguousBranchError
+	useEffect(() => {
+		if (!activeSession) {
+			return;
+		}
+
+		const updatedSession = sessions.find(
+			session => session.id === activeSession.id,
+		);
+		if (updatedSession) {
+			if (
+				updatedSession.state !== activeSession.state ||
+				updatedSession.name !== activeSession.name ||
+				updatedSession.isActive !== activeSession.isActive
+			) {
+				setActiveSession(updatedSession);
+			}
+			return;
+		}
+
+		setActiveSession(null);
+		setError(null);
+
+		const targetView = selectedProject ? 'menu' : 'project-list';
+		navigateWithClear(targetView, () => {
+			setMenuKey(prev => prev + 1);
+			process.stdin.resume();
+			process.stdin.setEncoding('utf8');
+		});
+	}, [activeSession, navigateWithClear, selectedProject, sessions]);
+
 	const parseAmbiguousBranchError = (
 		errorMessage: string,
 	): AmbiguousBranchError | null => {
@@ -191,7 +194,6 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 		const remoteRefsText = match[2]!;
 		const remoteRefs = remoteRefsText.split(', ');
 
-		// Parse remote refs into RemoteBranchMatch objects
 		const matches: RemoteBranchMatch[] = remoteRefs.map(fullRef => {
 			const parts = fullRef.split('/');
 			const remote = parts[0]!;
@@ -206,7 +208,21 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 		return new AmbiguousBranchError(branchName, matches);
 	};
 
-	// Helper function to handle worktree creation results
+	const handleReturnToMenu = () => {
+		setActiveSession(null);
+
+		const targetView = selectedProject ? 'menu' : 'project-list';
+		navigateWithClear(targetView, () => {
+			setMenuKey(prev => prev + 1);
+
+			if (process.stdin.isTTY) {
+				process.stdin.read();
+				process.stdin.resume();
+				process.stdin.setEncoding('utf8');
+			}
+		});
+	};
+
 	const handleWorktreeCreationResult = (
 		result: {success: boolean; error?: string; warnings?: string[]},
 		creationData: {
@@ -218,7 +234,6 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 		},
 	) => {
 		if (result.success) {
-			// Show warnings if any (e.g., hook failures)
 			if (result.warnings && result.warnings.length > 0) {
 				setError(
 					`Worktree created with warnings:\n${result.warnings.join('\n')}`,
@@ -232,62 +247,61 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 		const ambiguousError = parseAmbiguousBranchError(errorMessage);
 
 		if (ambiguousError) {
-			// Handle ambiguous branch error
 			setPendingWorktreeCreation({
 				...creationData,
 				ambiguousError,
 			});
 			navigateWithClear('remote-branch-selector');
-		} else {
-			// Handle regular error
-			setError(errorMessage);
-			setView('new-worktree');
+			return;
 		}
+
+		setError(errorMessage);
+		setView('new-worktree');
 	};
 
 	const handleSelectWorktree = async (worktree: Worktree) => {
-		// Check if this is the new worktree option
 		if (worktree.path === '') {
 			navigateWithClear('new-worktree');
 			return;
 		}
 
-		// Check if this is the delete worktree option
 		if (worktree.path === 'DELETE_WORKTREE') {
 			navigateWithClear('delete-worktree');
 			return;
 		}
 
-		// Check if this is the merge worktree option
 		if (worktree.path === 'MERGE_WORKTREE') {
 			navigateWithClear('merge-worktree');
 			return;
 		}
 
-		// Check if this is the configuration option
 		if (worktree.path === 'CONFIGURATION') {
 			navigateWithClear('configuration');
 			return;
 		}
 
-		// Check if this is the exit application option
 		if (worktree.path === 'EXIT_APPLICATION') {
-			// Always go back to project list (unified project management)
-			handleBackToProjectList();
+			void handleBackToProjectList();
 			return;
 		}
 
-		// Check if session already exists for this worktree
-		const session = sessionManager.getSession(worktree.path);
+		try {
+			const existingSession =
+				sessions.find(existing => existing.path === worktree.path) ||
+				(await tuiApiClient.findSessionByWorktreePath(worktree.path));
 
-		if (session) {
-			// Resume existing session
-			setActiveSession(session);
-			navigateWithClear('session');
+			if (existingSession) {
+				setActiveSession(existingSession);
+				navigateWithClear('session');
+				return;
+			}
+		} catch (sessionLookupError) {
+			setError(
+				`Failed to check existing sessions: ${getErrorMessage(sessionLookupError)}`,
+			);
 			return;
 		}
 
-		// No existing session - show agent selector
 		setSelectedWorktree(worktree);
 		navigateWithClear('agent-selector');
 	};
@@ -305,78 +319,28 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 	) => {
 		if (!selectedWorktree) return;
 
-		// Get agent config
-		const agent = configurationManager.getAgentById(agentId);
-		if (!agent) {
-			setError(`Agent not found: ${agentId}`);
-			setSelectedWorktree(null);
-			navigateWithClear('menu');
-			return;
-		}
-		if (agent.enabled === false) {
-			setError(`Agent is disabled: ${agent.name}`);
-			setSelectedWorktree(null);
-			navigateWithClear('menu');
-			return;
-		}
-
-		// Build command and args
-		const command =
-			agent.command === '$SHELL'
-				? process.env['SHELL'] || '/bin/bash'
-				: agent.command;
-		const args = configurationManager.buildAgentArgs(agent, options);
-
-		// Set loading state
 		setView('creating-session');
 
-		// Create session with agent
-		const effect = sessionManager.createSessionWithAgentEffect(
-			selectedWorktree.path,
-			command,
-			args,
-			agent.detectionStrategy,
-			undefined, // sessionName
-			agentId,
-		);
-
-		const result = await Effect.runPromise(Effect.either(effect));
-
-		if (result._tag === 'Left') {
-			const errorMessage = formatErrorMessage(result.left);
-			setError(`Failed to create session: ${errorMessage}`);
+		try {
+			const session = await tuiApiClient.createSessionWithAgent({
+				path: selectedWorktree.path,
+				agentId,
+				options,
+			});
+			setSessions(prev => {
+				const withoutCurrent = prev.filter(
+					existing => existing.id !== session.id,
+				);
+				return [...withoutCurrent, session];
+			});
+			setActiveSession(session);
+			setSelectedWorktree(null);
+			navigateWithClear('session');
+		} catch (createError) {
+			setError(`Failed to create session: ${getErrorMessage(createError)}`);
 			setSelectedWorktree(null);
 			navigateWithClear('menu');
-			return;
 		}
-
-		// Success
-		const session = result.right;
-		setActiveSession(session);
-		setSelectedWorktree(null);
-		navigateWithClear('session');
-	};
-
-	const handleReturnToMenu = () => {
-		setActiveSession(null);
-		// Don't clear error here - let user dismiss it manually
-
-		// If we have a selected project, return to worktree menu, else project list
-		const targetView = selectedProject ? 'menu' : 'project-list';
-
-		navigateWithClear(targetView, () => {
-			setMenuKey(prev => prev + 1); // Force menu refresh
-
-			// Ensure stdin is in a clean state for Ink components
-			if (process.stdin.isTTY) {
-				// Flush any pending input to prevent escape sequences from leaking
-				process.stdin.read();
-				// Note: Don't call setRawMode(false) here - Ink needs raw mode enabled
-				// Session.tsx already restores stdin state in its cleanup
-				process.stdin.resume();
-				process.stdin.setEncoding('utf8');
-			}
-		});
 	};
 
 	const handleCreateWorktree = async (
@@ -386,36 +350,27 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 		copySessionData: boolean,
 		copyClaudeDirectory: boolean,
 	) => {
-		// Set loading context before showing loading view
 		setLoadingContext({copySessionData});
 		setView('creating-worktree');
 		setError(null);
 
-		// Create the worktree using Effect
-		const result = await Effect.runPromise(
-			Effect.either(
-				worktreeService.createWorktreeEffect(
-					path,
-					branch,
-					baseBranch,
-					copySessionData,
-					copyClaudeDirectory,
-				),
-			),
-		);
+		try {
+			const result = await tuiApiClient.createWorktree({
+				path,
+				branch,
+				baseBranch,
+				copySessionData,
+				copyClaudeDirectory,
+				projectPath: selectedProject?.path,
+			});
 
-		// Transform Effect result to legacy format for handleWorktreeCreationResult
-		if (result._tag === 'Left') {
-			// Handle error using pattern matching on _tag
-			const errorMessage = formatErrorMessage(result.left);
 			handleWorktreeCreationResult(
-				{success: false, error: errorMessage},
+				{success: true, warnings: result.warnings},
 				{path, branch, baseBranch, copySessionData, copyClaudeDirectory},
 			);
-		} else {
-			// Success case - pass any warnings from hooks
+		} catch (creationError) {
 			handleWorktreeCreationResult(
-				{success: true, warnings: result.right.warnings},
+				{success: false, error: getErrorMessage(creationError)},
 				{path, branch, baseBranch, copySessionData, copyClaudeDirectory},
 			);
 		}
@@ -428,46 +383,35 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 	const handleRemoteBranchSelected = async (selectedRemoteRef: string) => {
 		if (!pendingWorktreeCreation) return;
 
-		// Clear the pending creation data
 		const creationData = pendingWorktreeCreation;
 		setPendingWorktreeCreation(null);
-
-		// Retry worktree creation with the resolved base branch
-		// Set loading context before showing loading view
 		setLoadingContext({copySessionData: creationData.copySessionData});
 		setView('creating-worktree');
 		setError(null);
 
-		const result = await Effect.runPromise(
-			Effect.either(
-				worktreeService.createWorktreeEffect(
-					creationData.path,
-					creationData.branch,
-					selectedRemoteRef, // Use the selected remote reference
-					creationData.copySessionData,
-					creationData.copyClaudeDirectory,
-				),
-			),
-		);
+		try {
+			const result = await tuiApiClient.createWorktree({
+				path: creationData.path,
+				branch: creationData.branch,
+				baseBranch: selectedRemoteRef,
+				copySessionData: creationData.copySessionData,
+				copyClaudeDirectory: creationData.copyClaudeDirectory,
+				projectPath: selectedProject?.path,
+			});
 
-		if (result._tag === 'Left') {
-			// Handle error using pattern matching on _tag
-			const errorMessage = formatErrorMessage(result.left);
-			setError(errorMessage);
-			setView('new-worktree');
-		} else {
-			// Success - show warnings if any, then return to menu
-			if (result.right.warnings && result.right.warnings.length > 0) {
+			if (result.warnings && result.warnings.length > 0) {
 				setError(
-					`Worktree created with warnings:\n${result.right.warnings.join('\n')}`,
+					`Worktree created with warnings:\n${result.warnings.join('\n')}`,
 				);
 			}
 			handleReturnToMenu();
+		} catch (remoteBranchError) {
+			setError(getErrorMessage(remoteBranchError));
+			setView('new-worktree');
 		}
 	};
 
 	const handleRemoteBranchSelectorCancel = () => {
-		// Clear pending data and return to new worktree form
 		setPendingWorktreeCreation(null);
 		setView('new-worktree');
 	};
@@ -476,77 +420,70 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 		worktreePaths: string[],
 		deleteBranch: boolean,
 	) => {
-		// Set loading context before showing loading view
 		setLoadingContext({deleteBranch});
 		setView('deleting-worktree');
 		setError(null);
 
-		// Delete the worktrees sequentially using Effect
-		let hasError = false;
 		for (const path of worktreePaths) {
-			const result = await Effect.runPromise(
-				Effect.either(
-					worktreeService.deleteWorktreeEffect(path, {deleteBranch}),
-				),
-			);
-
-			if (result._tag === 'Left') {
-				// Handle error using pattern matching on _tag
-				hasError = true;
-				const errorMessage = formatErrorMessage(result.left);
-				setError(errorMessage);
-				break;
+			try {
+				await tuiApiClient.deleteWorktree({
+					path,
+					deleteBranch,
+					projectPath: selectedProject?.path,
+				});
+			} catch (deleteError) {
+				setError(getErrorMessage(deleteError));
+				setView('delete-worktree');
+				return;
 			}
 		}
 
-		if (!hasError) {
-			// Success - return to menu
-			handleReturnToMenu();
-		} else {
-			// Show error
-			setView('delete-worktree');
-		}
+		handleReturnToMenu();
 	};
 
 	const handleCancelDeleteWorktree = () => {
 		handleReturnToMenu();
 	};
 
-	const handleSelectProject = (project: GitProject) => {
-		// Handle special exit case
+	const handleSelectProject = async (project: GitProject) => {
 		if (project.path === 'EXIT_APPLICATION') {
 			globalSessionOrchestrator.destroyAllSessions();
 			exit();
-			// Force process exit since Ink's exit() doesn't terminate when there are active handles
 			process.exit(0);
 		}
 
-		// Don't allow selecting invalid projects (missing path / not a git repo)
 		if (project.isValid === false) {
 			setError(`Project path is invalid or no longer exists: ${project.path}`);
 			return;
 		}
 
-		// Set the selected project and update services
-		setSelectedProject(project);
-		coreService.selectProject(project);
-		navigateWithClear('menu');
+		try {
+			await tuiApiClient.selectProject(project.path);
+			setSelectedProject(project);
+			navigateWithClear('menu');
+		} catch (projectError) {
+			setError(`Failed to select project: ${getErrorMessage(projectError)}`);
+		}
 	};
 
-	const handleBackToProjectList = () => {
-		// Sessions persist in their project-specific managers
+	const handleBackToProjectList = async () => {
 		setSelectedProject(null);
-		coreService.resetProject();
+
+		try {
+			await tuiApiClient.resetProject();
+		} catch (resetError) {
+			setError(
+				`Failed to reset project selection: ${getErrorMessage(resetError)}`,
+			);
+		}
 
 		navigateWithClear('project-list', () => {
 			setMenuKey(prev => prev + 1);
 		});
 	};
 
-	// Global quit handler - Ctrl+Q works from any view (except session which handles its own input)
 	useInput(
 		(input, key) => {
-			// Ctrl+Q to quit from anywhere
 			if (key.ctrl && input === 'q') {
 				globalSessionOrchestrator.destroyAllSessions();
 				exit();
@@ -554,7 +491,7 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 			}
 		},
 		{isActive: view !== 'session'},
-	); // Disable in session view to not interfere with terminal
+	);
 
 	if (view === 'project-list') {
 		return (
@@ -569,16 +506,27 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 	}
 
 	if (view === 'menu') {
+		if (!selectedProject) {
+			return (
+				<ProjectList
+					onSelectProject={handleSelectProject}
+					onOpenConfiguration={() => navigateWithClear('configuration')}
+					error={error}
+					onDismissError={() => setError(null)}
+					webConfig={webConfig}
+				/>
+			);
+		}
+
 		return (
 			<Menu
 				key={menuKey}
-				sessionManager={sessionManager}
-				worktreeService={worktreeService}
+				projectPath={selectedProject.path}
 				onSelectWorktree={handleSelectWorktree}
 				onSelectRecentProject={handleSelectProject}
 				error={error}
 				onDismissError={() => setError(null)}
-				projectName={selectedProject?.name}
+				projectName={selectedProject.name}
 				webConfig={webConfig}
 			/>
 		);
@@ -590,7 +538,6 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 				<Session
 					key={activeSession.id}
 					session={activeSession}
-					sessionManager={sessionManager}
 					onReturnToMenu={handleReturnToMenu}
 				/>
 			</Box>
@@ -615,7 +562,6 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 	}
 
 	if (view === 'creating-worktree') {
-		// Compose message based on loading context
 		const message = loadingContext.copySessionData
 			? 'Creating worktree and copying session data...'
 			: 'Creating worktree...';
@@ -644,7 +590,6 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 	}
 
 	if (view === 'deleting-worktree') {
-		// Compose message based on loading context
 		const message = loadingContext.deleteBranch
 			? 'Deleting worktrees and branches...'
 			: 'Deleting worktrees...';
@@ -697,14 +642,9 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 	}
 
 	if (view === 'creating-session') {
-		// Compose message based on devcontainerConfig presence
-		// Devcontainer operations take >5 seconds, so indicate extended duration
 		const message = devcontainerConfig
 			? 'Starting devcontainer (this may take a moment)...'
 			: 'Creating session...';
-
-		// Use yellow color for devcontainer operations (longer duration),
-		// cyan for standard session creation
 		const color = devcontainerConfig ? 'yellow' : 'cyan';
 
 		return (
@@ -715,7 +655,6 @@ const App: React.FC<AppProps> = ({devcontainerConfig, webConfig}) => {
 	}
 
 	if (view === 'clearing') {
-		// Render nothing during the clearing phase to ensure clean transition
 		return null;
 	}
 

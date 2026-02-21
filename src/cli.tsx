@@ -12,6 +12,12 @@ import {join} from 'path';
 import dgram from 'dgram';
 import dns from 'dns';
 import os from 'os';
+import {
+	cleanupDaemonPidFile,
+	getDaemonPidFilePath,
+	prepareDaemonPidFile,
+} from './utils/daemonLifecycle.js';
+import {ensureDaemonForTui} from './utils/daemonControl.js';
 
 // Initialize config dir immediately - this is safe because configDir.js has no dependencies
 initializeConfigDir();
@@ -26,26 +32,28 @@ const {default: meow} = await import('meow');
 
 const cli = meow(
 	`
-	Usage
-	  $ cacd                    Launch the TUI
-	  $ cacd setup              Run first-time setup wizard
-	  $ cacd add [path]         Add a project (default: current directory)
-	  $ cacd remove <path>      Remove a project from the list
-	  $ cacd list               List all tracked projects
-	  $ cacd auth <command>     Manage WebUI authentication
+		Usage
+		  $ cacd                    Launch TUI (auto-start daemon if needed)
+		  $ cacd tui                Launch TUI only (daemon must already be running)
+		  $ cacd daemon             Run API server as daemon (no TUI)
+		  $ cacd setup              Run first-time setup wizard
+		  $ cacd add [path]         Add a project (default: current directory)
+		  $ cacd remove <path>      Remove a project from the list
+		  $ cacd list               List all tracked projects
+		  $ cacd auth <command>     Manage WebUI authentication
 
 	Auth Commands
 	  $ cacd auth show            Display access URL
 	  $ cacd auth reset-passcode  Reset your passcode
 	  $ cacd auth regenerate-token  Generate new access token (careful!)
 
-	Options
-	  --help                Show help
-	  --version             Show version
-	  --port <number>       Port for web interface (overrides config/env)
-	  --headless            Run API server only (no TUI) - useful for dev mode
-	  --devc-up-command     Command to start devcontainer
-	  --devc-exec-command   Command to execute in devcontainer
+		Options
+		  --help                Show help
+		  --version             Show version
+		  --port <number>       Port for web interface (overrides config/env)
+		  --headless            Run API server only (legacy alias for 'daemon')
+		  --devc-up-command     Command to start devcontainer
+		  --devc-exec-command   Command to execute in devcontainer
 
 	Setup Options (for 'cacd setup')
 	  --no-web              Disable web interface
@@ -59,15 +67,17 @@ const cli = meow(
 	  CACD_DEV               Set to 1 for dev mode (uses local .cacd-dev/ config)
 
 	Examples
-	  $ cacd                         # Launch TUI
+	  $ cacd                         # Launch TUI (auto-start daemon if needed)
+	  $ cacd tui                     # Launch TUI only (requires running daemon)
 	  $ cacd setup                   # Run setup wizard
 	  $ cacd setup --port 8080       # Setup with custom port
 	  $ cacd add                     # Add current directory as project
-	  $ cacd add /path/to/project    # Add specific project
-	  $ cacd list                    # Show tracked projects
-	  $ cacd auth show               # Show WebUI access URL
-	  $ cacd --port 8080             # Launch TUI on specific port
-`,
+		  $ cacd add /path/to/project    # Add specific project
+		  $ cacd list                    # Show tracked projects
+		  $ cacd auth show               # Show WebUI access URL
+		  $ cacd daemon                  # Start daemon (API server only)
+		  $ cacd --port 8080             # Launch TUI on specific port
+	`,
 	{
 		importMeta: import.meta,
 		flags: {
@@ -114,6 +124,8 @@ if (!!cli.flags.devcUpCommand !== !!cli.flags.devcExecCommand) {
 
 // Handle CLI subcommands
 const subcommand = cli.input[0];
+const isDaemonMode = subcommand === 'daemon' || cli.flags.headless;
+const isTuiOnlyMode = subcommand === 'tui';
 
 // Handle setup subcommand BEFORE importing services (which auto-create config)
 if (subcommand === 'setup') {
@@ -367,7 +379,9 @@ if (subcommand === 'auth') {
 // If there's an unrecognized subcommand, show error
 if (
 	subcommand &&
-	!['add', 'remove', 'list', 'setup', 'auth'].includes(subcommand)
+	!['add', 'remove', 'list', 'setup', 'auth', 'daemon', 'tui'].includes(
+		subcommand,
+	)
 ) {
 	console.error(`Unknown command: ${subcommand}`);
 	console.error('');
@@ -377,15 +391,16 @@ if (
 	console.error('  cacd remove <path> Remove a project');
 	console.error('  cacd list          List projects');
 	console.error('  cacd auth <cmd>    Manage WebUI auth');
-	console.error('  cacd               Launch TUI');
+	console.error('  cacd tui           Launch TUI (daemon required)');
+	console.error('  cacd daemon        Run API server without TUI');
+	console.error('  cacd               Launch TUI (auto-start daemon)');
 	process.exit(1);
 }
 
-// If no subcommand, continue to TUI - check TTY (unless headless)
-const isHeadless = cli.flags.headless;
-if (!isHeadless && (!process.stdin.isTTY || !process.stdout.isTTY)) {
+// If no daemon mode, continue to TUI - check TTY
+if (!isDaemonMode && (!process.stdin.isTTY || !process.stdout.isTTY)) {
 	console.error('Error: cacd must be run in an interactive terminal (TTY)');
-	console.error('Use --headless to run API server only without TUI');
+	console.error('Use `cacd daemon` to run API server only without TUI');
 	process.exit(1);
 }
 
@@ -469,38 +484,81 @@ function getLocalHostname(
 	});
 }
 
-// Start API Server
-let webConfig = undefined;
+let webConfig:
+	| {
+			url: string;
+			externalUrl?: string;
+			hostname?: string;
+			port: number;
+			configDir: string;
+			isCustomConfigDir: boolean;
+			isDevMode: boolean;
+	  }
+	| undefined;
 
-try {
-	const result = await apiServer.start(port, '0.0.0.0', devModeActive);
-	const actualPort = result.port;
+const accessToken = configurationManager.getConfiguration().accessToken;
 
-	// In dev mode, persist the port that was actually used (for next restart)
-	if (devModeActive && actualPort !== port) {
-		configurationManager.setPort(actualPort);
+if (isDaemonMode) {
+	try {
+		const result = await apiServer.start(port, '0.0.0.0', devModeActive);
+		const actualPort = result.port;
+
+		// In dev mode, persist the port that was actually used (for next restart)
+		if (devModeActive && actualPort !== port) {
+			configurationManager.setPort(actualPort);
+		}
+
+		const externalIP = await getExternalIP();
+		const hostname = await getLocalHostname(externalIP);
+		const tokenPath = accessToken ? `/${accessToken}` : '';
+		webConfig = {
+			url: result.address.replace('0.0.0.0', 'localhost') + tokenPath,
+			externalUrl: externalIP
+				? `http://${externalIP}:${actualPort}${tokenPath}`
+				: undefined,
+			hostname: hostname
+				? `http://${hostname}:${actualPort}${tokenPath}`
+				: undefined,
+			port: actualPort,
+			configDir,
+			isCustomConfigDir: customConfigDir,
+			isDevMode: devModeActive,
+		};
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(`Failed to start daemon API server: ${message}`);
+		process.exit(1);
 	}
-
-	const externalIP = await getExternalIP();
-	const hostname = await getLocalHostname(externalIP);
-	const accessToken = configurationManager.getConfiguration().accessToken;
-	const tokenPath = accessToken ? `/${accessToken}` : '';
-	webConfig = {
-		url: result.address.replace('0.0.0.0', 'localhost') + tokenPath,
-		externalUrl: externalIP
-			? `http://${externalIP}:${actualPort}${tokenPath}`
-			: undefined,
-		hostname: hostname
-			? `http://${hostname}:${actualPort}${tokenPath}`
-			: undefined,
-		port: actualPort,
-		configDir,
-		isCustomConfigDir: customConfigDir,
-		isDevMode: devModeActive,
-	};
-} catch (_err) {
-	// Log error but don't fail startup
-	// We can't see this log easily in TUI mode, but it's there for debugging if redirected
+} else {
+	try {
+		const daemonConnection = await ensureDaemonForTui({
+			configDir,
+			port,
+			accessToken,
+			isCustomConfigDir: customConfigDir,
+			isDevMode: devModeActive,
+			autoStart: !isTuiOnlyMode,
+		});
+		const externalIP = await getExternalIP();
+		const hostname = await getLocalHostname(externalIP);
+		const tokenPath = accessToken ? `/${accessToken}` : '';
+		webConfig = {
+			...daemonConnection.webConfig,
+			externalUrl: externalIP
+				? `http://${externalIP}:${daemonConnection.webConfig.port}${tokenPath}`
+				: undefined,
+			hostname: hostname
+				? `http://${hostname}:${daemonConnection.webConfig.port}${tokenPath}`
+				: undefined,
+		};
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		const prefix = isTuiOnlyMode
+			? 'Failed to connect TUI to daemon'
+			: 'Failed to start or connect to daemon';
+		console.error(`${prefix}: ${message}`);
+		process.exit(1);
+	}
 }
 
 // Prepare devcontainer config
@@ -518,28 +576,62 @@ const appProps = {
 	webConfig,
 };
 
-// In headless mode, just run the API server without TUI
-if (isHeadless) {
-	console.log('Running in headless mode (API server only)');
-	console.log(`API Server: ${webConfig?.url || `http://localhost:${port}`}`);
-	if (webConfig?.externalUrl) {
-		console.log(`External:   ${webConfig.externalUrl}`);
-	}
-	console.log('');
-	console.log('Press Ctrl+C to stop');
+// In daemon mode, run API server only without TUI
+if (isDaemonMode) {
+	const daemonPid = process.pid;
+	const daemonPidFilePath = getDaemonPidFilePath(configDir);
 
-	// Clean up sessions on exit (headless)
+	try {
+		await prepareDaemonPidFile(daemonPidFilePath, daemonPid);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(`Failed to initialize daemon PID file: ${message}`);
+		process.exit(1);
+	}
+
+	const accessToken = configurationManager.getConfiguration().accessToken;
+	console.log('CA⚡CD daemon started');
+	console.log(`Local URL:    ${webConfig?.url || `http://localhost:${port}`}`);
+	console.log(`Token:        ${accessToken || '(none configured)'}`);
+	console.log(`External URL: ${webConfig?.externalUrl || '(unavailable)'}`);
+	console.log(`PID:          ${daemonPid}`);
+	console.log(`Config Dir:   ${configDir}`);
+	console.log(`PID File:     ${daemonPidFilePath}`);
+	console.log('');
+	console.log('Use SIGTERM or Ctrl+C to stop');
+
+	let isShuttingDown = false;
+	const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+		if (isShuttingDown) {
+			return;
+		}
+		isShuttingDown = true;
+		console.log(`\nReceived ${signal}, shutting down...`);
+
+		try {
+			globalSessionOrchestrator.destroyAllSessions();
+		} finally {
+			try {
+				await cleanupDaemonPidFile(daemonPidFilePath, daemonPid);
+			} finally {
+				process.exit(0);
+			}
+		}
+	};
+
 	process.on('SIGINT', () => {
-		console.log('\nShutting down...');
-		globalSessionOrchestrator.destroyAllSessions();
-		process.exit(0);
+		void shutdown('SIGINT');
 	});
 
 	process.on('SIGTERM', () => {
-		globalSessionOrchestrator.destroyAllSessions();
-		process.exit(0);
+		void shutdown('SIGTERM');
 	});
 } else {
+	if (!webConfig) {
+		console.error('Failed to configure TUI daemon connection');
+		process.exit(1);
+	}
+
 	// Normal TUI mode - import ink and React only when needed
 	const {default: React} = await import('react');
 	const {render} = await import('ink');

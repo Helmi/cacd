@@ -48,6 +48,10 @@ import {
 import {sessionStore, SessionIntent} from './sessionStore.js';
 import {adapterRegistry} from '../adapters/index.js';
 import type {Session, SessionState} from '../types/index.js';
+import {
+	toApiSessionPayload,
+	toSessionUpdatePayload,
+} from './sessionStateMetadata.js';
 
 // --- Clipboard Image Paste Constants ---
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -613,6 +617,19 @@ export class APIServer {
 				return;
 			}
 
+			// Allow API access token header (used by trusted local TUI clients)
+			const configuredAccessToken = configurationManager.getAccessToken();
+			const accessTokenHeader = request.headers['x-access-token'];
+			const providedAccessToken = Array.isArray(accessTokenHeader)
+				? accessTokenHeader[0]
+				: accessTokenHeader;
+			if (
+				configuredAccessToken &&
+				providedAccessToken === configuredAccessToken
+			) {
+				return;
+			}
+
 			// Check for valid session
 			const sessionId = request.cookies['cacd_session'];
 			if (!sessionId) {
@@ -734,6 +751,11 @@ export class APIServer {
 				return {success: true};
 			},
 		);
+
+		this.app.post('/api/project/reset', async () => {
+			coreService.resetProject();
+			return {success: true};
+		});
 
 		this.app.get<{Querystring: {projectPath?: string}}>(
 			'/api/project/config',
@@ -1180,6 +1202,29 @@ export class APIServer {
 			return result.right;
 		});
 
+		this.app.get<{
+			Querystring: {projectPath?: string};
+		}>('/api/branches/default', async (request, reply) => {
+			const {projectPath} = request.query;
+
+			try {
+				const worktreeService = projectPath
+					? projectManager.instance.getWorktreeService(projectPath)
+					: coreService.worktreeService;
+				const result = await Effect.runPromise(
+					Effect.either(worktreeService.getDefaultBranchEffect()),
+				);
+
+				if (result._tag === 'Left') {
+					return reply.code(500).send({error: result.left.message});
+				}
+
+				return {defaultBranch: result.right};
+			} catch (error) {
+				return reply.code(500).send({error: String(error)});
+			}
+		});
+
 		this.app.post<{
 			Body: {
 				path: string;
@@ -1222,7 +1267,11 @@ export class APIServer {
 
 			// Refresh worktrees
 			await coreService.refreshWorktrees();
-			return {success: true, worktree: result.right};
+			return {
+				success: true,
+				warnings: result.right.warnings,
+				worktree: result.right,
+			};
 		});
 
 		this.app.post<{
@@ -1277,14 +1326,7 @@ export class APIServer {
 		// --- Sessions ---
 		this.app.get('/api/sessions', async () => {
 			const sessions = coreService.sessionManager.getAllSessions();
-			return sessions.map(s => ({
-				id: s.id,
-				name: s.name,
-				path: s.worktreePath,
-				state: s.stateMutex.getSnapshot().state,
-				isActive: s.isActive,
-				agentId: s.agentId,
-			}));
+			return sessions.map(toApiSessionPayload);
 		});
 
 		this.app.get<{
@@ -1614,6 +1656,34 @@ export class APIServer {
 				}
 
 				coreService.sessionManager.destroySession(id);
+				return {success: true};
+			},
+		);
+
+		this.app.post<{Body: {id: string; isActive: boolean}}>(
+			'/api/session/set-active',
+			async (request, reply) => {
+				const {id, isActive} = request.body;
+				const session = coreService.sessionManager.getSession(id);
+				if (!session) {
+					return reply.code(404).send({error: 'Session not found'});
+				}
+
+				coreService.sessionManager.setSessionActive(id, isActive);
+				return {success: true};
+			},
+		);
+
+		this.app.post<{Body: {id: string; reason?: string}}>(
+			'/api/session/cancel-auto-approval',
+			async (request, reply) => {
+				const {id, reason} = request.body;
+				const session = coreService.sessionManager.getSession(id);
+				if (!session) {
+					return reply.code(404).send({error: 'Session not found'});
+				}
+
+				coreService.sessionManager.cancelAutoApproval(id, reason);
 				return {success: true};
 			},
 		);
@@ -2655,6 +2725,24 @@ export class APIServer {
 
 			// Socket.IO authentication middleware
 			this.io.use((socket, next) => {
+				const configuredAccessToken = configurationManager.getAccessToken();
+				const headerTokenRaw = socket.handshake.headers['x-access-token'];
+				const headerToken = Array.isArray(headerTokenRaw)
+					? headerTokenRaw[0]
+					: headerTokenRaw;
+				const authToken =
+					typeof socket.handshake.auth?.token === 'string'
+						? socket.handshake.auth.token
+						: undefined;
+
+				if (
+					configuredAccessToken &&
+					(headerToken === configuredAccessToken ||
+						authToken === configuredAccessToken)
+				) {
+					return next();
+				}
+
 				// Parse cookies from handshake
 				const cookieHeader = socket.handshake.headers.cookie;
 				if (!cookieHeader) {
@@ -2868,10 +2956,7 @@ export class APIServer {
 		});
 
 		const notifyUpdate = (session: Session) => {
-			this.io?.emit('session_update', {
-				id: session.id,
-				state: session.stateMutex.getSnapshot().state,
-			});
+			this.io?.emit('session_update', toSessionUpdatePayload(session));
 		};
 
 		const persistSessionMetadataIfMissing = (session: Session) => {

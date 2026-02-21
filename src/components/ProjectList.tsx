@@ -1,16 +1,15 @@
-import React, {useState, useEffect, useRef} from 'react';
+import React, {useState, useEffect, useRef, useCallback} from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
-import {GitProject, Project} from '../types/index.js';
-import {projectManager} from '../services/projectManager.js';
-import {coreService} from '../services/coreService.js';
+import {GitProject, Project, SessionState} from '../types/index.js';
 import TextInputWrapper from './TextInputWrapper.js';
 import {useSearchMode} from '../hooks/useSearchMode.js';
-import {globalSessionOrchestrator} from '../services/globalSessionOrchestrator.js';
-import {SessionManager} from '../services/sessionManager.js';
 import Header from './Header.js';
-import {existsSync} from 'fs';
-import {join} from 'path';
+import {
+	tuiApiClient,
+	type ApiSession,
+	worktreeBelongsToProject,
+} from './tuiApiClient.js';
 
 type ValidationState = 'idle' | 'checking' | 'valid' | 'invalid' | 'not-found';
 
@@ -35,6 +34,44 @@ interface MenuItem {
 	project?: GitProject;
 }
 
+function formatProjectSessionCounts(
+	projectPath: string,
+	sessions: ApiSession[],
+): string {
+	const counts: Record<SessionState, number> = {
+		idle: 0,
+		busy: 0,
+		waiting_input: 0,
+		pending_auto_approval: 0,
+	};
+	let total = 0;
+
+	for (const session of sessions) {
+		if (!worktreeBelongsToProject(session.path, projectPath)) {
+			continue;
+		}
+		counts[session.state]++;
+		total++;
+	}
+
+	if (total === 0) {
+		return '';
+	}
+
+	const parts: string[] = [];
+	if (counts.idle > 0) {
+		parts.push(`${counts.idle} Idle`);
+	}
+	if (counts.busy > 0) {
+		parts.push(`${counts.busy} Busy`);
+	}
+	if (counts.waiting_input > 0) {
+		parts.push(`${counts.waiting_input} Waiting`);
+	}
+
+	return parts.length > 0 ? ` (${parts.join(' / ')})` : '';
+}
+
 const ProjectList: React.FC<ProjectListProps> = ({
 	onSelectProject,
 	onOpenConfiguration,
@@ -43,6 +80,7 @@ const ProjectList: React.FC<ProjectListProps> = ({
 	webConfig,
 }) => {
 	const [projects, setProjects] = useState<Project[]>([]);
+	const [sessions, setSessions] = useState<ApiSession[]>([]);
 	const [items, setItems] = useState<MenuItem[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [addingProject, setAddingProject] = useState(false);
@@ -57,7 +95,6 @@ const ProjectList: React.FC<ProjectListProps> = ({
 	const [highlightedItem, setHighlightedItem] = useState<MenuItem | null>(null);
 	const limit = 10;
 
-	// Use the search mode hook
 	const displayError = error || addProjectError;
 	const {isSearchMode, searchQuery, selectedIndex, setSearchQuery} =
 		useSearchMode(items.length, {
@@ -65,37 +102,46 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			skipInTest: false,
 		});
 
-	// Load projects from registry
-	const loadProjects = () => {
+	const loadProjects = useCallback(async () => {
 		setLoading(true);
-		// Validate projects first (marks invalid paths)
-		projectManager.instance.validateProjects();
-		// Get projects sorted by lastAccessed
-		const allProjects = projectManager.getProjects();
-		setProjects(allProjects);
-		setLoading(false);
-	};
-
-	useEffect(() => {
-		loadProjects();
+		try {
+			const [loadedProjects, loadedSessions] = await Promise.all([
+				tuiApiClient.fetchProjects(),
+				tuiApiClient.fetchSessions(),
+			]);
+			setProjects(loadedProjects);
+			setSessions(loadedSessions);
+		} catch (loadError) {
+			setAddProjectError(
+				`Failed to load projects: ${
+					loadError instanceof Error ? loadError.message : String(loadError)
+				}`,
+			);
+		} finally {
+			setLoading(false);
+		}
 	}, []);
 
-	// Listen to project changes from WebUI/API
 	useEffect(() => {
-		const handleProjectChange = () => {
-			loadProjects();
+		void loadProjects();
+	}, [loadProjects]);
+
+	useEffect(() => {
+		const handleSessionUpdate = () => {
+			tuiApiClient
+				.fetchSessions()
+				.then(setSessions)
+				.catch(() => {
+					/* ignore transient socket refresh failures */
+				});
 		};
 
-		coreService.on('projectAdded', handleProjectChange);
-		coreService.on('projectRemoved', handleProjectChange);
-
+		tuiApiClient.on('session_update', handleSessionUpdate);
 		return () => {
-			coreService.off('projectAdded', handleProjectChange);
-			coreService.off('projectRemoved', handleProjectChange);
+			tuiApiClient.off('session_update', handleSessionUpdate);
 		};
 	}, []);
 
-	// Debounced git validation for add project path
 	useEffect(() => {
 		if (!addingProject || !addProjectPath.trim()) {
 			setValidationState('idle');
@@ -104,27 +150,12 @@ const ProjectList: React.FC<ProjectListProps> = ({
 
 		const path = addProjectPath.trim();
 
-		// Cancel any pending validation
 		if (validationAbortRef.current) {
 			validationAbortRef.current.abort();
 		}
 
-		// Fast path: synchronous .git folder check
-		const gitPath = join(path, '.git');
-		if (!existsSync(path)) {
-			setValidationState('not-found');
-			return;
-		}
+		setValidationState('checking');
 
-		if (!existsSync(gitPath)) {
-			// Could be a bare repo or subdirectory - need deeper check
-			setValidationState('checking');
-		} else {
-			// .git exists - likely valid, but verify async
-			setValidationState('checking');
-		}
-
-		// Slow path: async validation with debounce
 		const abortController = new AbortController();
 		validationAbortRef.current = abortController;
 
@@ -132,16 +163,20 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			if (abortController.signal.aborted) return;
 
 			try {
-				const isValid =
-					await projectManager.instance.validateGitRepository(path);
+				const result = await tuiApiClient.validatePath(path);
 				if (abortController.signal.aborted) return;
 
-				setValidationState(isValid ? 'valid' : 'invalid');
+				if (!result.exists) {
+					setValidationState('not-found');
+					return;
+				}
+
+				setValidationState(result.isGitRepo ? 'valid' : 'invalid');
 			} catch {
 				if (abortController.signal.aborted) return;
 				setValidationState('invalid');
 			}
-		}, 300); // 300ms debounce
+		}, 300);
 
 		return () => {
 			clearTimeout(timeoutId);
@@ -149,31 +184,19 @@ const ProjectList: React.FC<ProjectListProps> = ({
 		};
 	}, [addingProject, addProjectPath]);
 
-	// Build menu items
 	useEffect(() => {
 		const menuItems: MenuItem[] = [];
 		let currentIndex = 0;
 
-		// Filter projects based on search query
 		const filteredProjects = searchQuery
 			? projects.filter(project =>
 					project.name.toLowerCase().includes(searchQuery.toLowerCase()),
 				)
 			: projects;
 
-		// Build menu items from projects
 		filteredProjects.forEach(project => {
-			// Get session counts for this project
-			const projectSessions = globalSessionOrchestrator.getProjectSessions(
-				project.path,
-			);
-			const counts = SessionManager.getSessionCounts(projectSessions);
-			const countsFormatted = SessionManager.formatSessionCounts(counts);
-
-			// Show warning for invalid projects
+			const countsFormatted = formatProjectSessionCounts(project.path, sessions);
 			const invalidIndicator = project.isValid === false ? ' ⚠️' : '';
-
-			// Only show numbers for total items (0-9) when not in search mode
 			const numberPrefix =
 				!isSearchMode && currentIndex < 10 ? `${currentIndex} ❯ ` : '❯ ';
 
@@ -190,7 +213,6 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			currentIndex++;
 		});
 
-		// Add menu options only when not in search mode
 		if (!isSearchMode) {
 			if (projects.length > 0) {
 				menuItems.push({
@@ -222,16 +244,14 @@ const ProjectList: React.FC<ProjectListProps> = ({
 		}
 
 		setItems(menuItems);
-	}, [projects, searchQuery, isSearchMode]);
+	}, [projects, sessions, searchQuery, isSearchMode]);
 
-	// Handle adding a project
-	const handleAddProject = () => {
+	const handleAddProject = async () => {
 		if (!addProjectPath.trim()) {
 			setAddProjectError('Path cannot be empty');
 			return;
 		}
 
-		// Check validation state before adding
 		if (validationState === 'checking') {
 			setAddProjectError('Please wait for validation to complete');
 			return;
@@ -246,28 +266,37 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			return;
 		}
 
-		const result = projectManager.addProject(addProjectPath.trim());
-		if (result) {
+		try {
+			await tuiApiClient.addProject(addProjectPath.trim());
 			setAddingProject(false);
 			setAddProjectPath('');
 			setAddProjectError(null);
 			setValidationState('idle');
-			loadProjects();
-		} else {
-			setAddProjectError('Not a valid git repository');
+			await loadProjects();
+		} catch (addError) {
+			setAddProjectError(
+				addError instanceof Error
+					? addError.message
+					: 'Not a valid git repository',
+			);
 		}
 	};
 
-	// Handle removing a project
-	const handleRemoveProject = (project: Project) => {
-		projectManager.removeProject(project.path);
-		setConfirmingDelete(null);
-		loadProjects();
+	const handleRemoveProject = async (project: Project) => {
+		try {
+			await tuiApiClient.removeProject(project.path);
+			setConfirmingDelete(null);
+			await loadProjects();
+		} catch (removeError) {
+			setAddProjectError(
+				removeError instanceof Error
+					? removeError.message
+					: 'Failed to remove project',
+			);
+		}
 	};
 
-	// Get currently highlighted project for delete action
 	const getHighlightedProject = (): Project | null => {
-		// In search mode, use selectedIndex
 		if (isSearchMode) {
 			const selectableItems = items.filter(item => item.project);
 			if (selectedIndex >= 0 && selectedIndex < selectableItems.length) {
@@ -278,33 +307,27 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			}
 			return null;
 		}
-		// Otherwise use the highlighted item from SelectInput
+
 		if (highlightedItem?.project) {
-			return (
-				projects.find(p => p.path === highlightedItem.project?.path) || null
-			);
+			return projects.find(p => p.path === highlightedItem.project?.path) || null;
 		}
 		return null;
 	};
 
-	// Handle hotkeys
 	useInput((input, key) => {
-		// Skip in test environment to avoid stdin.ref error
 		if (!process.stdin.setRawMode) {
 			return;
 		}
 
-		// Handle delete confirmation mode
 		if (confirmingDelete) {
 			if (key.escape || input.toLowerCase() === 'n') {
 				setConfirmingDelete(null);
 			} else if (input.toLowerCase() === 'y') {
-				handleRemoveProject(confirmingDelete);
+				void handleRemoveProject(confirmingDelete);
 			}
 			return;
 		}
 
-		// Handle add project mode
 		if (addingProject) {
 			if (key.escape) {
 				setAddingProject(false);
@@ -312,12 +335,11 @@ const ProjectList: React.FC<ProjectListProps> = ({
 				setAddProjectError(null);
 				setValidationState('idle');
 			} else if (key.return) {
-				handleAddProject();
+				void handleAddProject();
 			}
 			return;
 		}
 
-		// Dismiss error on any key press when error is shown
 		if (displayError && onDismissError) {
 			if (addProjectError) {
 				setAddProjectError(null);
@@ -327,17 +349,14 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			return;
 		}
 
-		// Don't process other keys if in search mode (handled by useSearchMode)
 		if (isSearchMode) {
 			return;
 		}
 
 		const keyPressed = input.toLowerCase();
 
-		// Handle number keys 0-9 for project selection
 		if (/^[0-9]$/.test(keyPressed)) {
-			const index = parseInt(keyPressed);
-			// Get all selectable items
+			const index = Number.parseInt(keyPressed, 10);
 			const selectableItems = items.filter(item => item.project);
 			if (
 				index < Math.min(10, selectableItems.length) &&
@@ -350,12 +369,10 @@ const ProjectList: React.FC<ProjectListProps> = ({
 
 		switch (keyPressed) {
 			case 'a':
-				// Open add project input
 				setAddingProject(true);
-				setAddProjectPath(process.cwd()); // Default to current directory
+				setAddProjectPath(process.cwd());
 				break;
 			case 'd': {
-				// Remove currently highlighted project (with confirmation)
 				const project = getHighlightedProject();
 				if (project) {
 					setConfirmingDelete(project);
@@ -363,18 +380,15 @@ const ProjectList: React.FC<ProjectListProps> = ({
 				break;
 			}
 			case 'c':
-				// Open configuration/settings
 				if (onOpenConfiguration) {
 					onOpenConfiguration();
 				}
 				break;
 			case 'r':
-				// Refresh project list
-				loadProjects();
+				void loadProjects();
 				break;
 			case 'q':
 			case 'x':
-				// Trigger exit action
 				onSelectProject({
 					path: 'EXIT_APPLICATION',
 					name: '',
@@ -387,36 +401,40 @@ const ProjectList: React.FC<ProjectListProps> = ({
 
 	const handleSelect = (item: MenuItem) => {
 		if (item.value.startsWith('separator')) {
-			// Do nothing for separators
-		} else if (item.value === 'add-project') {
+			return;
+		}
+		if (item.value === 'add-project') {
 			setAddingProject(true);
 			setAddProjectPath(process.cwd());
-		} else if (item.value === 'remove-project') {
-			// Remove currently highlighted project
+			return;
+		}
+		if (item.value === 'remove-project') {
 			const project = getHighlightedProject();
 			if (project) {
 				setConfirmingDelete(project);
 			} else {
-				// Show hint if no project is highlighted
-				setAddProjectError(
-					'Highlight a project first, then press D to remove it',
-				);
+				setAddProjectError('Highlight a project first, then press D to remove it');
 			}
-		} else if (item.value === 'settings') {
-			if (onOpenConfiguration) {
-				onOpenConfiguration();
-			}
-		} else if (item.value === 'refresh') {
-			loadProjects();
-		} else if (item.value === 'exit') {
-			// Handle exit
+			return;
+		}
+		if (item.value === 'settings') {
+			onOpenConfiguration?.();
+			return;
+		}
+		if (item.value === 'refresh') {
+			void loadProjects();
+			return;
+		}
+		if (item.value === 'exit') {
 			onSelectProject({
 				path: 'EXIT_APPLICATION',
 				name: '',
 				relativePath: '',
 				isValid: false,
 			});
-		} else if (item.project) {
+			return;
+		}
+		if (item.project) {
 			onSelectProject(item.project);
 		}
 	};
@@ -501,7 +519,6 @@ const ProjectList: React.FC<ProjectListProps> = ({
 				</Box>
 			) : (
 				<>
-					{/* Show empty state message when no projects (additive, not replacement) */}
 					{projects.length === 0 &&
 						!displayError &&
 						!addingProject &&
@@ -516,18 +533,15 @@ const ProjectList: React.FC<ProjectListProps> = ({
 							</Box>
 						)}
 
-					{/* Search no match message */}
 					{isSearchMode && items.length === 0 && (
 						<Box>
 							<Text color="yellow">No projects match your search</Text>
 						</Box>
 					)}
 
-					{/* Always render interactive menu (except when adding or empty search) */}
 					{!addingProject &&
 						!(isSearchMode && items.length === 0) &&
 						(isSearchMode ? (
-							// In search mode, show the items as a list without SelectInput
 							<Box flexDirection="column">
 								{items.slice(0, limit).map((item, index) => (
 									<Text
@@ -564,26 +578,6 @@ const ProjectList: React.FC<ProjectListProps> = ({
 					</Box>
 				</Box>
 			)}
-
-			<Box marginTop={1} flexDirection="column">
-				{(isSearchMode || searchQuery) && (
-					<Text dimColor>
-						Projects: {items.filter(item => item.project).length} of{' '}
-						{projects.length} shown
-					</Text>
-				)}
-				<Text dimColor>
-					{confirmingDelete
-						? 'Y to confirm, N or ESC to cancel'
-						: addingProject
-							? 'Enter path to git repository'
-							: isSearchMode
-								? 'Search Mode: Type to filter, Enter to exit search, ESC to exit search'
-								: searchQuery
-									? `Filtered: "${searchQuery}" | ↑↓ Navigate Enter Select | /-Search ESC-Clear 0-9 Quick A-Add D-Del C-Settings Q-Quit`
-									: 'Controls: ↑↓ Navigate Enter Select | 0-9 Quick /-Search A-Add D-Del C-Settings R-Refresh Q-Quit'}
-				</Text>
-			</Box>
 		</Box>
 	);
 };

@@ -1,32 +1,34 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Box, Text, useStdout} from 'ink';
-import {Session as ISession} from '../types/index.js';
-import {SessionManager} from '../services/sessionManager.js';
 import {shortcutManager} from '../services/shortcutManager.js';
+import {
+	tuiApiClient,
+	type ApiSession,
+	type SessionUpdatePayload,
+	type TerminalDataPayload,
+} from './tuiApiClient.js';
 
 interface SessionProps {
-	session: ISession;
-	sessionManager: SessionManager;
+	session: ApiSession;
 	onReturnToMenu: () => void;
 }
 
 type StatusVariant = 'error' | 'pending' | null;
 
-const Session: React.FC<SessionProps> = ({
-	session,
-	sessionManager,
-	onReturnToMenu,
-}) => {
+const Session: React.FC<SessionProps> = ({session, onReturnToMenu}) => {
 	const {stdout} = useStdout();
-	const [isExiting, setIsExiting] = useState(false);
+	const [liveSession, setLiveSession] = useState(session);
+	const liveSessionRef = useRef(session);
+	const [columns, setColumns] = useState(
+		() => stdout?.columns ?? process.stdout.columns ?? 80,
+	);
+
 	const deriveStatus = (
-		currentSession: ISession,
+		currentSession: ApiSession,
 	): {message: string | null; variant: StatusVariant} => {
-		const stateData = currentSession.stateMutex.getSnapshot();
-		// Always prioritize showing the manual approval notice when verification failed
-		if (stateData.autoApprovalFailed) {
-			const reason = stateData.autoApprovalReason
-				? ` Reason: ${stateData.autoApprovalReason}.`
+		if (currentSession.autoApprovalFailed) {
+			const reason = currentSession.autoApprovalReason
+				? ` Reason: ${currentSession.autoApprovalReason}.`
 				: '';
 			return {
 				message: `Auto-approval failed.${reason} Manual approval required—respond to the prompt.`,
@@ -34,7 +36,7 @@ const Session: React.FC<SessionProps> = ({
 			};
 		}
 
-		if (stateData.state === 'pending_auto_approval') {
+		if (currentSession.state === 'pending_auto_approval') {
 			return {
 				message:
 					'Auto-approval pending... verifying permissions (press any key to cancel)',
@@ -45,15 +47,9 @@ const Session: React.FC<SessionProps> = ({
 		return {message: null, variant: null};
 	};
 
-	const initialStatus = deriveStatus(session);
-	const [statusMessage, setStatusMessage] = useState<string | null>(
-		initialStatus.message,
-	);
-	const [statusVariant, setStatusVariant] = useState<StatusVariant>(
-		initialStatus.variant,
-	);
-	const [columns, setColumns] = useState(
-		() => stdout?.columns ?? process.stdout.columns ?? 80,
+	const {message: statusMessage, variant: statusVariant} = useMemo(
+		() => deriveStatus(liveSession),
+		[liveSession],
 	);
 
 	const {statusLineText, backgroundColor, textColor} = useMemo(() => {
@@ -83,192 +79,123 @@ const Session: React.FC<SessionProps> = ({
 		};
 	}, [columns, statusMessage, statusVariant]);
 
+	const sanitizeReplayBuffer = useCallback((input: string): string => {
+		return input
+			.replace(/\x1B\](?:10|11);[^\x07\x1B]*(?:\x07|\x1B\\)/g, '')
+			.replace(/\x1B\[>4;?\d*m/g, '')
+			.replace(/\x1B\[>[0-9;]*u/g, '')
+			.replace(/\x1B\[\?1004[hl]/g, '')
+			.replace(/\x1B\[\?2004[hl]/g, '');
+	}, []);
+
 	useEffect(() => {
-		const handleSessionStateChange = (updatedSession: ISession) => {
-			if (updatedSession.id !== session.id) return;
+		setLiveSession(session);
+		liveSessionRef.current = session;
+	}, [session]);
 
-			const {message, variant} = deriveStatus(updatedSession);
-			setStatusMessage(message);
-			setStatusVariant(variant);
-		};
-
-		sessionManager.on('sessionStateChanged', handleSessionStateChange);
-
-		return () => {
-			sessionManager.off('sessionStateChanged', handleSessionStateChange);
-		};
-	}, [session.id, sessionManager]);
-
-	const stripOscColorSequences = (input: string): string => {
-		// Remove default foreground/background color OSC sequences that Codex emits
-		// These sequences leak as literal text when replaying buffered output
-		return input.replace(/\x1B\](?:10|11);[^\x07\x1B]*(?:\x07|\x1B\\)/g, '');
-	};
+	useEffect(() => {
+		liveSessionRef.current = liveSession;
+	}, [liveSession]);
 
 	useEffect(() => {
 		if (!stdout) return;
 
 		const resetTerminalInputModes = () => {
-			// Reset terminal modes that interactive tools like Codex enable (kitty keyboard
-			// protocol / modifyOtherKeys / focus tracking) so they don't leak into other
-			// sessions after we detach.
-			stdout.write('\x1b[>0u'); // Disable kitty keyboard protocol (CSI u sequences)
-			stdout.write('\x1b[>4m'); // Disable xterm modifyOtherKeys extensions
-			stdout.write('\x1b[?1004l'); // Disable focus reporting
-			stdout.write('\x1b[?2004l'); // Disable bracketed paste (can interfere with shortcuts)
+			stdout.write('\x1b[>0u');
+			stdout.write('\x1b[>4m');
+			stdout.write('\x1b[?1004l');
+			stdout.write('\x1b[?2004l');
 		};
 
-		const sanitizeReplayBuffer = (input: string): string => {
-			// Remove terminal mode toggles emitted by Codex so replay doesn't re-enable them
-			// on our own TTY when restoring the session view.
-			return stripOscColorSequences(input)
-				.replace(/\x1B\[>4;?\d*m/g, '') // modifyOtherKeys set/reset
-				.replace(/\x1B\[>[0-9;]*u/g, '') // kitty keyboard protocol enables
-				.replace(/\x1B\[\?1004[hl]/g, '') // focus tracking
-				.replace(/\x1B\[\?2004[hl]/g, ''); // bracketed paste
+		let isFirstChunk = true;
+		const stdin = process.stdin;
+		const originalIsRaw = stdin.isRaw;
+		const originalIsPaused = stdin.isPaused();
+
+		const handleSessionUpdate = (payload: SessionUpdatePayload) => {
+			if (payload.id !== session.id) return;
+			setLiveSession(current => ({
+				...current,
+				state: payload.state,
+				autoApprovalFailed: payload.autoApprovalFailed,
+				autoApprovalReason: payload.autoApprovalReason,
+			}));
 		};
 
-		// Reset modes immediately on entry in case a previous session left them on
-		resetTerminalInputModes();
+		const handleTerminalData = (payload: TerminalDataPayload) => {
+			if (payload.sessionId !== session.id) return;
 
-		// Clear screen when entering session
-		stdout.write('\x1B[2J\x1B[H');
+			let output = sanitizeReplayBuffer(payload.data);
+			if (isFirstChunk) {
+				isFirstChunk = false;
+				output = output.replace(/\x1B\[2J/g, '').replace(/\x1B\[H/g, '');
+			}
 
-		// Handle session restoration
-		const handleSessionRestore = (restoredSession: ISession) => {
-			if (restoredSession.id === session.id) {
-				// Replay all buffered output, but skip the initial clear if present
-				for (let i = 0; i < restoredSession.outputHistory.length; i++) {
-					const buffer = restoredSession.outputHistory[i];
-					if (!buffer) continue;
-
-					const str = sanitizeReplayBuffer(buffer.toString('utf8'));
-
-					// Skip clear screen sequences at the beginning
-					if (i === 0 && (str.includes('\x1B[2J') || str.includes('\x1B[H'))) {
-						// Skip this buffer or remove the clear sequence
-						const cleaned = str
-							.replace(/\x1B\[2J/g, '')
-							.replace(/\x1B\[H/g, '');
-						if (cleaned.length > 0) {
-							stdout.write(cleaned);
-						}
-					} else {
-						if (str.length > 0) {
-							stdout.write(str);
-						}
-					}
-				}
+			if (output.length > 0) {
+				stdout.write(output);
 			}
 		};
 
-		// Listen for restore event first
-		sessionManager.on('sessionRestore', handleSessionRestore);
-
-		// Mark session as active (this will trigger the restore event)
-		sessionManager.setSessionActive(session.id, true);
-
-		// Immediately resize the PTY and terminal to current dimensions
-		// This fixes rendering issues when terminal width changed while in menu
-		const currentCols = process.stdout.columns || 80;
-		const currentRows = process.stdout.rows || 24;
-
-		// Do not delete try-catch
-		// Prevent CACD from exiting when claude process has already exited
-		try {
-			session.process.resize(currentCols, currentRows);
-			if (session.terminal) {
-				session.terminal.resize(currentCols, currentRows);
-			}
-		} catch {
-			/* empty */
-		}
-
-		// Listen for session data events
-		const handleSessionData = (activeSession: ISession, data: string) => {
-			// Only handle data for our session
-			if (activeSession.id === session.id && !isExiting) {
-				stdout.write(data);
-			}
-		};
-
-		const handleSessionExit = (exitedSession: ISession) => {
-			if (exitedSession.id === session.id) {
-				setIsExiting(true);
-				setStatusMessage(null);
-				// Don't call onReturnToMenu here - App component handles it
-			}
-		};
-
-		sessionManager.on('sessionData', handleSessionData);
-		sessionManager.on('sessionExit', handleSessionExit);
-
-		// Handle terminal resize
 		const handleResize = () => {
 			const cols = process.stdout.columns || 80;
 			const rows = process.stdout.rows || 24;
 			setColumns(cols);
-			session.process.resize(cols, rows);
-			// Also resize the virtual terminal
-			if (session.terminal) {
-				session.terminal.resize(cols, rows);
-			}
+			tuiApiClient.resizeSession(session.id, cols, rows);
 		};
 
-		stdout.on('resize', handleResize);
-
-		// Set up raw input handling
-		const stdin = process.stdin;
-
-		// Store original stdin state
-		const originalIsRaw = stdin.isRaw;
-		const originalIsPaused = stdin.isPaused();
-
-		// Configure stdin for PTY passthrough
-		stdin.setRawMode(true);
-		stdin.resume();
-		stdin.setEncoding('utf8');
-
 		const handleStdinData = (data: string) => {
-			if (isExiting) return;
-
-			// Check for return to menu shortcut
 			if (shortcutManager.matchesRawInput('returnToMenu', data)) {
-				// Disable any extended input modes that might have been enabled by the PTY
-				if (stdout) {
-					resetTerminalInputModes();
-				}
-				// Restore stdin state before returning to menu
+				resetTerminalInputModes();
 				stdin.removeListener('data', handleStdinData);
-				stdin.setRawMode(false);
+				if (stdin.isTTY) {
+					stdin.setRawMode(false);
+				}
 				stdin.pause();
 				onReturnToMenu();
 				return;
 			}
 
-			if (session.stateMutex.getSnapshot().state === 'pending_auto_approval') {
-				sessionManager.cancelAutoApproval(
-					session.worktreePath,
-					'User input received during auto-approval',
-				);
+			if (liveSessionRef.current.state === 'pending_auto_approval') {
+				void tuiApiClient
+					.cancelAutoApproval(
+						session.id,
+						'User input received during auto-approval',
+					)
+					.catch(() => {
+						/* ignore transient cancellation errors */
+					});
 			}
 
-			// Pass all other input directly to the PTY
-			session.process.write(data);
+			tuiApiClient.sendInput(session.id, data);
 		};
 
+		resetTerminalInputModes();
+		stdout.write('\x1B[2J\x1B[H');
+
+		tuiApiClient.on('session_update', handleSessionUpdate);
+		tuiApiClient.on('terminal_data', handleTerminalData);
+		tuiApiClient.subscribeSession(session.id);
+		void tuiApiClient.setSessionActive(session.id, true).catch(() => {
+			/* ignore transient activation errors */
+		});
+
+		const currentCols = process.stdout.columns || 80;
+		const currentRows = process.stdout.rows || 24;
+		tuiApiClient.resizeSession(session.id, currentCols, currentRows);
+
+		if (stdin.isTTY) {
+			stdin.setRawMode(true);
+		}
+		stdin.resume();
+		stdin.setEncoding('utf8');
 		stdin.on('data', handleStdinData);
 
+		stdout.on('resize', handleResize);
+
 		return () => {
-			// Remove listener first to prevent any race conditions
 			stdin.removeListener('data', handleStdinData);
+			resetTerminalInputModes();
 
-			// Disable focus reporting mode that might have been enabled by the PTY
-			if (stdout) {
-				resetTerminalInputModes();
-			}
-
-			// Restore stdin to its original state
 			if (stdin.isTTY) {
 				stdin.setRawMode(originalIsRaw || false);
 				if (originalIsPaused) {
@@ -278,16 +205,15 @@ const Session: React.FC<SessionProps> = ({
 				}
 			}
 
-			// Mark session as inactive
-			sessionManager.setSessionActive(session.id, false);
-
-			// Remove event listeners
-			sessionManager.off('sessionRestore', handleSessionRestore);
-			sessionManager.off('sessionData', handleSessionData);
-			sessionManager.off('sessionExit', handleSessionExit);
 			stdout.off('resize', handleResize);
+			tuiApiClient.off('session_update', handleSessionUpdate);
+			tuiApiClient.off('terminal_data', handleTerminalData);
+			tuiApiClient.unsubscribeSession(session.id);
+			void tuiApiClient.setSessionActive(session.id, false).catch(() => {
+				/* ignore transient deactivation errors */
+			});
 		};
-	}, [session, sessionManager, stdout, onReturnToMenu, isExiting]);
+	}, [onReturnToMenu, sanitizeReplayBuffer, session.id, stdout]);
 
 	return statusLineText ? (
 		<Box width="100%">

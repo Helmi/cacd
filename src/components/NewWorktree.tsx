@@ -5,10 +5,8 @@ import SelectInput from 'ink-select-input';
 import {shortcutManager} from '../services/shortcutManager.js';
 import {configurationManager} from '../services/configurationManager.js';
 import {generateWorktreeDirectory} from '../utils/worktreeUtils.js';
-import {WorktreeService} from '../services/worktreeService.js';
 import {useSearchMode} from '../hooks/useSearchMode.js';
-import {Effect} from 'effect';
-import type {AppError} from '../types/errors.js';
+import {tuiApiClient} from './tuiApiClient.js';
 
 interface NewWorktreeProps {
 	projectPath?: string;
@@ -62,39 +60,27 @@ const NewWorktree: React.FC<NewWorktreeProps> = ({
 	const [branches, setBranches] = useState<string[]>([]);
 	const [defaultBranch, setDefaultBranch] = useState<string>('main');
 
-	// Initialize worktree service and load branches using Effect
+	// Load branch data from daemon API
 	useEffect(() => {
 		let cancelled = false;
-		const service = new WorktreeService();
 
 		const loadBranches = async () => {
-			// Use Effect.all to load branches and defaultBranch in parallel
-			const workflow = Effect.all(
-				[service.getAllBranchesEffect(), service.getDefaultBranchEffect()],
-				{concurrency: 2},
-			);
+			try {
+				const [branchList, defaultBr] = await Promise.all([
+					tuiApiClient.fetchBranches(projectPath),
+					tuiApiClient.fetchDefaultBranch(projectPath),
+				]);
 
-			const result = await Effect.runPromise(
-				Effect.match(workflow, {
-					onFailure: (error: AppError) => ({
-						type: 'error' as const,
-						message: formatError(error),
-					}),
-					onSuccess: ([branchList, defaultBr]: [string[], string]) => ({
-						type: 'success' as const,
-						branches: branchList,
-						defaultBranch: defaultBr,
-					}),
-				}),
-			);
-
-			if (!cancelled) {
-				if (result.type === 'error') {
-					setBranchLoadError(result.message);
+				if (!cancelled) {
+					setBranches(branchList);
+					setDefaultBranch(defaultBr);
 					setIsLoadingBranches(false);
-				} else {
-					setBranches(result.branches);
-					setDefaultBranch(result.defaultBranch);
+				}
+			} catch (error) {
+				if (!cancelled) {
+					setBranchLoadError(
+						error instanceof Error ? error.message : String(error),
+					);
 					setIsLoadingBranches(false);
 				}
 			}
@@ -110,7 +96,7 @@ const NewWorktree: React.FC<NewWorktreeProps> = ({
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [projectPath]);
 
 	// Create branch items with default branch first (memoized)
 	const allBranchItems: BranchItem[] = useMemo(
@@ -218,22 +204,6 @@ const NewWorktree: React.FC<NewWorktreeProps> = ({
 		worktreeConfig.autoDirectoryPattern,
 		projectPath,
 	]);
-
-	// Format errors using TaggedError discrimination
-	const formatError = (error: AppError): string => {
-		switch (error._tag) {
-			case 'GitError':
-				return `Git command failed: ${error.command} (exit ${error.exitCode})\n${error.stderr}`;
-			case 'FileSystemError':
-				return `File ${error.operation} failed for ${error.path}: ${error.cause}`;
-			case 'ConfigError':
-				return `Configuration error (${error.reason}): ${error.details}`;
-			case 'ProcessError':
-				return `Process error: ${error.message}`;
-			case 'ValidationError':
-				return `Validation failed for ${error.field}: ${error.constraint}`;
-		}
-	};
 
 	// Show loading indicator while branches load
 	if (isLoadingBranches) {

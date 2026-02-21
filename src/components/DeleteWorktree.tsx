@@ -1,18 +1,19 @@
 import React, {useState, useEffect} from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
-import {Effect} from 'effect';
 import {Worktree} from '../types/index.js';
-import {WorktreeService} from '../services/worktreeService.js';
 import DeleteConfirmation from './DeleteConfirmation.js';
 import {shortcutManager} from '../services/shortcutManager.js';
+import {tuiApiClient, worktreeBelongsToProject} from './tuiApiClient.js';
 
 interface DeleteWorktreeProps {
+	projectPath?: string;
 	onComplete: (worktreePaths: string[], deleteBranch: boolean) => void;
 	onCancel: () => void;
 }
 
 const DeleteWorktree: React.FC<DeleteWorktreeProps> = ({
+	projectPath,
 	onComplete,
 	onCancel,
 }) => {
@@ -29,18 +30,20 @@ const DeleteWorktree: React.FC<DeleteWorktreeProps> = ({
 		let cancelled = false;
 
 		const loadWorktrees = async () => {
-			const worktreeService = new WorktreeService();
-
 			try {
-				const allWorktrees = await Effect.runPromise(
-					worktreeService.getWorktreesEffect(),
+				const allWorktrees = await tuiApiClient.fetchWorktrees();
+				const scopedWorktrees = projectPath
+					? allWorktrees.filter(worktree =>
+							worktreeBelongsToProject(worktree.path, projectPath),
+						)
+					: allWorktrees;
+
+				// Filter out main worktree - we shouldn't delete it
+				const deletableWorktrees = scopedWorktrees.filter(
+					worktree => !worktree.isMainWorktree,
 				);
 
 				if (!cancelled) {
-					// Filter out main worktree - we shouldn't delete it
-					const deletableWorktrees = allWorktrees.filter(
-						wt => !wt.isMainWorktree,
-					);
 					setWorktrees(deletableWorktrees);
 					setIsLoading(false);
 				}
@@ -57,7 +60,7 @@ const DeleteWorktree: React.FC<DeleteWorktreeProps> = ({
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [projectPath]);
 
 	// Create menu items from worktrees
 	const menuItems = worktrees.map((worktree, index) => {

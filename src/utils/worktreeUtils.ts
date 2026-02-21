@@ -1,13 +1,18 @@
 import path from 'path';
 import {execSync} from 'child_process';
 import stripAnsi from 'strip-ansi';
-import {Worktree, Session} from '../types/index.js';
+import {SessionState, Worktree} from '../types/index.js';
 import {getStatusDisplay} from '../constants/statusIcons.js';
 import {
 	formatGitFileChanges,
 	formatGitAheadBehind,
 	formatParentBranch,
 } from './gitStatus.js';
+
+interface SessionLike {
+	worktreePath: string;
+	state: SessionState;
+}
 
 // Constants
 const MAX_BRANCH_NAME_LENGTH = 70; // Maximum characters for branch name display
@@ -18,7 +23,7 @@ const MIN_COLUMN_PADDING = 2; // Minimum spaces between columns
  */
 interface WorktreeItem {
 	worktree: Worktree;
-	session?: Session;
+	session?: SessionLike;
 	baseLabel: string;
 	fileChanges: string;
 	aheadBehind: string;
@@ -113,12 +118,12 @@ export function extractBranchParts(branchName: string): {
  */
 export function prepareWorktreeItems(
 	worktrees: Worktree[],
-	sessions: Session[],
+	sessions: SessionLike[],
 ): WorktreeItem[] {
 	return worktrees.map(wt => {
 		const session = sessions.find(s => s.worktreePath === wt.path);
 		const status = session
-			? ` [${getStatusDisplay(session.stateMutex.getSnapshot().state)}]`
+			? ` [${getStatusDisplay(session.state)}]`
 			: '';
 		const fullBranchName = wt.branch
 			? wt.branch.replace('refs/heads/', '')
