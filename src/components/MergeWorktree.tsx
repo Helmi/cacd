@@ -73,8 +73,7 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 				}
 			} catch (err) {
 				if (!cancelled) {
-					const errorMessage =
-						err instanceof Error ? err.message : String(err);
+					const errorMessage = err instanceof Error ? err.message : String(err);
 					setLoadError(errorMessage);
 					setIsLoading(false);
 				}
@@ -364,9 +363,7 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 						onComplete();
 					} catch (err) {
 						const errorMessage =
-							err instanceof Error
-								? err.message
-								: 'Failed to delete worktree';
+							err instanceof Error ? err.message : 'Failed to delete worktree';
 						setMergeError(errorMessage);
 						setStep('merge-error');
 					}

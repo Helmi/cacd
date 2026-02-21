@@ -1,3 +1,4 @@
+/* global URL, RequestInit, Headers, fetch */
 import {EventEmitter} from 'events';
 import {io, Socket} from 'socket.io-client';
 import {

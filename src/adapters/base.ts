@@ -72,11 +72,15 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
 		return null;
 	}
 
-	async parseMessages(_sessionFilePath: string): Promise<ConversationMessage[]> {
+	async parseMessages(
+		_sessionFilePath: string,
+	): Promise<ConversationMessage[]> {
 		return [];
 	}
 
-	async extractMetadata(_sessionFilePath: string): Promise<SessionFileMetadata> {
+	async extractMetadata(
+		_sessionFilePath: string,
+	): Promise<SessionFileMetadata> {
 		return {};
 	}
 

@@ -117,7 +117,9 @@ describe('SessionStore', () => {
 		expect(store.queryByProject('/tmp/project-c')).toHaveLength(2);
 		expect(store.queryByTask('td-aaa')).toHaveLength(1);
 		expect(store.queryByWorktree('/tmp/worktree-c')).toHaveLength(1);
-		expect(store.queryByDateRange(1_720_150_000, 1_720_250_000)).toHaveLength(1);
+		expect(store.queryByDateRange(1_720_150_000, 1_720_250_000)).toHaveLength(
+			1,
+		);
 
 		const filtered = store.querySessions({
 			projectPath: '/tmp/project-c',
@@ -192,7 +194,11 @@ describe('SessionStore', () => {
 				projectPath: '/tmp/project-b',
 			})?.id,
 		).toBe('session-c');
-		expect(store.getLatestByTdSessionId({tdSessionId: 'ses_link'})?.id).toBe('session-c');
-		expect(store.getLatestByTdSessionId({tdSessionId: 'ses_missing'})).toBeNull();
+		expect(store.getLatestByTdSessionId({tdSessionId: 'ses_link'})?.id).toBe(
+			'session-c',
+		);
+		expect(
+			store.getLatestByTdSessionId({tdSessionId: 'ses_missing'}),
+		).toBeNull();
 	});
 });

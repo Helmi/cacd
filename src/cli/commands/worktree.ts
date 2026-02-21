@@ -325,7 +325,9 @@ async function runWorktreeCreateCommand(
 	return 0;
 }
 
-async function runWorktreeListCommand(context: CliCommandContext): Promise<number> {
+async function runWorktreeListCommand(
+	context: CliCommandContext,
+): Promise<number> {
 	const projectPath = context.parsedArgs.flags.project?.trim();
 
 	let worktrees: ApiWorktreePayload[];
@@ -355,9 +357,13 @@ async function runWorktreeListCommand(context: CliCommandContext): Promise<numbe
 		: worktrees;
 
 	const result = scopedWorktrees.map(worktree => {
-		const linkedSessions = sessions.filter(session => session.path === worktree.path);
+		const linkedSessions = sessions.filter(
+			session => session.path === worktree.path,
+		);
 		const sessionIds = linkedSessions.map(session => session.id);
-		const sessionStates = [...new Set(linkedSessions.map(session => session.state))];
+		const sessionStates = [
+			...new Set(linkedSessions.map(session => session.state)),
+		];
 
 		const statusParts: string[] = [];
 		if (worktree.isMainWorktree) {
@@ -423,7 +429,10 @@ async function runWorktreeDeleteCommand(
 	const worktreePath = context.parsedArgs.input[2]?.trim();
 	if (!worktreePath) {
 		context.formatter.writeError({
-			text: ['Error: Missing worktree path', 'Usage: cacd worktree delete <path>'],
+			text: [
+				'Error: Missing worktree path',
+				'Usage: cacd worktree delete <path>',
+			],
 			data: {
 				ok: false,
 				command: 'worktree delete',
@@ -468,7 +477,9 @@ async function runWorktreeDeleteCommand(
 	return 0;
 }
 
-async function runWorktreeMergeCommand(context: CliCommandContext): Promise<number> {
+async function runWorktreeMergeCommand(
+	context: CliCommandContext,
+): Promise<number> {
 	const worktreePath = context.parsedArgs.input[2]?.trim();
 	if (!worktreePath) {
 		context.formatter.writeError({
@@ -490,7 +501,10 @@ async function runWorktreeMergeCommand(context: CliCommandContext): Promise<numb
 
 	let worktrees: ApiWorktreePayload[];
 	try {
-		worktrees = await fetchDaemonApi<ApiWorktreePayload[]>(context, '/api/worktrees');
+		worktrees = await fetchDaemonApi<ApiWorktreePayload[]>(
+			context,
+			'/api/worktrees',
+		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		context.formatter.writeError({

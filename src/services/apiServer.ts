@@ -208,7 +208,9 @@ function ensureGlobalTdDefaultPromptConfigured(): void {
 			...tdConfig,
 			defaultPrompt: fallbackTemplate.name,
 		});
-		logger.info(`API: Set TD global default prompt to "${fallbackTemplate.name}"`);
+		logger.info(
+			`API: Set TD global default prompt to "${fallbackTemplate.name}"`,
+		);
 	} catch (error) {
 		logger.warn(`API: Failed to ensure TD global default prompt: ${error}`);
 	}
@@ -325,7 +327,11 @@ function resolveSessionCreatedAt(session: Session): number {
 	}
 
 	const activityMs = session.lastActivity?.getTime();
-	if (typeof activityMs === 'number' && Number.isFinite(activityMs) && activityMs > 0) {
+	if (
+		typeof activityMs === 'number' &&
+		Number.isFinite(activityMs) &&
+		activityMs > 0
+	) {
 		return Math.floor(activityMs / 1000);
 	}
 
@@ -340,7 +346,10 @@ export class APIServer {
 
 	// Track socket subscriptions to prevent duplicates in dev mode
 	private socketSubscriptions = new Map<string, string>(); // socketId -> sessionId
-	private pendingTdPromptInjections = new Map<string, PendingTdPromptInjection>();
+	private pendingTdPromptInjections = new Map<
+		string,
+		PendingTdPromptInjection
+	>();
 	private pendingFallbackSessionEndTimes = new Map<string, number>();
 
 	constructor() {
@@ -774,9 +783,12 @@ export class APIServer {
 				let projectPath: string | null = null;
 
 				if (requestedProjectPath) {
-					const project = projectManager.instance.getProject(requestedProjectPath);
+					const project =
+						projectManager.instance.getProject(requestedProjectPath);
 					if (!project) {
-						return reply.code(404).send({error: 'Project not found in registry'});
+						return reply
+							.code(404)
+							.send({error: 'Project not found in registry'});
 					}
 					if (project.isValid === false) {
 						return reply
@@ -793,7 +805,7 @@ export class APIServer {
 
 				const config = loadProjectConfig(projectPath) || {};
 				const configPath = getProjectConfigPath(projectPath);
-			return {config, configPath};
+				return {config, configPath};
 			},
 		);
 
@@ -1373,7 +1385,9 @@ export class APIServer {
 			const selectedProjectPath = coreService.getSelectedProject()?.path;
 			const effectiveProjectPath = projectPath || selectedProjectPath;
 			const parsedDateFrom =
-				typeof dateFrom === 'string' ? Number.parseInt(dateFrom, 10) : undefined;
+				typeof dateFrom === 'string'
+					? Number.parseInt(dateFrom, 10)
+					: undefined;
 			const parsedDateTo =
 				typeof dateTo === 'string' ? Number.parseInt(dateTo, 10) : undefined;
 
@@ -1437,8 +1451,8 @@ export class APIServer {
 			}
 
 			const activeSessions = new Map(
-				coreService
-					.sessionManager.getAllSessions()
+				coreService.sessionManager
+					.getAllSessions()
 					.map(session => [session.id, session] as const),
 			);
 
@@ -1482,7 +1496,8 @@ export class APIServer {
 			}
 
 			const selectedProjectPath = coreService.getSelectedProject()?.path;
-			const effectiveProjectPath = request.query.projectPath || selectedProjectPath;
+			const effectiveProjectPath =
+				request.query.projectPath || selectedProjectPath;
 			const resolutionAttempts = [
 				{
 					tdSessionId,
@@ -1534,8 +1549,11 @@ export class APIServer {
 				await sessionStore.hydrateSessionContentPreview(storedSession.id);
 			}
 
-			const refreshed = sessionStore.getSessionById(storedSession.id) || storedSession;
-			const liveSession = coreService.sessionManager.getSession(storedSession.id);
+			const refreshed =
+				sessionStore.getSessionById(storedSession.id) || storedSession;
+			const liveSession = coreService.sessionManager.getSession(
+				storedSession.id,
+			);
 			const missingSessionFile =
 				!!refreshed.agentSessionPath && !existsSync(refreshed.agentSessionPath);
 
@@ -1556,7 +1574,10 @@ export class APIServer {
 			const {sessionId} = request.params;
 			const limit = Math.max(
 				1,
-				Math.min(1000, Number.parseInt(request.query.limit || '200', 10) || 200),
+				Math.min(
+					1000,
+					Number.parseInt(request.query.limit || '200', 10) || 200,
+				),
 			);
 			const offset = Math.max(
 				0,
@@ -1647,7 +1668,9 @@ export class APIServer {
 				logger.warn(
 					`API: Failed to parse conversation messages for ${sessionId}: ${String(error)}`,
 				);
-				return reply.code(500).send({error: 'Failed to parse session messages'});
+				return reply
+					.code(500)
+					.send({error: 'Failed to parse session messages'});
 			}
 		});
 
@@ -2018,13 +2041,20 @@ export class APIServer {
 								});
 							}
 						} else {
-							const projectDefaultPrompt = projConfig?.td?.defaultPrompt?.trim();
+							const projectDefaultPrompt =
+								projConfig?.td?.defaultPrompt?.trim();
 							const globalDefaultPrompt = globalTdConfig.defaultPrompt?.trim();
 							selectedTemplate =
 								(projectDefaultPrompt &&
-									findPromptTemplateByName(promptTemplates, projectDefaultPrompt)) ||
+									findPromptTemplateByName(
+										promptTemplates,
+										projectDefaultPrompt,
+									)) ||
 								(globalDefaultPrompt &&
-									findPromptTemplateByName(promptTemplates, globalDefaultPrompt)) ||
+									findPromptTemplateByName(
+										promptTemplates,
+										globalDefaultPrompt,
+									)) ||
 								null;
 							if (!selectedTemplate) {
 								if (promptTemplates.length > 0) {
@@ -2078,7 +2108,10 @@ export class APIServer {
 					logger.info('API: TD task-context injection disabled by config');
 				}
 
-				if (effectiveTdConfig.injectTdUsage || effectiveTdConfig.injectTaskContext) {
+				if (
+					effectiveTdConfig.injectTdUsage ||
+					effectiveTdConfig.injectTaskContext
+				) {
 					startupPromptToInject = buildTdStartupPrompt({
 						taskId: normalizedTdTaskId,
 						renderedPromptTemplate,
@@ -2978,18 +3011,18 @@ export class APIServer {
 				const configuredAgent = session.agentId
 					? configurationManager.getAgentById(session.agentId)
 					: undefined;
-				const detectedAgentType =
-					configuredAgent
-						? (adapterRegistry.getById(configuredAgent.id)?.id ||
-							adapterRegistry.getByAgentType(inferAgentType(configuredAgent))
-								?.id ||
-							inferAgentType(configuredAgent))
-						: session.detectionStrategy || session.agentId || 'terminal';
+				const detectedAgentType = configuredAgent
+					? adapterRegistry.getById(configuredAgent.id)?.id ||
+						adapterRegistry.getByAgentType(inferAgentType(configuredAgent))
+							?.id ||
+						inferAgentType(configuredAgent)
+					: session.detectionStrategy || session.agentId || 'terminal';
 				const createdAt = resolveSessionCreatedAt(session);
 
 				sessionStore.createSessionRecord({
 					id: session.id,
-					agentProfileId: configuredAgent?.id || session.agentId || detectedAgentType,
+					agentProfileId:
+						configuredAgent?.id || session.agentId || detectedAgentType,
 					agentProfileName:
 						configuredAgent?.name || session.agentId || detectedAgentType,
 					agentType: detectedAgentType,

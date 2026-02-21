@@ -33,20 +33,29 @@ export class PiAdapter extends BaseAgentAdapter {
 			root,
 			fileName => fileName.endsWith('.jsonl'),
 			100,
-		).filter(candidate => withinRecentWindow(candidate, afterTimestamp, 300000));
+		).filter(candidate =>
+			withinRecentWindow(candidate, afterTimestamp, 300000),
+		);
 		return candidates[0] || null;
 	}
 
 	override async parseMessages(
 		sessionFilePath: string,
 	): Promise<ConversationMessage[]> {
-		const rows = safeReadJsonLines(sessionFilePath) as Record<string, unknown>[];
+		const rows = safeReadJsonLines(sessionFilePath) as Record<
+			string,
+			unknown
+		>[];
 		return rows
 			.map((row, index) => {
-				const content = extractString(row['content'] || row['message'] || row['text']);
+				const content = extractString(
+					row['content'] || row['message'] || row['text'],
+				);
 				if (!content) return null;
 				const role = normalizeRole(row['role'] || row['type']);
-				const timestamp = normalizeTimestamp(row['timestamp'] || row['created_at']);
+				const timestamp = normalizeTimestamp(
+					row['timestamp'] || row['created_at'],
+				);
 				return {
 					id: `pi-${index}`,
 					role,
@@ -63,11 +72,17 @@ export class PiAdapter extends BaseAgentAdapter {
 		sessionFilePath: string,
 	): Promise<SessionFileMetadata> {
 		const messages = await this.parseMessages(sessionFilePath);
-		const firstTimestamp = messages.find(message => message.timestamp)?.timestamp;
-		const lastTimestamp =
-			[...messages].reverse().find(message => message.timestamp)?.timestamp;
+		const firstTimestamp = messages.find(
+			message => message.timestamp,
+		)?.timestamp;
+		const lastTimestamp = [...messages]
+			.reverse()
+			.find(message => message.timestamp)?.timestamp;
 		return {
-			agentSessionId: path.basename(sessionFilePath, path.extname(sessionFilePath)),
+			agentSessionId: path.basename(
+				sessionFilePath,
+				path.extname(sessionFilePath),
+			),
 			startedAt: firstTimestamp ?? undefined,
 			endedAt: lastTimestamp ?? undefined,
 			messageCount: messages.length,

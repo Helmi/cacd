@@ -1,9 +1,19 @@
 import Database from 'better-sqlite3';
-import {existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync} from 'fs';
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	statSync,
+} from 'fs';
 import {homedir} from 'os';
 import path from 'path';
 import {getConfigDir} from '../utils/configDir.js';
-import {getClaudeProjectsDir, pathToClaudeProjectName} from '../utils/claudeDir.js';
+import {
+	getClaudeProjectsDir,
+	pathToClaudeProjectName,
+} from '../utils/claudeDir.js';
 import {Either} from 'effect';
 import {logger} from '../utils/logger.js';
 import {adapterRegistry} from '../adapters/index.js';
@@ -114,7 +124,9 @@ function normalizeContentPreview(value: string | undefined): string | null {
 	if (!value) return null;
 	const normalized = value.replace(/\s+/g, ' ').trim();
 	if (!normalized) return null;
-	return normalized.length > 300 ? `${normalized.slice(0, 300)}...` : normalized;
+	return normalized.length > 300
+		? `${normalized.slice(0, 300)}...`
+		: normalized;
 }
 
 function extractSessionIdFromFilename(filePath: string): string {
@@ -330,7 +342,10 @@ export class SessionStore {
 		});
 	}
 
-	updateSessionContentPreview(sessionId: string, contentPreview?: string): void {
+	updateSessionContentPreview(
+		sessionId: string,
+		contentPreview?: string,
+	): void {
 		this.withRecovery(() => {
 			this.db
 				.prepare('UPDATE sessions SET content_preview = ? WHERE id = ?')
@@ -399,7 +414,11 @@ export class SessionStore {
 		return this.querySessions({projectPath, limit, offset});
 	}
 
-	queryByWorktree(worktreePath: string, limit = 50, offset = 0): SessionRecord[] {
+	queryByWorktree(
+		worktreePath: string,
+		limit = 50,
+		offset = 0,
+	): SessionRecord[] {
 		return this.querySessions({worktreePath, limit, offset});
 	}
 
@@ -408,7 +427,7 @@ export class SessionStore {
 	}
 
 	queryByDateRange(dateFrom: number, dateTo: number): SessionRecord[] {
-	return this.querySessions({dateFrom, dateTo, limit: 5000, offset: 0});
+		return this.querySessions({dateFrom, dateTo, limit: 5000, offset: 0});
 	}
 
 	getLatestByTdSessionId(params: {
@@ -474,21 +493,15 @@ export class SessionStore {
 				return;
 			}
 
-			const timeout = setTimeout(
-				() => {
-					void attempt(remaining - 1);
-				},
-				DISCOVERY_RETRY_DELAY_MS,
-			);
+			const timeout = setTimeout(() => {
+				void attempt(remaining - 1);
+			}, DISCOVERY_RETRY_DELAY_MS);
 			this.discoveryTimers.set(params.sessionId, timeout);
 		};
 
-		const timeout = setTimeout(
-			() => {
-				void attempt(DISCOVERY_RETRY_LIMIT);
-			},
-			DISCOVERY_RETRY_DELAY_MS,
-		);
+		const timeout = setTimeout(() => {
+			void attempt(DISCOVERY_RETRY_LIMIT);
+		}, DISCOVERY_RETRY_DELAY_MS);
 		this.discoveryTimers.set(params.sessionId, timeout);
 	}
 
@@ -548,7 +561,8 @@ export class SessionStore {
 				return {
 					path: sessionPath,
 					agentSessionId:
-						metadata.agentSessionId || extractSessionIdFromFilename(sessionPath),
+						metadata.agentSessionId ||
+						extractSessionIdFromFilename(sessionPath),
 				};
 			} catch (error) {
 				logger.warn(
@@ -701,7 +715,10 @@ export class SessionStore {
 					const dayPath = path.join(monthPath, day);
 					if (!this.isDirectory(dayPath)) continue;
 					for (const fileName of this.safeReadDir(dayPath)) {
-						if (!fileName.startsWith('rollout-') || !fileName.endsWith('.jsonl')) {
+						if (
+							!fileName.startsWith('rollout-') ||
+							!fileName.endsWith('.jsonl')
+						) {
 							continue;
 						}
 

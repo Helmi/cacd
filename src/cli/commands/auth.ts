@@ -29,7 +29,9 @@ async function askYesNo(question: string): Promise<boolean> {
 	return answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes';
 }
 
-export async function runAuthCommand(context: CliCommandContext): Promise<number> {
+export async function runAuthCommand(
+	context: CliCommandContext,
+): Promise<number> {
 	const authCommand = context.parsedArgs.input[1];
 	const config = context.services.configurationManager.getConfiguration();
 	const port = config.port ?? 3000;
@@ -38,7 +40,10 @@ export async function runAuthCommand(context: CliCommandContext): Promise<number
 		case 'show': {
 			if (!config.webEnabled) {
 				context.formatter.write({
-					text: ['Web interface is not enabled.', 'Run `cacd setup` to enable it.'],
+					text: [
+						'Web interface is not enabled.',
+						'Run `cacd setup` to enable it.',
+					],
 					data: {
 						ok: true,
 						command: 'auth show',
@@ -71,7 +76,9 @@ export async function runAuthCommand(context: CliCommandContext): Promise<number
 				'',
 			];
 			if (!config.passcodeHash) {
-				lines.push('⚠️  No passcode set. Run `cacd auth reset-passcode` to set one.');
+				lines.push(
+					'⚠️  No passcode set. Run `cacd auth reset-passcode` to set one.',
+				);
 			} else {
 				lines.push('✓ Passcode is configured');
 			}

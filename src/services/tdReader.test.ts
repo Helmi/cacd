@@ -14,7 +14,10 @@ vi.mock('../utils/logger.js', () => ({
 	},
 }));
 
-const TEST_DB_PATH = path.join(tmpdir(), `cacd-tdreader-test-${process.pid}.db`);
+const TEST_DB_PATH = path.join(
+	tmpdir(),
+	`cacd-tdreader-test-${process.pid}.db`,
+);
 
 function createTestDb(): void {
 	// Clean up any previous test db
@@ -225,9 +228,7 @@ describe('TdReader', () => {
 
 			expect(issue).not.toBeNull();
 			expect(issue!.handoffs).toHaveLength(1);
-			expect(issue!.handoffs[0]!.done).toEqual([
-				'Created form component',
-			]);
+			expect(issue!.handoffs[0]!.done).toEqual(['Created form component']);
 			expect(issue!.handoffs[0]!.remaining).toEqual([
 				'Add validation',
 				'Connect to API',

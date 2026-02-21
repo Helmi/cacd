@@ -30,7 +30,11 @@ const DETECTABLE_AGENT_IDS = [
 	'opencode',
 ];
 
-function getDetectableAgents(): Array<{id: string; name: string; command: string}> {
+function getDetectableAgents(): Array<{
+	id: string;
+	name: string;
+	command: string;
+}> {
 	return DETECTABLE_AGENT_IDS.map(id => {
 		const adapter = adapterRegistry.getById(id);
 		return {
@@ -41,7 +45,9 @@ function getDetectableAgents(): Array<{id: string; name: string; command: string
 	});
 }
 
-function cloneAgentOptions(options: AgentConfig['options']): AgentConfig['options'] {
+function cloneAgentOptions(
+	options: AgentConfig['options'],
+): AgentConfig['options'] {
 	return options.map(option => ({
 		...option,
 		choices: option.choices?.map(choice => ({...choice})),
@@ -67,7 +73,8 @@ function createAgentConfigFromAdapter(adapterId: string): AgentConfig | null {
 		command: adapter.command || canonical?.command || adapter.id,
 		baseArgs: adapter.baseArgs || canonical?.baseArgs,
 		options: resolvedOptions,
-		detectionStrategy: adapter.detectionStrategy || canonical?.detectionStrategy,
+		detectionStrategy:
+			adapter.detectionStrategy || canonical?.detectionStrategy,
 		icon: canonical?.icon || adapter.icon,
 		iconColor: canonical?.iconColor || adapter.iconColor,
 		enabled: true,

@@ -33,7 +33,9 @@ export class GeminiAdapter extends BaseAgentAdapter {
 			root,
 			fileName => fileName.startsWith('session-') && fileName.endsWith('.json'),
 			100,
-		).filter(candidate => withinRecentWindow(candidate, afterTimestamp, 300000));
+		).filter(candidate =>
+			withinRecentWindow(candidate, afterTimestamp, 300000),
+		);
 
 		return candidates[0] || null;
 	}
@@ -57,9 +59,13 @@ export class GeminiAdapter extends BaseAgentAdapter {
 				if (!item || typeof item !== 'object') return null;
 				const row = item as Record<string, unknown>;
 				const role = normalizeRole(row['role'] || row['type']);
-				const content = extractString(row['content'] || row['text'] || row['message']);
+				const content = extractString(
+					row['content'] || row['text'] || row['message'],
+				);
 				if (!content) return null;
-				const timestamp = normalizeTimestamp(row['timestamp'] || row['created_at']);
+				const timestamp = normalizeTimestamp(
+					row['timestamp'] || row['created_at'],
+				);
 				return {
 					id: `gemini-${index}`,
 					role,
@@ -76,11 +82,17 @@ export class GeminiAdapter extends BaseAgentAdapter {
 		sessionFilePath: string,
 	): Promise<SessionFileMetadata> {
 		const messages = await this.parseMessages(sessionFilePath);
-		const firstTimestamp = messages.find(message => message.timestamp)?.timestamp;
-		const lastTimestamp =
-			[...messages].reverse().find(message => message.timestamp)?.timestamp;
+		const firstTimestamp = messages.find(
+			message => message.timestamp,
+		)?.timestamp;
+		const lastTimestamp = [...messages]
+			.reverse()
+			.find(message => message.timestamp)?.timestamp;
 		return {
-			agentSessionId: path.basename(sessionFilePath, path.extname(sessionFilePath)),
+			agentSessionId: path.basename(
+				sessionFilePath,
+				path.extname(sessionFilePath),
+			),
 			startedAt: firstTimestamp ?? undefined,
 			endedAt: lastTimestamp ?? undefined,
 			messageCount: messages.length,

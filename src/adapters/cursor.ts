@@ -15,7 +15,9 @@ import {
 } from './helpers.js';
 import type {ConversationMessage, SessionFileMetadata} from './types.js';
 
-function safeReadSqliteMessages(sessionFilePath: string): ConversationMessage[] {
+function safeReadSqliteMessages(
+	sessionFilePath: string,
+): ConversationMessage[] {
 	let db: Database.Database | null = null;
 	try {
 		db = new Database(sessionFilePath, {readonly: true, fileMustExist: true});
@@ -25,8 +27,8 @@ function safeReadSqliteMessages(sessionFilePath: string): ConversationMessage[] 
 			)
 			.all() as Array<{name: string}>;
 		const table =
-			tables.find(entry => /message|chat|conversation/i.test(entry.name))?.name ||
-			tables[0]?.name;
+			tables.find(entry => /message|chat|conversation/i.test(entry.name))
+				?.name || tables[0]?.name;
 		if (!table) {
 			return [];
 		}
@@ -132,7 +134,9 @@ function parseGenericMessages(sessionFilePath: string): ConversationMessage[] {
 	const rows = safeReadJsonLines(sessionFilePath) as Record<string, unknown>[];
 	return rows
 		.map((row, index) => {
-			const content = extractString(row['content'] || row['message'] || row['text']);
+			const content = extractString(
+				row['content'] || row['message'] || row['text'],
+			);
 			if (!content) return null;
 			return {
 				id: `cursor-jsonl-${index}`,
@@ -157,7 +161,10 @@ function parseCursorMessages(sessionFilePath: string): ConversationMessage[] {
 	return parseGenericMessages(sessionFilePath);
 }
 
-function fileContainsPath(candidatePath: string, worktreePath: string): boolean {
+function fileContainsPath(
+	candidatePath: string,
+	worktreePath: string,
+): boolean {
 	const ext = path.extname(candidatePath).toLowerCase();
 	if (ext === '.db' || ext === '.sqlite' || ext === '.sqlite3') {
 		return false;
@@ -202,7 +209,9 @@ export class CursorAdapter extends BaseAgentAdapter {
 					120,
 				),
 			)
-			.filter(candidate => withinRecentWindow(candidate, afterTimestamp, 300000));
+			.filter(candidate =>
+				withinRecentWindow(candidate, afterTimestamp, 300000),
+			);
 
 		if (candidates.length === 0) {
 			return null;
@@ -224,11 +233,17 @@ export class CursorAdapter extends BaseAgentAdapter {
 		sessionFilePath: string,
 	): Promise<SessionFileMetadata> {
 		const messages = parseCursorMessages(sessionFilePath);
-		const firstTimestamp = messages.find(message => message.timestamp)?.timestamp;
-		const lastTimestamp =
-			[...messages].reverse().find(message => message.timestamp)?.timestamp;
+		const firstTimestamp = messages.find(
+			message => message.timestamp,
+		)?.timestamp;
+		const lastTimestamp = [...messages]
+			.reverse()
+			.find(message => message.timestamp)?.timestamp;
 		return {
-			agentSessionId: path.basename(sessionFilePath, path.extname(sessionFilePath)),
+			agentSessionId: path.basename(
+				sessionFilePath,
+				path.extname(sessionFilePath),
+			),
 			startedAt: firstTimestamp ?? undefined,
 			endedAt: lastTimestamp ?? undefined,
 			messageCount: messages.length,

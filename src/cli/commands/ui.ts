@@ -62,7 +62,9 @@ function resolveUiActionContext(context: CliCommandContext): UiActionContext {
 		return {
 			action,
 			actionArgs: context.parsedArgs.input.slice(2),
-			commandLabel: action ? `${context.subcommand} ${action}` : context.subcommand,
+			commandLabel: action
+				? `${context.subcommand} ${action}`
+				: context.subcommand,
 		};
 	}
 
@@ -259,7 +261,9 @@ function writeUiCommandHelp(context: CliCommandContext): number {
 	return 1;
 }
 
-export async function runUiCommand(context: CliCommandContext): Promise<number> {
+export async function runUiCommand(
+	context: CliCommandContext,
+): Promise<number> {
 	const {action, actionArgs, commandLabel} = resolveUiActionContext(context);
 
 	if (!action) {

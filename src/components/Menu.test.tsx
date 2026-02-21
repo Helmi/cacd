@@ -175,10 +175,7 @@ describe.skip('Menu component Effect-based error handling', () => {
 		);
 
 		const {lastFrame} = render(
-			<Menu
-				projectPath="/test/current"
-				onSelectWorktree={onSelectWorktree}
-			/>,
+			<Menu projectPath="/test/current" onSelectWorktree={onSelectWorktree} />,
 		);
 
 		// Wait for Effect to execute
@@ -268,10 +265,7 @@ describe.skip('Menu component Effect-based error handling', () => {
 			.mockReturnValue(Effect.succeed('main'));
 
 		render(
-			<Menu
-				projectPath="/test/current"
-				onSelectWorktree={onSelectWorktree}
-			/>,
+			<Menu projectPath="/test/current" onSelectWorktree={onSelectWorktree} />,
 		);
 
 		// Wait for Effect to execute
@@ -354,10 +348,7 @@ describe.skip('Menu component rendering', () => {
 		const onSelectWorktree = vi.fn();
 
 		const {lastFrame} = render(
-			<Menu
-				projectPath="/test/current"
-				onSelectWorktree={onSelectWorktree}
-			/>,
+			<Menu projectPath="/test/current" onSelectWorktree={onSelectWorktree} />,
 		);
 
 		await new Promise(resolve => setTimeout(resolve, 100));

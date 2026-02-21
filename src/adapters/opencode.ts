@@ -52,7 +52,9 @@ function parseOpencodeMessages(sessionFilePath: string): ConversationMessage[] {
 	const rows = safeReadJsonLines(sessionFilePath) as Record<string, unknown>[];
 	return rows
 		.map((row, index) => {
-			const content = extractString(row['content'] || row['message'] || row['text']);
+			const content = extractString(
+				row['content'] || row['message'] || row['text'],
+			);
 			if (!content) return null;
 			return {
 				id: `opencode-jsonl-${index}`,
@@ -66,7 +68,10 @@ function parseOpencodeMessages(sessionFilePath: string): ConversationMessage[] {
 		.filter(Boolean) as ConversationMessage[];
 }
 
-function fileContainsWorktree(candidatePath: string, worktreePath: string): boolean {
+function fileContainsWorktree(
+	candidatePath: string,
+	worktreePath: string,
+): boolean {
 	try {
 		const content = readFileSync(candidatePath, 'utf8');
 		return content.includes(path.resolve(worktreePath));
@@ -106,14 +111,18 @@ export class OpencodeAdapter extends BaseAgentAdapter {
 					120,
 				),
 			)
-			.filter(candidate => withinRecentWindow(candidate, afterTimestamp, 300000));
+			.filter(candidate =>
+				withinRecentWindow(candidate, afterTimestamp, 300000),
+			);
 
 		if (candidates.length === 0) {
 			return null;
 		}
 
 		return (
-			candidates.find(candidate => fileContainsWorktree(candidate, worktreePath)) ||
+			candidates.find(candidate =>
+				fileContainsWorktree(candidate, worktreePath),
+			) ||
 			candidates[0] ||
 			null
 		);
@@ -129,12 +138,18 @@ export class OpencodeAdapter extends BaseAgentAdapter {
 		sessionFilePath: string,
 	): Promise<SessionFileMetadata> {
 		const messages = parseOpencodeMessages(sessionFilePath);
-		const firstTimestamp = messages.find(message => message.timestamp)?.timestamp;
-		const lastTimestamp =
-			[...messages].reverse().find(message => message.timestamp)?.timestamp;
+		const firstTimestamp = messages.find(
+			message => message.timestamp,
+		)?.timestamp;
+		const lastTimestamp = [...messages]
+			.reverse()
+			.find(message => message.timestamp)?.timestamp;
 
 		return {
-			agentSessionId: path.basename(sessionFilePath, path.extname(sessionFilePath)),
+			agentSessionId: path.basename(
+				sessionFilePath,
+				path.extname(sessionFilePath),
+			),
 			startedAt: firstTimestamp ?? undefined,
 			endedAt: lastTimestamp ?? undefined,
 			messageCount: messages.length,

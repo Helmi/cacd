@@ -1,3 +1,4 @@
+/* global fetch, Response */
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {tuiApiClient} from './tuiApiClient.js';
 

@@ -162,7 +162,10 @@ export class TdReader {
 			const params: string[] = [];
 
 			if (options?.status) {
-				const statuses = options.status.split(',').map(s => s.trim()).filter(Boolean);
+				const statuses = options.status
+					.split(',')
+					.map(s => s.trim())
+					.filter(Boolean);
 				if (statuses.length === 1) {
 					sql += ' AND status = ?';
 					params.push(statuses[0]!);
@@ -197,9 +200,7 @@ export class TdReader {
 			const db = this.open();
 			return (
 				(db
-					.prepare(
-						'SELECT * FROM issues WHERE id = ? AND deleted_at IS NULL',
-					)
+					.prepare('SELECT * FROM issues WHERE id = ? AND deleted_at IS NULL')
 					.get(issueId) as TdIssue) ?? null
 			);
 		} catch (error) {
@@ -269,7 +270,7 @@ export class TdReader {
 				)
 				.all(issueId) as TdHandoff[];
 
-			return rows.map((row) => ({
+			return rows.map(row => ({
 				id: row.id,
 				issueId: row.issue_id,
 				sessionId: row.session_id,
@@ -305,10 +306,7 @@ export class TdReader {
 				.prepare('SELECT * FROM issue_files WHERE issue_id = ?')
 				.all(issueId) as TdIssueFile[];
 		} catch (error) {
-			logger.error(
-				`[TdReader] Failed to get files for ${issueId}`,
-				error,
-			);
+			logger.error(`[TdReader] Failed to get files for ${issueId}`, error);
 			return [];
 		}
 	}
