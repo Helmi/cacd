@@ -158,8 +158,10 @@ export function SettingsGeneral({ localConfig, setLocalConfig }: SettingsGeneral
           />
           <p className="text-xs text-muted-foreground">
             Used when creating work branches from TD tasks. Variables: <code>{'{{task.id}}'}</code>,{' '}
-            <code>{'{{task.type-prefix}}'}</code>, <code>{'{{task.title-short-slug}}'}</code>,{' '}
-            <code>{'{{task.title-slug}}'}</code>.
+            <code>{'{{task.type-prefix}}'}</code>, <code>{'{{task.title}}'}</code>,{' '}
+            <code>{'{{task.title-short-slug}}'}</code>, <code>{'{{task.title-slug}}'}</code>.
+            Aliases: <code>{'{{task.type_prefix}}'}</code>,{' '}
+            <code>{'{{task.title_short_slug}}'}</code>, <code>{'{{task.title_slug}}'}</code>.
           </p>
           <p className="text-xs text-muted-foreground">
             Preview: <span className="font-mono">{previewBranch}</span>

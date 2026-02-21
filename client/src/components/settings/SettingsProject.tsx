@@ -12,6 +12,7 @@ import {
   DEFAULT_TD_WORK_BRANCH_TEMPLATE,
   renderTdBranchTemplate,
 } from '@/lib/tdBranchTemplate'
+import { PromptTemplateVariableLegend } from './PromptTemplateVariableLegend'
 
 export function SettingsProject() {
   const {
@@ -357,8 +358,10 @@ export function SettingsProject() {
           />
           <p className="text-xs text-muted-foreground">
             Leave empty to inherit global. Variables: <code>{'{{task.id}}'}</code>,{' '}
-            <code>{'{{task.type-prefix}}'}</code>, <code>{'{{task.title-short-slug}}'}</code>,{' '}
-            <code>{'{{task.title-slug}}'}</code>.
+            <code>{'{{task.type-prefix}}'}</code>, <code>{'{{task.title}}'}</code>,{' '}
+            <code>{'{{task.title-short-slug}}'}</code>, <code>{'{{task.title-slug}}'}</code>.
+            Aliases: <code>{'{{task.type_prefix}}'}</code>,{' '}
+            <code>{'{{task.title_short_slug}}'}</code>, <code>{'{{task.title_slug}}'}</code>.
           </p>
           <p className="text-xs text-muted-foreground">
             Effective preview: <span className="font-mono">{previewProjectBranch}</span>
@@ -532,6 +535,7 @@ export function SettingsProject() {
                 className="min-h-36 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 placeholder="Prompt text. Supports variables like {{task.id}}, {{task.title}}, {{task.description}}"
               />
+              <PromptTemplateVariableLegend />
             </div>
 
             <div className="flex items-center gap-2">
