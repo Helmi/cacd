@@ -711,14 +711,19 @@ export class APIServer {
 			},
 		);
 
-		this.app.post<{Body: {path: string; name?: string}}>(
+		this.app.post<{Body: {path: string; name?: string; description?: string}}>(
 			'/api/project/update',
 			async (request, reply) => {
-				const {path, name} = request.body;
-				const updated = projectManager.instance.updateProject(path, {name});
+				const {path, name, description} = request.body;
+				const updated = projectManager.instance.updateProject(path, {
+					name,
+					description,
+				});
 
 				if (updated) {
-					logger.info(`API: Updated project ${path} -> name: ${name}`);
+					logger.info(
+						`API: Updated project ${path} -> name: ${name}, description: ${description}`,
+					);
 					return {success: true, project: updated};
 				} else {
 					logger.error(`API: Failed to update project (not found): ${path}`);

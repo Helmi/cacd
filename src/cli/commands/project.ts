@@ -356,46 +356,34 @@ async function handleConfigure(
 	}
 
 	let updatedProject: Project | null = null;
-	let nameUpdatedViaApi = false;
 
-	if (updates.name !== undefined) {
-		try {
-			const client = createDaemonApiClient(context);
-			const response = await client.post<ApiProjectMutationResponse>(
-				'/api/project/update',
-				{path: projectPath, name: updates.name},
-			);
-			updatedProject = response.project ?? null;
-			nameUpdatedViaApi = updatedProject !== null;
-		} catch (error) {
-			if (!isFallbackEligibleApiError(error)) {
-				context.formatter.writeError({
-					text: [`Failed to configure project: ${toErrorMessage(error)}`],
-					data: {
-						ok: false,
-						command: commandLabel,
-						error: {
-							message: toErrorMessage(error),
-						},
+	try {
+		const client = createDaemonApiClient(context);
+		const response = await client.post<ApiProjectMutationResponse>(
+			'/api/project/update',
+			{path: projectPath, ...updates},
+		);
+		updatedProject = response.project ?? null;
+	} catch (error) {
+		if (!isFallbackEligibleApiError(error)) {
+			context.formatter.writeError({
+				text: [`Failed to configure project: ${toErrorMessage(error)}`],
+				data: {
+					ok: false,
+					command: commandLabel,
+					error: {
+						message: toErrorMessage(error),
 					},
-				});
-				return 1;
-			}
+				},
+			});
+			return 1;
 		}
 	}
 
-	if (updates.description !== undefined || !nameUpdatedViaApi) {
-		const directUpdates: Partial<Pick<Project, 'name' | 'description'>> = {
-			...updates,
-		};
-
-		if (updatedProject?.name) {
-			directUpdates.name = updatedProject.name;
-		}
-
+	if (!updatedProject) {
 		updatedProject = context.services.projectManager.instance.updateProject(
 			projectPath,
-			directUpdates,
+			updates,
 		);
 	}
 
