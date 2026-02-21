@@ -218,13 +218,18 @@ function renderTaskPromptTemplate(
 	templateContent: string,
 	taskDetail: TdIssueWithChildren,
 ): string {
-	return templateContent
-		.replace(/\{\{task\.id\}\}/g, taskDetail.id)
-		.replace(/\{\{task\.title\}\}/g, taskDetail.title)
-		.replace(/\{\{task\.description\}\}/g, taskDetail.description || '')
-		.replace(/\{\{task\.status\}\}/g, taskDetail.status)
-		.replace(/\{\{task\.priority\}\}/g, taskDetail.priority)
-		.replace(/\{\{task\.acceptance\}\}/g, taskDetail.acceptance || '');
+	const vars: Record<string, string> = {
+		'task.id': taskDetail.id,
+		'task.title': taskDetail.title,
+		'task.description': taskDetail.description || '',
+		'task.status': taskDetail.status,
+		'task.priority': taskDetail.priority,
+		'task.acceptance': taskDetail.acceptance || '',
+	};
+	return templateContent.replace(
+		/\{\{(task\.(?:id|title|description|status|priority|acceptance))\}\}/g,
+		(_match, key: string) => vars[key] ?? '',
+	);
 }
 
 function buildTdStartupPrompt(params: {

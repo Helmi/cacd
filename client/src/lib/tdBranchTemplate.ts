@@ -22,7 +22,7 @@ function toSlug(value: string): string {
     .replace(/^-|-$/g, '')
 }
 
-function shortTitleSlug(title: string, maxWords = 4): string {
+function shortTitleSlug(title: string, maxWords = 2): string {
   const words = title
     .trim()
     .split(/\s+/)
