@@ -127,7 +127,7 @@ const MergeWorktree: React.FC<MergeWorktreeProps> = ({
 					sourceBranch,
 					targetBranch,
 					useRebase,
-				);
+				});
 
 				// Merge successful, ask about deleting source branch
 				setStep('delete-confirm');

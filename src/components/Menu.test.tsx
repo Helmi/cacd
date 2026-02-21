@@ -128,8 +128,7 @@ describe.skip('Menu component Effect-based error handling', () => {
 
 		const {lastFrame} = render(
 			<Menu
-				sessionManager={sessionManager}
-				worktreeService={worktreeService}
+				projectPath="/test/current"
 				onSelectWorktree={onSelectWorktree}
 				onDismissError={onDismissError}
 			/>,
@@ -177,8 +176,7 @@ describe.skip('Menu component Effect-based error handling', () => {
 
 		const {lastFrame} = render(
 			<Menu
-				sessionManager={sessionManager}
-				worktreeService={worktreeService}
+				projectPath="/test/current"
 				onSelectWorktree={onSelectWorktree}
 			/>,
 		);
@@ -228,8 +226,7 @@ describe.skip('Menu component Effect-based error handling', () => {
 
 		const {lastFrame} = render(
 			<Menu
-				sessionManager={sessionManager}
-				worktreeService={worktreeService}
+				projectPath="/test/current"
 				onSelectWorktree={onSelectWorktree}
 				onDismissError={onDismissError}
 			/>,
@@ -272,8 +269,7 @@ describe.skip('Menu component Effect-based error handling', () => {
 
 		render(
 			<Menu
-				sessionManager={sessionManager}
-				worktreeService={worktreeService}
+				projectPath="/test/current"
 				onSelectWorktree={onSelectWorktree}
 			/>,
 		);
@@ -320,8 +316,7 @@ describe.skip('Menu component rendering', () => {
 		const {unmount, lastFrame} = render(
 			<Menu
 				key={1}
-				sessionManager={sessionManager}
-				worktreeService={worktreeService}
+				projectPath="/test/current"
 				onSelectWorktree={onSelectWorktree}
 			/>,
 		);
@@ -342,8 +337,7 @@ describe.skip('Menu component rendering', () => {
 		const {lastFrame: lastFrame2} = render(
 			<Menu
 				key={2}
-				sessionManager={sessionManager}
-				worktreeService={worktreeService}
+				projectPath="/test/current"
 				onSelectWorktree={onSelectWorktree}
 			/>,
 		);
@@ -361,8 +355,7 @@ describe.skip('Menu component rendering', () => {
 
 		const {lastFrame} = render(
 			<Menu
-				sessionManager={sessionManager}
-				worktreeService={worktreeService}
+				projectPath="/test/current"
 				onSelectWorktree={onSelectWorktree}
 			/>,
 		);
@@ -453,8 +446,7 @@ describe.skip('Menu component rendering', () => {
 
 		const {lastFrame} = render(
 			<Menu
-				sessionManager={sessionManager}
-				worktreeService={worktreeService}
+				projectPath="/test/current"
 				onSelectWorktree={onSelectWorktree}
 				onSelectRecentProject={onSelectRecentProject}
 			/>,
@@ -525,8 +517,7 @@ describe.skip('Menu component rendering', () => {
 
 		const {lastFrame} = render(
 			<Menu
-				sessionManager={sessionManager}
-				worktreeService={worktreeService}
+				projectPath="/test/current"
 				onSelectWorktree={onSelectWorktree}
 				onSelectRecentProject={onSelectRecentProject}
 			/>,

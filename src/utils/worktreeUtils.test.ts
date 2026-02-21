@@ -7,9 +7,8 @@ import {
 	calculateColumnPositions,
 	assembleWorktreeLabel,
 } from './worktreeUtils.js';
-import {Worktree, Session} from '../types/index.js';
+import {Worktree} from '../types/index.js';
 import {execSync} from 'child_process';
-import {Mutex, createInitialSessionStateData} from './mutex.js';
 
 // Mock child_process module
 vi.mock('child_process');
@@ -229,25 +228,9 @@ describe('prepareWorktreeItems', () => {
 		hasSession: false,
 	};
 
-	// Simplified mock
-	const mockSession: Session = {
-		id: 'test-session',
+	const mockSession = {
 		worktreePath: '/path/to/worktree',
-		process: {} as Session['process'],
-		output: [],
-		outputHistory: [],
-		lastActivity: new Date(),
-		isActive: true,
-		terminal: {} as Session['terminal'],
-		stateCheckInterval: undefined,
-		isPrimaryCommand: true,
-		commandConfig: undefined,
-		detectionStrategy: 'claude',
-		devcontainerConfig: undefined,
-		stateMutex: new Mutex({
-			...createInitialSessionStateData(),
-			state: 'idle',
-		}),
+		state: 'idle' as const,
 	};
 
 	it('should prepare basic worktree without git status', () => {

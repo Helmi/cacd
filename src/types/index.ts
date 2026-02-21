@@ -327,6 +327,11 @@ export interface IWorktreeService {
 		import('../types/errors.js').GitError,
 		never
 	>;
+	getDefaultBranchEffect(): import('effect').Effect.Effect<
+		string,
+		import('../types/errors.js').GitError,
+		never
+	>;
 	getGitRootPath(): string;
 	createWorktreeEffect(
 		worktreePath: string,

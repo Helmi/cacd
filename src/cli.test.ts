@@ -243,7 +243,7 @@ describe('CLI', () => {
 				.mockImplementation(() => {});
 
 			try {
-				await import('./cli.tsx');
+				await import('./cli.js');
 
 				expect(apiStart).toHaveBeenCalledWith(3000, '0.0.0.0', false);
 				expect(prepareDaemonPidFile).toHaveBeenCalledWith(
@@ -423,7 +423,7 @@ describe('CLI', () => {
 				.mockImplementation((() => undefined) as never);
 
 			try {
-				await import('./cli.tsx');
+				await import('./cli.js');
 
 				expect(ensureDaemonForTui).toHaveBeenCalledWith({
 					configDir: '/tmp/cacd-test',
@@ -538,7 +538,7 @@ describe('CLI', () => {
 			}) as never);
 
 			try {
-				await expect(import('./cli.tsx')).rejects.toThrow('exit:1');
+				await expect(import('./cli.js')).rejects.toThrow('exit:1');
 				expect(ensureDaemonForTui).toHaveBeenCalledWith({
 					configDir: '/tmp/cacd-test',
 					port: 3000,

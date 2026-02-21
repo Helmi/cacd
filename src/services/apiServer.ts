@@ -2731,8 +2731,8 @@ export class APIServer {
 					? headerTokenRaw[0]
 					: headerTokenRaw;
 				const authToken =
-					typeof socket.handshake.auth?.token === 'string'
-						? socket.handshake.auth.token
+					typeof socket.handshake.auth?.['token'] === 'string'
+						? socket.handshake.auth['token']
 						: undefined;
 
 				if (

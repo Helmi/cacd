@@ -1,26 +1,24 @@
 import {describe, expect, it} from 'vitest';
-import type {SessionState} from '../types/index.js';
+import type {Session} from '../types/index.js';
+import {
+	Mutex,
+	createInitialSessionStateData,
+	type SessionStateData,
+} from '../utils/mutex.js';
 import {
 	toApiSessionPayload,
 	toSessionUpdatePayload,
 } from './sessionStateMetadata.js';
 
-type SessionSnapshot = {
-	state: SessionState;
-	autoApprovalFailed: boolean;
-	autoApprovalReason: string | undefined;
-};
+type SessionSnapshot = Pick<
+	SessionStateData,
+	'state' | 'autoApprovalFailed' | 'autoApprovalReason'
+>;
 
-type SessionLike = {
-	id: string;
-	name?: string;
-	worktreePath: string;
-	isActive: boolean;
-	agentId?: string;
-	stateMutex: {
-		getSnapshot: () => SessionSnapshot;
-	};
-};
+type SessionLike = Pick<
+	Session,
+	'id' | 'name' | 'worktreePath' | 'isActive' | 'agentId' | 'stateMutex'
+>;
 
 function createSession(
 	overrides: Partial<SessionLike> = {},
@@ -32,14 +30,11 @@ function createSession(
 		worktreePath: '/repo/.worktrees/feat',
 		isActive: true,
 		agentId: 'codex',
-		stateMutex: {
-			getSnapshot: () => ({
-				state: 'idle',
-				autoApprovalFailed: false,
-				autoApprovalReason: undefined,
-				...snapshotOverrides,
-			}),
-		},
+		stateMutex: new Mutex({
+			...createInitialSessionStateData(),
+			state: 'idle',
+			...snapshotOverrides,
+		}),
 		...overrides,
 	};
 }
