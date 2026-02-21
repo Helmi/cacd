@@ -8,16 +8,27 @@ import {
 	isDevModeConfig,
 } from './utils/configDir.js';
 import {existsSync} from 'fs';
+import {mkdir} from 'fs/promises';
 import {join} from 'path';
 import dgram from 'dgram';
 import dns from 'dns';
 import os from 'os';
+import {spawnSync} from 'child_process';
 import {
 	cleanupDaemonPidFile,
 	getDaemonPidFilePath,
+	isProcessRunning,
 	prepareDaemonPidFile,
+	readDaemonPidFile,
 } from './utils/daemonLifecycle.js';
-import {ensureDaemonForTui} from './utils/daemonControl.js';
+import {
+	buildDaemonWebConfig,
+	ensureDaemonForTui,
+	spawnDetachedDaemon,
+	waitForDaemonApiReady,
+	waitForDaemonPid,
+	type DaemonWebConfig,
+} from './utils/daemonControl.js';
 
 // Initialize config dir immediately - this is safe because configDir.js has no dependencies
 initializeConfigDir();
@@ -32,51 +43,56 @@ const {default: meow} = await import('meow');
 
 const cli = meow(
 	`
-		Usage
-		  $ cacd                    Launch TUI (auto-start daemon if needed)
-		  $ cacd tui                Launch TUI only (daemon must already be running)
-		  $ cacd daemon             Run API server as daemon (no TUI)
-		  $ cacd setup              Run first-time setup wizard
-		  $ cacd add [path]         Add a project (default: current directory)
-		  $ cacd remove <path>      Remove a project from the list
-		  $ cacd list               List all tracked projects
-		  $ cacd auth <command>     Manage WebUI authentication
+  Usage
+    $ cacd                      Start daemon in background
+    $ cacd start                Start daemon in background
+    $ cacd stop                 Stop running daemon
+    $ cacd status               Show daemon status
+    $ cacd restart              Restart daemon
+    $ cacd tui                  Launch TUI (daemon must already be running)
+    $ cacd daemon               Run daemon in foreground (for service managers)
+    $ cacd setup                Run first-time setup wizard
+    $ cacd add [path]           Add a project (default: current directory)
+    $ cacd remove <path>        Remove a project from the list
+    $ cacd list                 List all tracked projects
+    $ cacd auth <command>       Manage WebUI authentication
 
-	Auth Commands
-	  $ cacd auth show            Display access URL
-	  $ cacd auth reset-passcode  Reset your passcode
-	  $ cacd auth regenerate-token  Generate new access token (careful!)
+  Auth Commands
+    $ cacd auth show              Display access URL
+    $ cacd auth reset-passcode    Reset your passcode
+    $ cacd auth regenerate-token  Generate new access token (careful!)
 
-		Options
-		  --help                Show help
-		  --version             Show version
-		  --port <number>       Port for web interface (overrides config/env)
-		  --headless            Run API server only (legacy alias for 'daemon')
-		  --devc-up-command     Command to start devcontainer
-		  --devc-exec-command   Command to execute in devcontainer
+  Options
+    --help                  Show help
+    --version               Show version
+    --port <number>         Port for web interface (overrides config/env)
+    --headless              Run API server only (legacy alias for 'daemon')
+    --devc-up-command       Command to start devcontainer
+    --devc-exec-command     Command to execute in devcontainer
 
-	Setup Options (for 'cacd setup')
-	  --no-web              Disable web interface
-	  --project <path>      Add specified path as first project
-	  --skip-project        Don't add any project
-	  --force               Overwrite existing config without asking
+  Setup Options (for 'cacd setup')
+    --no-web               Disable web interface
+    --project <path>       Add specified path as first project
+    --skip-project         Don't add any project
+    --force                Overwrite existing config without asking
 
-	Environment Variables
-	  CACD_CONFIG_DIR        Custom config directory (highest priority, overrides CACD_DEV)
-	  CACD_PORT              Port for web interface
-	  CACD_DEV               Set to 1 for dev mode (uses local .cacd-dev/ config)
+  Environment Variables
+    CACD_CONFIG_DIR        Custom config directory (highest priority, overrides CACD_DEV)
+    CACD_PORT              Port for web interface
+    CACD_DEV               Set to 1 for dev mode (uses local .cacd-dev/ config)
 
-	Examples
-	  $ cacd                         # Launch TUI (auto-start daemon if needed)
-	  $ cacd tui                     # Launch TUI only (requires running daemon)
-	  $ cacd setup                   # Run setup wizard
-	  $ cacd setup --port 8080       # Setup with custom port
-	  $ cacd add                     # Add current directory as project
-		  $ cacd add /path/to/project    # Add specific project
-		  $ cacd list                    # Show tracked projects
-		  $ cacd auth show               # Show WebUI access URL
-		  $ cacd daemon                  # Start daemon (API server only)
-		  $ cacd --port 8080             # Launch TUI on specific port
+  Examples
+    $ cacd                        # Start daemon in background
+    $ cacd start                  # Start daemon in background
+    $ cacd status                 # Check daemon status
+    $ cacd stop                   # Stop daemon
+    $ cacd tui                    # Launch TUI (requires running daemon)
+    $ cacd daemon                 # Foreground daemon mode for systemd/launchd
+    $ cacd setup --port 8080      # Setup with custom port
+    $ cacd add                    # Add current directory as project
+    $ cacd add /path/to/project   # Add specific project
+    $ cacd list                   # Show tracked projects
+    $ cacd auth show              # Show WebUI access URL
 	`,
 	{
 		importMeta: import.meta,
@@ -123,8 +139,12 @@ if (!!cli.flags.devcUpCommand !== !!cli.flags.devcExecCommand) {
 }
 
 // Handle CLI subcommands
-const subcommand = cli.input[0];
-const isDaemonMode = subcommand === 'daemon' || cli.flags.headless;
+const rawSubcommand = cli.input[0];
+const subcommand =
+	cli.flags.headless && rawSubcommand === undefined
+		? 'daemon'
+		: rawSubcommand ?? 'start';
+const isDaemonMode = subcommand === 'daemon';
 const isTuiOnlyMode = subcommand === 'tui';
 
 // Handle setup subcommand BEFORE importing services (which auto-create config)
@@ -151,9 +171,9 @@ if (subcommand === 'setup') {
 	}
 }
 
-// First-run detection: if no config exists, run setup automatically
+// First-run detection: for daemon start mode, run setup automatically
 // This runs BEFORE importing services that auto-create config
-if (isFirstRun && subcommand !== 'setup') {
+if (isFirstRun && subcommand === 'start') {
 	console.log('No configuration found. Running setup...');
 	const {runSetup} = await import('./services/setupService.js');
 	await runSetup({});
@@ -379,28 +399,35 @@ if (subcommand === 'auth') {
 // If there's an unrecognized subcommand, show error
 if (
 	subcommand &&
-	!['add', 'remove', 'list', 'setup', 'auth', 'daemon', 'tui'].includes(
-		subcommand,
-	)
+	![
+		'start',
+		'stop',
+		'status',
+		'restart',
+		'add',
+		'remove',
+		'list',
+		'setup',
+		'auth',
+		'daemon',
+		'tui',
+	].includes(subcommand)
 ) {
 	console.error(`Unknown command: ${subcommand}`);
 	console.error('');
 	console.error('Available commands:');
+	console.error('  cacd start         Start daemon in background');
+	console.error('  cacd stop          Stop daemon');
+	console.error('  cacd status        Show daemon status');
+	console.error('  cacd restart       Restart daemon');
 	console.error('  cacd setup         Run first-time setup');
 	console.error('  cacd add [path]    Add a project');
 	console.error('  cacd remove <path> Remove a project');
 	console.error('  cacd list          List projects');
 	console.error('  cacd auth <cmd>    Manage WebUI auth');
 	console.error('  cacd tui           Launch TUI (daemon required)');
-	console.error('  cacd daemon        Run API server without TUI');
-	console.error('  cacd               Launch TUI (auto-start daemon)');
-	process.exit(1);
-}
-
-// If no daemon mode, continue to TUI - check TTY
-if (!isDaemonMode && (!process.stdin.isTTY || !process.stdout.isTTY)) {
-	console.error('Error: cacd must be run in an interactive terminal (TTY)');
-	console.error('Use `cacd daemon` to run API server only without TUI');
+	console.error('  cacd daemon        Run API server in foreground');
+	console.error('  cacd               Start daemon in background');
 	process.exit(1);
 }
 
@@ -441,13 +468,6 @@ if (isNaN(port) || port < 1 || port > 65535) {
 	process.exit(1);
 }
 
-// Initialize worktree config manager
-worktreeConfigManager.initialize();
-
-// Get config dir info for display (configDir already defined at top of file)
-const customConfigDir = isCustomConfigDir();
-const devModeActive = isDevModeConfig();
-
 // Get the preferred outbound IP address by creating a UDP socket
 // This returns the IP that would be used to reach the internet
 function getExternalIP(): Promise<string | undefined> {
@@ -484,19 +504,277 @@ function getLocalHostname(
 	});
 }
 
-let webConfig:
-	| {
-			url: string;
-			externalUrl?: string;
-			hostname?: string;
-			port: number;
-			configDir: string;
-			isCustomConfigDir: boolean;
-			isDevMode: boolean;
-	  }
-	| undefined;
+const DAEMON_READY_TIMEOUT_MS = 15_000;
+const DAEMON_POLL_INTERVAL_MS = 200;
+const DAEMON_STOP_TIMEOUT_MS = 5_000;
+const DAEMON_LOG_FILENAME = 'daemon.log';
 
+// Get config dir info for display (configDir already defined at top of file)
+const customConfigDir = isCustomConfigDir();
+const devModeActive = isDevModeConfig();
 const accessToken = configurationManager.getConfiguration().accessToken;
+const daemonPidFilePath = getDaemonPidFilePath(configDir);
+const daemonLogPath = join(configDir, DAEMON_LOG_FILENAME);
+
+function sleep(ms: number): Promise<void> {
+	return new Promise(resolve => {
+		setTimeout(resolve, ms);
+	});
+}
+
+function getProcessUptime(pid: number): string | undefined {
+	const result = spawnSync('ps', ['-p', `${pid}`, '-o', 'etime='], {
+		encoding: 'utf-8',
+	});
+
+	if (result.status !== 0) {
+		return undefined;
+	}
+
+	const uptime = result.stdout.trim();
+	return uptime.length > 0 ? uptime : undefined;
+}
+
+async function withNetworkLinks(
+	baseConfig: DaemonWebConfig,
+	token: string | undefined,
+): Promise<DaemonWebConfig> {
+	const externalIP = await getExternalIP();
+	const hostname = await getLocalHostname(externalIP);
+	const tokenPath = token ? `/${token}` : '';
+
+	return {
+		...baseConfig,
+		externalUrl: externalIP
+			? `http://${externalIP}:${baseConfig.port}${tokenPath}`
+			: undefined,
+		hostname: hostname
+			? `http://${hostname}:${baseConfig.port}${tokenPath}`
+			: undefined,
+	};
+}
+
+async function startDaemonInBackground(): Promise<{
+	pid: number;
+	started: boolean;
+	webConfig: DaemonWebConfig;
+}> {
+	const existingPid = await readDaemonPidFile(daemonPidFilePath);
+	const baseConfig = buildDaemonWebConfig({
+		configDir,
+		port,
+		accessToken,
+		isCustomConfigDir: customConfigDir,
+		isDevMode: devModeActive,
+	});
+
+	if (existingPid !== undefined && isProcessRunning(existingPid)) {
+		return {
+			pid: existingPid,
+			started: false,
+			webConfig: await withNetworkLinks(baseConfig, accessToken),
+		};
+	}
+
+	if (existingPid !== undefined) {
+		await cleanupDaemonPidFile(daemonPidFilePath, existingPid);
+	}
+
+	const entrypointPath = process.argv[1];
+	if (!entrypointPath) {
+		throw new Error('Unable to start daemon: missing CLI entrypoint path.');
+	}
+
+	await mkdir(configDir, {recursive: true});
+	const daemonProcess = spawnDetachedDaemon(entrypointPath, port, {
+		logFilePath: daemonLogPath,
+	});
+	daemonProcess.unref();
+
+	const deadline = Date.now() + DAEMON_READY_TIMEOUT_MS;
+	const daemonPid = await waitForDaemonPid({
+		pidFilePath: daemonPidFilePath,
+		deadline,
+		pollIntervalMs: DAEMON_POLL_INTERVAL_MS,
+	});
+
+	await waitForDaemonApiReady({
+		baseUrl: `http://127.0.0.1:${port}`,
+		accessToken,
+		deadline,
+		pollIntervalMs: DAEMON_POLL_INTERVAL_MS,
+	});
+
+	return {
+		pid: daemonPid,
+		started: true,
+		webConfig: await withNetworkLinks(baseConfig, accessToken),
+	};
+}
+
+async function stopDaemon(): Promise<{stopped: boolean; pid?: number}> {
+	const pid = await readDaemonPidFile(daemonPidFilePath);
+	if (pid === undefined) {
+		return {stopped: false};
+	}
+
+	if (!isProcessRunning(pid)) {
+		await cleanupDaemonPidFile(daemonPidFilePath, pid);
+		return {stopped: false};
+	}
+
+	try {
+		process.kill(pid, 'SIGTERM');
+	} catch (error) {
+		const errnoError = error as NodeJS.ErrnoException;
+		if (errnoError.code !== 'ESRCH') {
+			throw error;
+		}
+	}
+
+	const deadline = Date.now() + DAEMON_STOP_TIMEOUT_MS;
+	while (Date.now() < deadline) {
+		if (!isProcessRunning(pid)) {
+			await cleanupDaemonPidFile(daemonPidFilePath, pid);
+			return {stopped: true, pid};
+		}
+		await sleep(DAEMON_POLL_INTERVAL_MS);
+	}
+
+	throw new Error(`Timed out waiting for daemon PID ${pid} to stop.`);
+}
+
+if (subcommand === 'start') {
+	let result: {pid: number; started: boolean; webConfig: DaemonWebConfig};
+	try {
+		result = await startDaemonInBackground();
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(`Failed to start daemon: ${message}`);
+		process.exit(1);
+	}
+
+	if (result.started) {
+		console.log('CA⚡CD daemon started in background');
+	} else {
+		console.log(`Daemon already running (PID ${result.pid})`);
+	}
+	console.log(`Local URL:    ${result.webConfig.url}`);
+	console.log(`External URL: ${result.webConfig.externalUrl || '(unavailable)'}`);
+	console.log(`PID:          ${result.pid}`);
+	console.log(`Config Dir:   ${configDir}`);
+	console.log(`PID File:     ${daemonPidFilePath}`);
+	console.log(`Log File:     ${daemonLogPath}`);
+	process.exit(0);
+}
+
+if (subcommand === 'stop') {
+	let result: {stopped: boolean; pid?: number};
+	try {
+		result = await stopDaemon();
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(`Failed to stop daemon: ${message}`);
+		process.exit(1);
+	}
+
+	if (!result.stopped) {
+		console.log('No daemon running');
+		process.exit(0);
+	}
+
+	console.log(`Daemon stopped (PID ${result.pid})`);
+	process.exit(0);
+}
+
+if (subcommand === 'status') {
+	let statusOutput: {
+		running: boolean;
+		pid?: number;
+		webConfig?: DaemonWebConfig;
+		uptime?: string;
+	};
+	try {
+		const pid = await readDaemonPidFile(daemonPidFilePath);
+		if (pid === undefined || !isProcessRunning(pid)) {
+			if (pid !== undefined) {
+				await cleanupDaemonPidFile(daemonPidFilePath, pid);
+			}
+			statusOutput = {running: false};
+		} else {
+			const baseConfig = buildDaemonWebConfig({
+				configDir,
+				port,
+				accessToken,
+				isCustomConfigDir: customConfigDir,
+				isDevMode: devModeActive,
+			});
+			statusOutput = {
+				running: true,
+				pid,
+				webConfig: await withNetworkLinks(baseConfig, accessToken),
+				uptime: getProcessUptime(pid),
+			};
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(`Failed to get daemon status: ${message}`);
+		process.exit(1);
+	}
+
+	if (!statusOutput.running) {
+		console.log('Daemon is not running');
+		console.log(`Config Dir: ${configDir}`);
+		console.log(`PID File:   ${daemonPidFilePath}`);
+		process.exit(0);
+	}
+
+	console.log('Daemon is running');
+	console.log(`PID:          ${statusOutput.pid}`);
+	console.log(`Local URL:    ${statusOutput.webConfig?.url}`);
+	console.log(
+		`External URL: ${statusOutput.webConfig?.externalUrl || '(unavailable)'}`,
+	);
+	console.log(`Config Dir:   ${configDir}`);
+	console.log(`PID File:     ${daemonPidFilePath}`);
+	console.log(`Log File:     ${daemonLogPath}`);
+	if (statusOutput.uptime) {
+		console.log(`Uptime:       ${statusOutput.uptime}`);
+	}
+	process.exit(0);
+}
+
+if (subcommand === 'restart') {
+	let result: {pid: number; started: boolean; webConfig: DaemonWebConfig};
+	try {
+		await stopDaemon();
+		result = await startDaemonInBackground();
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(`Failed to restart daemon: ${message}`);
+		process.exit(1);
+	}
+
+	console.log(`Daemon restarted (PID ${result.pid})`);
+	console.log(`Local URL:    ${result.webConfig.url}`);
+	console.log(`External URL: ${result.webConfig.externalUrl || '(unavailable)'}`);
+	console.log(`Config Dir:   ${configDir}`);
+	console.log(`PID File:     ${daemonPidFilePath}`);
+	console.log(`Log File:     ${daemonLogPath}`);
+	process.exit(0);
+}
+
+// If no daemon mode, continue to TUI - check TTY
+if (!isDaemonMode && (!process.stdin.isTTY || !process.stdout.isTTY)) {
+	console.error('Error: cacd must be run in an interactive terminal (TTY)');
+	console.error('Use `cacd start` to run daemon in background');
+	process.exit(1);
+}
+
+// Initialize worktree config manager
+worktreeConfigManager.initialize();
+
+let webConfig: DaemonWebConfig | undefined;
 
 if (isDaemonMode) {
 	try {
@@ -508,22 +786,18 @@ if (isDaemonMode) {
 			configurationManager.setPort(actualPort);
 		}
 
-		const externalIP = await getExternalIP();
-		const hostname = await getLocalHostname(externalIP);
-		const tokenPath = accessToken ? `/${accessToken}` : '';
-		webConfig = {
-			url: result.address.replace('0.0.0.0', 'localhost') + tokenPath,
-			externalUrl: externalIP
-				? `http://${externalIP}:${actualPort}${tokenPath}`
-				: undefined,
-			hostname: hostname
-				? `http://${hostname}:${actualPort}${tokenPath}`
-				: undefined,
-			port: actualPort,
-			configDir,
-			isCustomConfigDir: customConfigDir,
-			isDevMode: devModeActive,
-		};
+		webConfig = await withNetworkLinks(
+			{
+				url:
+					result.address.replace('0.0.0.0', 'localhost') +
+					(accessToken ? `/${accessToken}` : ''),
+				port: actualPort,
+				configDir,
+				isCustomConfigDir: customConfigDir,
+				isDevMode: devModeActive,
+			},
+			accessToken,
+		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(`Failed to start daemon API server: ${message}`);
@@ -539,18 +813,7 @@ if (isDaemonMode) {
 			isDevMode: devModeActive,
 			autoStart: !isTuiOnlyMode,
 		});
-		const externalIP = await getExternalIP();
-		const hostname = await getLocalHostname(externalIP);
-		const tokenPath = accessToken ? `/${accessToken}` : '';
-		webConfig = {
-			...daemonConnection.webConfig,
-			externalUrl: externalIP
-				? `http://${externalIP}:${daemonConnection.webConfig.port}${tokenPath}`
-				: undefined,
-			hostname: hostname
-				? `http://${hostname}:${daemonConnection.webConfig.port}${tokenPath}`
-				: undefined,
-		};
+		webConfig = await withNetworkLinks(daemonConnection.webConfig, accessToken);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		const prefix = isTuiOnlyMode
@@ -579,7 +842,6 @@ const appProps = {
 // In daemon mode, run API server only without TUI
 if (isDaemonMode) {
 	const daemonPid = process.pid;
-	const daemonPidFilePath = getDaemonPidFilePath(configDir);
 
 	try {
 		await prepareDaemonPidFile(daemonPidFilePath, daemonPid);
@@ -589,7 +851,6 @@ if (isDaemonMode) {
 		process.exit(1);
 	}
 
-	const accessToken = configurationManager.getConfiguration().accessToken;
 	console.log('CA⚡CD daemon started');
 	console.log(`Local URL:    ${webConfig?.url || `http://localhost:${port}`}`);
 	console.log(`Token:        ${accessToken || '(none configured)'}`);

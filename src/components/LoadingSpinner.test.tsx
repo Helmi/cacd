@@ -1,4 +1,4 @@
-import {describe, it, expect, vi, afterEach} from 'vitest';
+import {describe, it, expect, vi, afterEach, beforeEach} from 'vitest';
 import React from 'react';
 import {render} from 'ink-testing-library';
 import LoadingSpinner from './LoadingSpinner.js';
@@ -7,6 +7,13 @@ describe('LoadingSpinner', () => {
 	// Store original environment variables for restoration
 	const originalEnv = {...process.env};
 	const originalPlatform = process.platform;
+
+	beforeEach(() => {
+		// Default to a Unicode-capable environment for deterministic tests.
+		// Individual tests may override TERM/LANG to assert fallback behavior.
+		process.env['TERM'] = 'xterm-256color';
+		process.env['LANG'] = process.env['LANG'] ?? 'en_US.UTF-8';
+	});
 
 	afterEach(() => {
 		// Restore original environment

@@ -1,4 +1,5 @@
-import {spawn} from 'child_process';
+import {spawn, type StdioOptions} from 'child_process';
+import {closeSync, openSync} from 'fs';
 import {unlink} from 'fs/promises';
 import {
 	getDaemonPidFilePath,
@@ -40,7 +41,11 @@ interface DaemonControlDependencies {
 	readPidFile: (pidFilePath: string) => Promise<number | undefined>;
 	isPidRunning: (pid: number) => boolean;
 	removePidFile: (pidFilePath: string) => Promise<void>;
-	spawnDaemon: (entrypointPath: string, port: number) => DaemonProcessHandle;
+	spawnDaemon: (
+		entrypointPath: string,
+		port: number,
+		options?: SpawnDetachedDaemonOptions,
+	) => DaemonProcessHandle;
 	fetchImpl: typeof globalThis.fetch;
 	sleep: (ms: number) => Promise<void>;
 	now: () => number;
@@ -65,15 +70,33 @@ function buildSpawnArgs(entrypointPath: string, port: number): string[] {
 	return [...process.execArgv, entrypointPath, 'daemon', '--port', `${port}`];
 }
 
-function spawnDetachedDaemon(
+export interface SpawnDetachedDaemonOptions {
+	logFilePath?: string;
+}
+
+export function spawnDetachedDaemon(
 	entrypointPath: string,
 	port: number,
+	options?: SpawnDetachedDaemonOptions,
 ): DaemonProcessHandle {
+	let logFd: number | undefined;
+	if (options?.logFilePath) {
+		logFd = openSync(options.logFilePath, 'a');
+	}
+
+	const stdio: StdioOptions =
+		logFd === undefined ? 'ignore' : ['ignore', logFd, logFd];
+
 	const child = spawn(process.execPath, buildSpawnArgs(entrypointPath, port), {
 		detached: true,
-		stdio: 'ignore',
+		stdio,
 		env: process.env,
 	});
+
+	if (logFd !== undefined) {
+		closeSync(logFd);
+	}
+
 	return child;
 }
 
@@ -122,24 +145,25 @@ export function buildDaemonWebConfig(params: {
 	};
 }
 
-async function waitForDaemonPid(params: {
+export async function waitForDaemonPid(params: {
 	pidFilePath: string;
 	deadline: number;
 	pollIntervalMs: number;
-	deps: DaemonControlDependencies;
+	deps?: Partial<DaemonControlDependencies>;
 }): Promise<number> {
+	const deps = createDaemonControlDependencies(params.deps);
 	let lastSeenPid: number | undefined;
 
-	while (params.deps.now() < params.deadline) {
-		const pid = await params.deps.readPidFile(params.pidFilePath);
+	while (deps.now() < params.deadline) {
+		const pid = await deps.readPidFile(params.pidFilePath);
 		if (pid !== undefined) {
 			lastSeenPid = pid;
-			if (params.deps.isPidRunning(pid)) {
+			if (deps.isPidRunning(pid)) {
 				return pid;
 			}
 		}
 
-		await params.deps.sleep(params.pollIntervalMs);
+		await deps.sleep(params.pollIntervalMs);
 	}
 
 	if (lastSeenPid !== undefined) {
