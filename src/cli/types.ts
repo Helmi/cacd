@@ -19,12 +19,12 @@ export interface CliFlags {
 	agent?: string;
 	model?: string;
 	worktree?: string;
-	task?: string;
 	name?: string;
 	taskList?: string;
 	promptTemplate?: string;
 	intent?: string;
 	option?: string | string[];
+	description?: string;
 }
 
 export interface ParsedCliArgs {
@@ -38,6 +38,10 @@ export interface ProjectManagerAdapter {
 	getProjects(): Project[];
 	instance: {
 		validateProjects(): void;
+		updateProject(
+			projectPath: string,
+			updates: Partial<Pick<Project, 'name' | 'description'>>,
+		): Project | null;
 	};
 }
 

@@ -17,6 +17,7 @@ const registry = new Map<string, CliCommandHandler>([
 	['add', runProjectCommand],
 	['remove', runProjectCommand],
 	['list', runProjectCommand],
+	['project', runProjectCommand],
 	['auth', runAuthCommand],
 	['worktree', runWorktreeCommand],
 	['ui', runUiCommand],

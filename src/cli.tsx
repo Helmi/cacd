@@ -70,9 +70,13 @@ const cli = meow(
     $ cacd tui                  Launch TUI (daemon must already be running)
     $ cacd daemon               Run daemon in foreground (for service managers)
     $ cacd setup                Run first-time setup wizard
-    $ cacd add [path]           Add a project (default: current directory)
-    $ cacd remove <path>        Remove a project from the list
-    $ cacd list                 List all tracked projects
+    $ cacd add [path]           Add a project (alias for 'cacd project add')
+    $ cacd remove <path>        Remove a project (alias for 'cacd project remove')
+    $ cacd list                 List projects (alias for 'cacd project list')
+    $ cacd project add [path]   Add a project
+    $ cacd project list         List tracked projects
+    $ cacd project remove <path> Remove a project
+    $ cacd project configure <path> [--name <name>] [--description <desc>]
     $ cacd worktree <command>   Manage worktrees through daemon API
     $ cacd auth <command>       Manage WebUI authentication
 
@@ -95,10 +99,12 @@ const cli = meow(
     --sessions              Include active sessions in status output
     --devc-up-command       Command to start devcontainer
     --devc-exec-command     Command to execute in devcontainer
-    --json                  Output machine-readable JSON for query/worktree commands
+    --json                  Output machine-readable JSON for query/worktree/project commands
     --branch <name>         Branch name for worktree create
     --task <td-task-id>     Task id used as branch fallback for worktree create
     --target <branch>       Target branch for worktree merge
+    --name <name>           Project name (for 'cacd project configure')
+    --description <desc>    Project description (for 'cacd project configure')
 
   Session Create Options (for 'cacd session create')
     --agent <id>            Agent profile ID (required)
@@ -143,6 +149,8 @@ const cli = meow(
     $ cacd add                    # Add current directory as project
     $ cacd add /path/to/project   # Add specific project
     $ cacd list                   # Show tracked projects
+    $ cacd project list           # Show tracked projects
+    $ cacd project configure /path/to/project --name "My Project"
     $ cacd worktree list          # List registered worktrees
     $ cacd worktree merge /path/to/worktree --target main
     $ cacd auth show              # Show WebUI access URL
@@ -171,7 +179,7 @@ const cli = meow(
 				type: 'boolean',
 				default: false,
 			},
-			// Session create flags
+			// Session/project/worktree flags
 			agent: {
 				type: 'string',
 			},
@@ -200,6 +208,9 @@ const cli = meow(
 				type: 'string',
 				isMultiple: true,
 			},
+			description: {
+				type: 'string',
+			},
 			// Setup flags
 			noWeb: {
 				type: 'boolean',
@@ -209,9 +220,6 @@ const cli = meow(
 				type: 'string',
 			},
 			branch: {
-				type: 'string',
-			},
-			task: {
 				type: 'string',
 			},
 			target: {
@@ -335,6 +343,7 @@ if (subcommand && !knownCommands.has(subcommand)) {
 			'  cacd add [path]    Add a project',
 			'  cacd remove <path> Remove a project',
 			'  cacd list          List projects',
+			'  cacd project ...   Project subcommands',
 			'  cacd auth <cmd>    Manage WebUI auth',
 			'  cacd worktree <cmd> Manage worktrees via daemon API',
 			'  cacd tui           Launch TUI (daemon required)',
@@ -364,6 +373,7 @@ if (subcommand && !knownCommands.has(subcommand)) {
 					'add',
 					'remove',
 					'list',
+					'project',
 					'auth',
 					'worktree',
 					'tui',
