@@ -1,6 +1,9 @@
 import path from 'path';
 import {Either} from 'effect';
-import {getClaudeProjectsDir, pathToClaudeProjectName} from '../utils/claudeDir.js';
+import {
+	getClaudeProjectsDir,
+	pathToClaudeProjectName,
+} from '../utils/claudeDir.js';
 import {BaseAgentAdapter} from './base.js';
 import {
 	buildPreview,
@@ -11,7 +14,11 @@ import {
 	sortedFilesByMtime,
 	withinRecentWindow,
 } from './helpers.js';
-import type {ConversationMessage, SessionFileMetadata, ToolCallData} from './types.js';
+import type {
+	ConversationMessage,
+	SessionFileMetadata,
+	ToolCallData,
+} from './types.js';
 
 interface ParsedClaudeLine {
 	type?: string;
@@ -134,9 +141,12 @@ export class ClaudeAdapter extends BaseAgentAdapter {
 	): Promise<SessionFileMetadata> {
 		const rows = safeReadJsonLines(sessionFilePath) as ParsedClaudeLine[];
 		const messages = await this.parseMessages(sessionFilePath);
-		const firstTimestamp = messages.find(message => message.timestamp)?.timestamp;
-		const lastTimestamp =
-			[...messages].reverse().find(message => message.timestamp)?.timestamp;
+		const firstTimestamp = messages.find(
+			message => message.timestamp,
+		)?.timestamp;
+		const lastTimestamp = [...messages]
+			.reverse()
+			.find(message => message.timestamp)?.timestamp;
 
 		let totalTokens: number | undefined;
 		for (const row of rows) {
@@ -152,7 +162,10 @@ export class ClaudeAdapter extends BaseAgentAdapter {
 		}
 
 		return {
-			agentSessionId: path.basename(sessionFilePath, path.extname(sessionFilePath)),
+			agentSessionId: path.basename(
+				sessionFilePath,
+				path.extname(sessionFilePath),
+			),
 			startedAt: firstTimestamp ?? undefined,
 			endedAt: lastTimestamp ?? undefined,
 			messageCount: messages.length,
@@ -161,12 +174,20 @@ export class ClaudeAdapter extends BaseAgentAdapter {
 		};
 	}
 
-	override async findSubAgentSessions(sessionFilePath: string): Promise<string[]> {
-		const rows = safeReadJsonLines(sessionFilePath) as Array<Record<string, unknown>>;
+	override async findSubAgentSessions(
+		sessionFilePath: string,
+	): Promise<string[]> {
+		const rows = safeReadJsonLines(sessionFilePath) as Array<
+			Record<string, unknown>
+		>;
 		const discovered = new Set<string>();
 
 		for (const row of rows) {
-			const keys = ['subagent_session_id', 'subagentSessionId', 'child_session_id'];
+			const keys = [
+				'subagent_session_id',
+				'subagentSessionId',
+				'child_session_id',
+			];
 			for (const key of keys) {
 				const candidate = row[key];
 				if (typeof candidate === 'string' && candidate.trim().length > 0) {

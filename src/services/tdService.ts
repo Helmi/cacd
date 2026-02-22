@@ -68,7 +68,9 @@ class TdService {
 			const binaryPath = execFileSync(whichCmd, ['td'], {
 				encoding: 'utf-8',
 				timeout: 5000,
-			}).trim().split('\n')[0]!;
+			})
+				.trim()
+				.split('\n')[0]!;
 
 			if (binaryPath) {
 				this.availability.binaryPath = binaryPath;

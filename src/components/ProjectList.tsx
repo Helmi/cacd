@@ -195,7 +195,10 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			: projects;
 
 		filteredProjects.forEach(project => {
-			const countsFormatted = formatProjectSessionCounts(project.path, sessions);
+			const countsFormatted = formatProjectSessionCounts(
+				project.path,
+				sessions,
+			);
 			const invalidIndicator = project.isValid === false ? ' ⚠️' : '';
 			const numberPrefix =
 				!isSearchMode && currentIndex < 10 ? `${currentIndex} ❯ ` : '❯ ';
@@ -309,7 +312,9 @@ const ProjectList: React.FC<ProjectListProps> = ({
 		}
 
 		if (highlightedItem?.project) {
-			return projects.find(p => p.path === highlightedItem.project?.path) || null;
+			return (
+				projects.find(p => p.path === highlightedItem.project?.path) || null
+			);
 		}
 		return null;
 	};
@@ -413,7 +418,9 @@ const ProjectList: React.FC<ProjectListProps> = ({
 			if (project) {
 				setConfirmingDelete(project);
 			} else {
-				setAddProjectError('Highlight a project first, then press D to remove it');
+				setAddProjectError(
+					'Highlight a project first, then press D to remove it',
+				);
 			}
 			return;
 		}

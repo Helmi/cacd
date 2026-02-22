@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useMemo, useCallback} from 'react';
+import React, {useState, useEffect, useCallback} from 'react';
 import {Box, Text, useInput} from 'ink';
 import SelectInput from 'ink-select-input';
 import {Worktree, GitProject, Project, SessionState} from '../types/index.js';
@@ -11,7 +11,6 @@ import {
 } from '../utils/worktreeUtils.js';
 import TextInputWrapper from './TextInputWrapper.js';
 import {useSearchMode} from '../hooks/useSearchMode.js';
-import {configurationManager} from '../services/configurationManager.js';
 import Header from './Header.js';
 import {
 	tuiApiClient,
@@ -127,8 +126,6 @@ const Menu: React.FC<MenuProps> = ({
 	const [otherProjects, setOtherProjects] = useState<Project[]>([]);
 	const limit = 10;
 
-	const worktreeConfig = configurationManager.getWorktreeConfig();
-
 	const {isSearchMode, searchQuery, selectedIndex, setSearchQuery} =
 		useSearchMode(items.length, {
 			isDisabled: !!error || !!loadError,
@@ -157,7 +154,9 @@ const Menu: React.FC<MenuProps> = ({
 			setBaseWorktrees(projectWorktrees);
 			setDefaultBranch(resolvedDefaultBranch);
 			setSessions(allSessions);
-			setOtherProjects(projects.filter(project => project.path !== projectPath));
+			setOtherProjects(
+				projects.filter(project => project.path !== projectPath),
+			);
 			setLoadError(null);
 		} catch (loadDataError) {
 			setLoadError(
@@ -166,7 +165,7 @@ const Menu: React.FC<MenuProps> = ({
 					: String(loadDataError),
 			);
 		}
-	}, [projectPath, worktreeConfig.sortByLastSession]);
+	}, [projectPath]);
 
 	useEffect(() => {
 		void loadData();
@@ -322,7 +321,14 @@ const Menu: React.FC<MenuProps> = ({
 		}
 
 		setItems(menuItems);
-	}, [worktrees, sessions, defaultBranch, otherProjects, searchQuery, isSearchMode]);
+	}, [
+		worktrees,
+		sessions,
+		defaultBranch,
+		otherProjects,
+		searchQuery,
+		isSearchMode,
+	]);
 
 	useInput((input, _key) => {
 		if (!process.stdin.setRawMode) {

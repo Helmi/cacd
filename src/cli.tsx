@@ -28,9 +28,16 @@ import {
 	type DaemonWebConfig,
 } from './utils/daemonControl.js';
 import {OutputFormatter} from './cli/formatter.js';
-import {runRegisteredCommand, getRegisteredCommands} from './cli/commands/index.js';
+import {
+	runRegisteredCommand,
+	getRegisteredCommands,
+} from './cli/commands/index.js';
 import {runSetupCommand} from './cli/commands/setup.js';
-import type {CliCommandContext, CliFlags, CliRuntimeServices} from './cli/types.js';
+import type {
+	CliCommandContext,
+	CliFlags,
+	CliRuntimeServices,
+} from './cli/types.js';
 
 // Initialize config dir immediately - this is safe because configDir.js has no dependencies
 initializeConfigDir();
@@ -267,7 +274,7 @@ const rawSubcommand = parsedCliArgs.input[0];
 const subcommand =
 	parsedCliArgs.flags.headless && rawSubcommand === undefined
 		? 'daemon'
-		: rawSubcommand ?? 'start';
+		: (rawSubcommand ?? 'start');
 const isDaemonMode = subcommand === 'daemon';
 const isTuiOnlyMode = subcommand === 'tui';
 
@@ -305,8 +312,12 @@ if (isFirstRun && subcommand === 'start') {
 
 // Now import services that need config (after setup has run if needed)
 const {projectManager} = await import('./services/projectManager.js');
-const {worktreeConfigManager} = await import('./services/worktreeConfigManager.js');
-const {configurationManager} = await import('./services/configurationManager.js');
+const {worktreeConfigManager} = await import(
+	'./services/worktreeConfigManager.js'
+);
+const {configurationManager} = await import(
+	'./services/configurationManager.js'
+);
 const {globalSessionOrchestrator} = await import(
 	'./services/globalSessionOrchestrator.js'
 );

@@ -1,4 +1,8 @@
-import type {SessionState, StateDetectionStrategy, Terminal} from '../types/index.js';
+import type {
+	SessionState,
+	StateDetectionStrategy,
+	Terminal,
+} from '../types/index.js';
 
 function getTerminalLines(terminal: Terminal, maxLines = 30): string[] {
 	const buffer = terminal.buffer.active;
@@ -20,7 +24,10 @@ function getTerminalContent(terminal: Terminal, maxLines = 30): string {
 	return getTerminalLines(terminal, maxLines).join('\n');
 }
 
-function detectClaudeState(terminal: Terminal, currentState: SessionState): SessionState {
+function detectClaudeState(
+	terminal: Terminal,
+	currentState: SessionState,
+): SessionState {
 	const content = getTerminalContent(terminal);
 	const lowerContent = content.toLowerCase();
 
@@ -28,7 +35,9 @@ function detectClaudeState(terminal: Terminal, currentState: SessionState): Sess
 		return currentState;
 	}
 
-	if (/(?:do you want|would you like).+\n+[\s\S]*?(?:yes|❯)/.test(lowerContent)) {
+	if (
+		/(?:do you want|would you like).+\n+[\s\S]*?(?:yes|❯)/.test(lowerContent)
+	) {
 		return 'waiting_input';
 	}
 
@@ -69,7 +78,9 @@ function detectCodexState(terminal: Terminal): SessionState {
 		return 'waiting_input';
 	}
 
-	if (/(do you want|would you like)[\s\S]*?\n+[\s\S]*?\byes\b/.test(lowerContent)) {
+	if (
+		/(do you want|would you like)[\s\S]*?\n+[\s\S]*?\byes\b/.test(lowerContent)
+	) {
 		return 'waiting_input';
 	}
 
@@ -96,7 +107,11 @@ function detectGeminiState(terminal: Terminal): SessionState {
 		return 'waiting_input';
 	}
 
-	if (/(allow execution|do you want to|apply this change)[\s\S]*?\n+[\s\S]*?\byes\b/.test(lowerContent)) {
+	if (
+		/(allow execution|do you want to|apply this change)[\s\S]*?\n+[\s\S]*?\byes\b/.test(
+			lowerContent,
+		)
+	) {
 		return 'waiting_input';
 	}
 
@@ -157,7 +172,9 @@ function detectClineState(terminal: Terminal): SessionState {
 	}
 
 	if (
-		/\[(act|plan) mode\].*cline is ready for your message/i.test(lowerContent) ||
+		/\[(act|plan) mode\].*cline is ready for your message/i.test(
+			lowerContent,
+		) ||
 		/cline is ready for your message/i.test(lowerContent)
 	) {
 		return 'idle';
@@ -173,7 +190,9 @@ function detectPiState(terminal: Terminal): SessionState {
 	if (
 		lowerContent.includes('[y/n]') ||
 		/press (enter|return) to (confirm|continue)/i.test(content) ||
-		/(do you want|would you like|select a session|choose a session)/i.test(content)
+		/(do you want|would you like|select a session|choose a session)/i.test(
+			content,
+		)
 	) {
 		return 'waiting_input';
 	}

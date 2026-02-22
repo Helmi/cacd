@@ -47,7 +47,10 @@ function resolveProjectAction(context: CliCommandContext): {
 	return {action: context.subcommand, commandLabel: context.subcommand};
 }
 
-function resolvePathArg(context: CliCommandContext, action: string): string | undefined {
+function resolvePathArg(
+	context: CliCommandContext,
+	action: string,
+): string | undefined {
 	const offset = context.subcommand === 'project' ? 2 : 1;
 	const value = context.parsedArgs.input[offset];
 	if (value) {
@@ -309,7 +312,8 @@ async function handleConfigure(
 	}
 
 	const hasNameUpdate = context.parsedArgs.flags.name !== undefined;
-	const hasDescriptionUpdate = context.parsedArgs.flags.description !== undefined;
+	const hasDescriptionUpdate =
+		context.parsedArgs.flags.description !== undefined;
 	if (!hasNameUpdate && !hasDescriptionUpdate) {
 		context.formatter.writeError({
 			text: [
@@ -391,7 +395,8 @@ async function handleConfigure(
 				ok: false,
 				command: commandLabel,
 				error: {
-					message: 'Failed to configure project: daemon returned no updated project',
+					message:
+						'Failed to configure project: daemon returned no updated project',
 				},
 			},
 		});
@@ -455,12 +460,15 @@ export async function runProjectCommand(
 	if (action === 'configure') {
 		if (context.subcommand !== 'project') {
 			context.formatter.writeError({
-				text: ['Error: configure is available under `cacd project configure` only'],
+				text: [
+					'Error: configure is available under `cacd project configure` only',
+				],
 				data: {
 					ok: false,
 					command: commandLabel,
 					error: {
-						message: 'configure is available under `cacd project configure` only',
+						message:
+							'configure is available under `cacd project configure` only',
 					},
 				},
 			});

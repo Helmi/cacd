@@ -210,7 +210,9 @@ async function postDaemonApi<T>(
 	}
 }
 
-function formatElapsedFromCreatedAt(createdAtSeconds: number | undefined): string {
+function formatElapsedFromCreatedAt(
+	createdAtSeconds: number | undefined,
+): string {
 	if (!createdAtSeconds || !Number.isFinite(createdAtSeconds)) {
 		return '-';
 	}
@@ -268,7 +270,10 @@ function buildTableLines(headers: string[], rows: string[][]): string[] {
 	const formatRow = (cells: string[]) =>
 		cells.map((cell, index) => cell.padEnd(widths[index] || 0)).join('  ');
 
-	const lines = [formatRow(headers), widths.map(width => '-'.repeat(width)).join('  ')];
+	const lines = [
+		formatRow(headers),
+		widths.map(width => '-'.repeat(width)).join('  '),
+	];
 	for (const row of rows) {
 		lines.push(formatRow(row));
 	}
@@ -313,7 +318,10 @@ async function buildSessionSummary(
 async function listActiveSessionSummaries(
 	context: CliCommandContext,
 ): Promise<SessionSummary[]> {
-	const sessions = await fetchDaemonApi<ApiSessionPayload[]>(context, '/api/sessions');
+	const sessions = await fetchDaemonApi<ApiSessionPayload[]>(
+		context,
+		'/api/sessions',
+	);
 	const summaries = await Promise.all(
 		sessions.map(session => buildSessionSummary(context, session)),
 	);
@@ -352,7 +360,9 @@ async function getDaemonStatusOutput(
 	};
 }
 
-async function runStatusWithSessions(context: CliCommandContext): Promise<number> {
+async function runStatusWithSessions(
+	context: CliCommandContext,
+): Promise<number> {
 	let statusOutput: DaemonStatusOutput;
 	let sessions: SessionSummary[] = [];
 
@@ -510,7 +520,10 @@ async function outputSessionStatus(
 ): Promise<number> {
 	let liveSessions: ApiSessionPayload[];
 	try {
-		liveSessions = await fetchDaemonApi<ApiSessionPayload[]>(context, '/api/sessions');
+		liveSessions = await fetchDaemonApi<ApiSessionPayload[]>(
+			context,
+			'/api/sessions',
+		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		context.formatter.writeError({
@@ -575,9 +588,10 @@ async function outputSessionStatus(
 	return 0;
 }
 
-function parseSessionOptions(
-	rawOptionFlag: string | string[] | undefined,
-): {options: Record<string, boolean | string>; error?: string} {
+function parseSessionOptions(rawOptionFlag: string | string[] | undefined): {
+	options: Record<string, boolean | string>;
+	error?: string;
+} {
 	const options: Record<string, boolean | string> = {};
 	const values =
 		typeof rawOptionFlag === 'string'
@@ -639,7 +653,9 @@ function parseSessionIntent(intent: string | undefined): {
 	};
 }
 
-async function runSessionCreateCommand(context: CliCommandContext): Promise<number> {
+async function runSessionCreateCommand(
+	context: CliCommandContext,
+): Promise<number> {
 	const agentId = context.parsedArgs.flags.agent?.trim();
 	if (!agentId) {
 		context.formatter.writeError({
@@ -660,14 +676,17 @@ async function runSessionCreateCommand(context: CliCommandContext): Promise<numb
 		return 1;
 	}
 
-	const worktreePath = context.parsedArgs.flags.worktree?.trim() || process.cwd();
+	const worktreePath =
+		context.parsedArgs.flags.worktree?.trim() || process.cwd();
 	const sessionName = context.parsedArgs.flags.name?.trim();
 	const model = context.parsedArgs.flags.model?.trim();
 	const taskId = context.parsedArgs.flags.task?.trim();
 	const taskListName = context.parsedArgs.flags.taskList?.trim();
 	const promptTemplate = context.parsedArgs.flags.promptTemplate?.trim();
 
-	const parsedIntent = parseSessionIntent(context.parsedArgs.flags.intent?.trim());
+	const parsedIntent = parseSessionIntent(
+		context.parsedArgs.flags.intent?.trim(),
+	);
 	if (parsedIntent.error) {
 		context.formatter.writeError({
 			text: [parsedIntent.error],
@@ -1030,7 +1049,9 @@ async function runAgentsCommand(context: CliCommandContext): Promise<number> {
 	return 0;
 }
 
-export async function runQueryCommand(context: CliCommandContext): Promise<number> {
+export async function runQueryCommand(
+	context: CliCommandContext,
+): Promise<number> {
 	if (context.subcommand === 'status') {
 		if (!context.parsedArgs.flags.sessions) {
 			return runDaemonLifecycleCommand(context);

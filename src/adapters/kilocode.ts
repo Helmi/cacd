@@ -32,7 +32,9 @@ export class KilocodeAdapter extends BaseAgentAdapter {
 			root,
 			fileName => fileName.endsWith('.json'),
 			100,
-		).filter(candidate => withinRecentWindow(candidate, afterTimestamp, 300000));
+		).filter(candidate =>
+			withinRecentWindow(candidate, afterTimestamp, 300000),
+		);
 		return candidates[0] || null;
 	}
 
@@ -54,10 +56,14 @@ export class KilocodeAdapter extends BaseAgentAdapter {
 			.map((item, index) => {
 				if (!item || typeof item !== 'object') return null;
 				const row = item as Record<string, unknown>;
-				const content = extractString(row['content'] || row['message'] || row['text']);
+				const content = extractString(
+					row['content'] || row['message'] || row['text'],
+				);
 				if (!content) return null;
 				const role = normalizeRole(row['role'] || row['type']);
-				const timestamp = normalizeTimestamp(row['timestamp'] || row['created_at']);
+				const timestamp = normalizeTimestamp(
+					row['timestamp'] || row['created_at'],
+				);
 				return {
 					id: `kilocode-${index}`,
 					role,
@@ -74,11 +80,17 @@ export class KilocodeAdapter extends BaseAgentAdapter {
 		sessionFilePath: string,
 	): Promise<SessionFileMetadata> {
 		const messages = await this.parseMessages(sessionFilePath);
-		const firstTimestamp = messages.find(message => message.timestamp)?.timestamp;
-		const lastTimestamp =
-			[...messages].reverse().find(message => message.timestamp)?.timestamp;
+		const firstTimestamp = messages.find(
+			message => message.timestamp,
+		)?.timestamp;
+		const lastTimestamp = [...messages]
+			.reverse()
+			.find(message => message.timestamp)?.timestamp;
 		return {
-			agentSessionId: path.basename(sessionFilePath, path.extname(sessionFilePath)),
+			agentSessionId: path.basename(
+				sessionFilePath,
+				path.extname(sessionFilePath),
+			),
 			startedAt: firstTimestamp ?? undefined,
 			endedAt: lastTimestamp ?? undefined,
 			messageCount: messages.length,

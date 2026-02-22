@@ -25,7 +25,9 @@ interface CodexLine extends Record<string, unknown> {
 	response_item?: Record<string, unknown>;
 }
 
-function extractToolCallsFromResponse(responseItem: Record<string, unknown>): ToolCallData[] {
+function extractToolCallsFromResponse(
+	responseItem: Record<string, unknown>,
+): ToolCallData[] {
 	const toolCalls = responseItem['tool_calls'];
 	if (!Array.isArray(toolCalls)) return [];
 
@@ -55,9 +57,13 @@ function extractToolCallsFromResponse(responseItem: Record<string, unknown>): To
 		.filter(Boolean) as ToolCallData[];
 }
 
-function extractThinkingBlocks(responseItem: Record<string, unknown>): ThinkingBlockData[] {
+function extractThinkingBlocks(
+	responseItem: Record<string, unknown>,
+): ThinkingBlockData[] {
 	const rawThinking =
-		responseItem['thinking'] || responseItem['reasoning'] || responseItem['analysis'];
+		responseItem['thinking'] ||
+		responseItem['reasoning'] ||
+		responseItem['analysis'];
 	if (!rawThinking) {
 		return [];
 	}
@@ -97,9 +103,12 @@ export class CodexAdapter extends BaseAgentAdapter {
 		const normalizedWorktree = path.resolve(worktreePath);
 		const candidates = recursiveFindFiles(
 			root,
-			fileName => fileName.startsWith('rollout-') && fileName.endsWith('.jsonl'),
+			fileName =>
+				fileName.startsWith('rollout-') && fileName.endsWith('.jsonl'),
 			200,
-		).filter(candidate => withinRecentWindow(candidate, afterTimestamp, 300000));
+		).filter(candidate =>
+			withinRecentWindow(candidate, afterTimestamp, 300000),
+		);
 
 		for (const candidate of candidates) {
 			const sample = safeReadJsonLines(candidate).slice(0, 40) as CodexLine[];
@@ -107,12 +116,18 @@ export class CodexAdapter extends BaseAgentAdapter {
 				const sessionMeta = row.session_meta;
 				if (sessionMeta && typeof sessionMeta === 'object') {
 					const cwd = sessionMeta['cwd'];
-					if (typeof cwd === 'string' && path.resolve(cwd) === normalizedWorktree) {
+					if (
+						typeof cwd === 'string' &&
+						path.resolve(cwd) === normalizedWorktree
+					) {
 						return candidate;
 					}
 				}
 				const cwd = row['cwd'];
-				if (typeof cwd === 'string' && path.resolve(cwd) === normalizedWorktree) {
+				if (
+					typeof cwd === 'string' &&
+					path.resolve(cwd) === normalizedWorktree
+				) {
 					return candidate;
 				}
 			}
@@ -135,10 +150,14 @@ export class CodexAdapter extends BaseAgentAdapter {
 			const rawRole = responseItem?.['role'] || row.role || row.type;
 			const role = normalizeRole(rawRole);
 			const content = extractString(
-				responseItem?.['content'] || responseItem?.['message'] || row['content'],
+				responseItem?.['content'] ||
+					responseItem?.['message'] ||
+					row['content'],
 			);
 			const timestamp = normalizeTimestamp(
-				row.timestamp || responseItem?.['timestamp'] || responseItem?.['created_at'],
+				row.timestamp ||
+					responseItem?.['timestamp'] ||
+					responseItem?.['created_at'],
 			);
 
 			const toolCalls = responseItem
@@ -163,8 +182,7 @@ export class CodexAdapter extends BaseAgentAdapter {
 						? responseItem['model']
 						: undefined,
 				toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-				thinkingBlocks:
-					thinkingBlocks.length > 0 ? thinkingBlocks : undefined,
+				thinkingBlocks: thinkingBlocks.length > 0 ? thinkingBlocks : undefined,
 				rawType: typeof row.type === 'string' ? row.type : undefined,
 			});
 		});
@@ -177,9 +195,12 @@ export class CodexAdapter extends BaseAgentAdapter {
 	): Promise<SessionFileMetadata> {
 		const rows = safeReadJsonLines(sessionFilePath) as CodexLine[];
 		const messages = await this.parseMessages(sessionFilePath);
-		const firstTimestamp = messages.find(message => message.timestamp)?.timestamp;
-		const lastTimestamp =
-			[...messages].reverse().find(message => message.timestamp)?.timestamp;
+		const firstTimestamp = messages.find(
+			message => message.timestamp,
+		)?.timestamp;
+		const lastTimestamp = [...messages]
+			.reverse()
+			.find(message => message.timestamp)?.timestamp;
 
 		let model: string | undefined;
 		let totalTokens: number | undefined;
@@ -210,7 +231,8 @@ export class CodexAdapter extends BaseAgentAdapter {
 
 		return {
 			agentSessionId:
-				sessionId || path.basename(sessionFilePath, path.extname(sessionFilePath)),
+				sessionId ||
+				path.basename(sessionFilePath, path.extname(sessionFilePath)),
 			startedAt: firstTimestamp ?? undefined,
 			endedAt: lastTimestamp ?? undefined,
 			messageCount: messages.length,
@@ -220,8 +242,12 @@ export class CodexAdapter extends BaseAgentAdapter {
 		};
 	}
 
-	override async findSubAgentSessions(sessionFilePath: string): Promise<string[]> {
-		const rows = safeReadJsonLines(sessionFilePath) as Array<Record<string, unknown>>;
+	override async findSubAgentSessions(
+		sessionFilePath: string,
+	): Promise<string[]> {
+		const rows = safeReadJsonLines(sessionFilePath) as Array<
+			Record<string, unknown>
+		>;
 		const discovered = new Set<string>();
 
 		for (const row of rows) {
@@ -229,7 +255,11 @@ export class CodexAdapter extends BaseAgentAdapter {
 				row['response_item'] && typeof row['response_item'] === 'object'
 					? (row['response_item'] as Record<string, unknown>)
 					: null;
-			const keys = ['subagent_session_id', 'subagentSessionId', 'child_session_id'];
+			const keys = [
+				'subagent_session_id',
+				'subagentSessionId',
+				'child_session_id',
+			];
 			for (const key of keys) {
 				const direct = row[key];
 				if (typeof direct === 'string' && direct.trim().length > 0) {

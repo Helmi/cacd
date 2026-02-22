@@ -146,7 +146,9 @@ export function loadProjectConfig(projectRoot: string): ProjectConfig | null {
 /**
  * Returns existing config path if present (.cacd/config.json first, then .cacd.json).
  */
-export function findExistingProjectConfigPath(projectRoot: string): string | null {
+export function findExistingProjectConfigPath(
+	projectRoot: string,
+): string | null {
 	const configPaths = [
 		path.join(projectRoot, '.cacd', 'config.json'),
 		path.join(projectRoot, '.cacd.json'),
@@ -286,7 +288,11 @@ export function loadPromptTemplatesByScope(
 		for (const name of names) {
 			const project = projectByName.get(name);
 			if (project) {
-				merged.push({...project, effective: true, overridesGlobal: globalByName.has(name)});
+				merged.push({
+					...project,
+					effective: true,
+					overridesGlobal: globalByName.has(name),
+				});
 				continue;
 			}
 			const global = globalByName.get(name);
@@ -471,7 +477,10 @@ function normalizePromptName(name: string): string | null {
 	return normalized.length > 0 ? normalized : null;
 }
 
-function findTemplatePathByName(dir: string, templateName: string): string | null {
+function findTemplatePathByName(
+	dir: string,
+	templateName: string,
+): string | null {
 	const files = listPromptFiles(dir);
 	for (const file of files) {
 		const name = file.replace(/\.(md|txt)$/i, '');

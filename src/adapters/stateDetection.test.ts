@@ -1,6 +1,10 @@
 import {describe, expect, it} from 'vitest';
 import {detectStateForStrategy} from './stateDetection.js';
-import type {Terminal, SessionState, StateDetectionStrategy} from '../types/index.js';
+import type {
+	Terminal,
+	SessionState,
+	StateDetectionStrategy,
+} from '../types/index.js';
 
 function terminalFromLines(lines: string[]): Terminal {
 	const padded = lines.slice();
@@ -25,7 +29,11 @@ function detect(
 	lines: string[],
 	currentState: SessionState = 'idle',
 ): SessionState {
-	return detectStateForStrategy(strategy, terminalFromLines(lines), currentState);
+	return detectStateForStrategy(
+		strategy,
+		terminalFromLines(lines),
+		currentState,
+	);
 }
 
 describe('detectStateForStrategy', () => {
@@ -36,9 +44,9 @@ describe('detectStateForStrategy', () => {
 	});
 
 	it('detects Codex confirmation as waiting_input', () => {
-		expect(
-			detect('codex', ['Press Enter to confirm or Esc to cancel']),
-		).toBe('waiting_input');
+		expect(detect('codex', ['Press Enter to confirm or Esc to cancel'])).toBe(
+			'waiting_input',
+		);
 	});
 
 	it('detects Gemini busy from esc-to-cancel prompt', () => {
@@ -46,15 +54,13 @@ describe('detectStateForStrategy', () => {
 	});
 
 	it('detects Cursor confirmation prompts as waiting_input', () => {
-		expect(detect('cursor', ['Keep (n)', '(y) (enter)'])).toBe(
-			'waiting_input',
-		);
+		expect(detect('cursor', ['Keep (n)', '(y) (enter)'])).toBe('waiting_input');
 	});
 
 	it('detects Cline ready banner as idle', () => {
-		expect(detect('cline', ['[act mode] Cline is ready for your message'])).toBe(
-			'idle',
-		);
+		expect(
+			detect('cline', ['[act mode] Cline is ready for your message']),
+		).toBe('idle');
 	});
 
 	it('detects Pi confirmation prompts as waiting_input', () => {

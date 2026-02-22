@@ -301,7 +301,10 @@ export async function runDaemonLifecycleCommand(
 			const pid = await context.daemon.lifecycle.readDaemonPidFile(
 				context.daemonPidFilePath,
 			);
-			if (pid === undefined || !context.daemon.lifecycle.isProcessRunning(pid)) {
+			if (
+				pid === undefined ||
+				!context.daemon.lifecycle.isProcessRunning(pid)
+			) {
 				if (pid !== undefined) {
 					await context.daemon.lifecycle.cleanupDaemonPidFile(
 						context.daemonPidFilePath,

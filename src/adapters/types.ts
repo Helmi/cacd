@@ -5,12 +5,7 @@ import type {
 	Terminal,
 } from '../types/index.js';
 
-export type SessionFormat =
-	| 'none'
-	| 'jsonl'
-	| 'json'
-	| 'sqlite'
-	| 'multi-file';
+export type SessionFormat = 'none' | 'jsonl' | 'json' | 'sqlite' | 'multi-file';
 
 export interface ToolCallData {
 	name: string;

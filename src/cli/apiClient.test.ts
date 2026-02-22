@@ -1,3 +1,4 @@
+/* global fetch, Response, Headers, HeadersInit */
 import {describe, it, expect, vi} from 'vitest';
 import {
 	ApiClient,
@@ -45,7 +46,9 @@ describe('apiClient', () => {
 				new Response(JSON.stringify({ok: true, method: 'post'}), {status: 200}),
 			)
 			.mockResolvedValueOnce(
-				new Response(JSON.stringify({ok: true, method: 'delete'}), {status: 200}),
+				new Response(JSON.stringify({ok: true, method: 'delete'}), {
+					status: 200,
+				}),
 			);
 
 		const client = new ApiClient({
@@ -54,12 +57,12 @@ describe('apiClient', () => {
 			fetchImpl,
 		});
 
-		await expect(client.get<{ok: boolean; method: string}>('/api/state')).resolves.toEqual(
-			{
-				ok: true,
-				method: 'get',
-			},
-		);
+		await expect(
+			client.get<{ok: boolean; method: string}>('/api/state'),
+		).resolves.toEqual({
+			ok: true,
+			method: 'get',
+		});
 		await expect(
 			client.post<{ok: boolean; method: string}>('/api/project/add', {
 				path: '/tmp/repo',
@@ -85,7 +88,9 @@ describe('apiClient', () => {
 	});
 
 	it('returns a clear error when daemon is not running', async () => {
-		const fetchImpl = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('fetch failed'));
+		const fetchImpl = vi
+			.fn<typeof fetch>()
+			.mockRejectedValue(new TypeError('fetch failed'));
 		const client = createApiClient({
 			config: {
 				port: 3333,
@@ -100,9 +105,11 @@ describe('apiClient', () => {
 	});
 
 	it('throws ApiClientError on non-2xx responses', async () => {
-		const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
-			new Response(JSON.stringify({message: 'forbidden'}), {status: 403}),
-		);
+		const fetchImpl = vi
+			.fn<typeof fetch>()
+			.mockResolvedValue(
+				new Response(JSON.stringify({message: 'forbidden'}), {status: 403}),
+			);
 		const client = new ApiClient({
 			baseUrl: 'http://localhost:3000',
 			fetchImpl,

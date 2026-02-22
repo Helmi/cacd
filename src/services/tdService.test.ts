@@ -1,4 +1,4 @@
-import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {execFileSync} from 'child_process';
 import {existsSync, statSync, readFileSync} from 'fs';
 import path from 'path';

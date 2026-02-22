@@ -1,3 +1,4 @@
+/* global Response */
 import {ENV_VARS} from '../constants/env.js';
 import {configurationManager} from '../services/configurationManager.js';
 import type {ConfigurationData} from '../types/index.js';
@@ -39,7 +40,10 @@ export function resolveDaemonApiConfig(
 	const env = options.env ?? process.env;
 	const host = options.host ?? 'localhost';
 	const resolvedPort =
-		options.port ?? parsePort(env[ENV_VARS.PORT]) ?? config.port ?? DEFAULT_API_PORT;
+		options.port ??
+		parsePort(env[ENV_VARS.PORT]) ??
+		config.port ??
+		DEFAULT_API_PORT;
 	const resolvedToken = options.accessToken ?? config.accessToken;
 
 	return {
