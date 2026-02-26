@@ -3,6 +3,7 @@ import {Effect, Either} from 'effect';
 import {spawn, IPty} from 'node-pty';
 import {EventEmitter} from 'events';
 import {DevcontainerConfig, CommandPreset} from '../types/index.js';
+import {execFile} from 'child_process';
 
 // Mock node-pty
 vi.mock('node-pty', () => ({
@@ -71,6 +72,15 @@ describe('SessionManager Effect-based Operations', () => {
 		configurationManager = configManagerModule.configurationManager;
 		sessionManager = new SessionManager();
 		mockPty = new MockPty();
+
+		// Default command lookup preflight to success.
+		vi.mocked(execFile).mockImplementation((...params: unknown[]) => {
+			const callback = params.find(param => typeof param === 'function') as
+				| ((error: Error | null, stdout: string, stderr: string) => void)
+				| undefined;
+			callback?.(null, '/usr/bin/mock-agent\n', '');
+			return {} as ReturnType<typeof execFile>;
+		});
 	});
 
 	afterEach(() => {
@@ -185,6 +195,43 @@ describe('SessionManager Effect-based Operations', () => {
 			expect(session1.worktreePath).toBe(session2.worktreePath);
 			// Spawn should be called twice
 			expect(spawn).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	describe('createSessionWithAgent returning Effect', () => {
+		it('should return Effect that fails with ProcessError when agent command is missing', async () => {
+			vi.mocked(execFile).mockImplementation((...params: unknown[]) => {
+				const callback = params.find(param => typeof param === 'function') as
+					| ((error: Error | null, stdout: string, stderr: string) => void)
+					| undefined;
+				callback?.(new Error('not found'), '', '');
+				return {} as ReturnType<typeof execFile>;
+			});
+
+			const effect = sessionManager.createSessionWithAgentEffect(
+				'/test/worktree',
+				'missing-agent',
+				[],
+				'claude',
+				'Agent Session',
+				'missing-agent',
+			);
+
+			const result = await Effect.runPromise(Effect.either(effect));
+
+			expect(Either.isLeft(result)).toBe(true);
+			if (Either.isLeft(result)) {
+				expect(result.left._tag).toBe('ProcessError');
+				if (result.left._tag === 'ProcessError') {
+					expect(result.left.command).toContain(
+						'createSessionWithAgent (missing-agent)',
+					);
+					expect(result.left.message).toContain(
+						'Agent command "missing-agent" not found in PATH',
+					);
+				}
+			}
+			expect(spawn).not.toHaveBeenCalled();
 		});
 	});
 

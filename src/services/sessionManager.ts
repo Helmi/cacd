@@ -8,7 +8,7 @@ import {
 } from '../types/index.js';
 import {EventEmitter} from 'events';
 import pkg from '@xterm/headless';
-import {exec} from 'child_process';
+import {exec, execFile} from 'child_process';
 import {promisify} from 'util';
 import {writeFile} from 'fs/promises';
 import {join} from 'path';
@@ -27,6 +27,7 @@ import {getDefaultShell, getPtyEnv} from '../utils/platform.js';
 import {adapterRegistry} from '../adapters/index.js';
 const {Terminal} = pkg;
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const TERMINAL_CONTENT_MAX_LINES = 300;
 
 export interface SessionCounts {
@@ -47,6 +48,7 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 	sessions: Map<string, Session>;
 	private waitingWithBottomBorder: Map<string, boolean> = new Map();
 	private busyTimers: Map<string, NodeJS.Timeout> = new Map();
+	private promptLauncherDisabledKeys: Set<string> = new Set();
 
 	// Track all active state check intervals for cleanup (especially hot reload)
 	private activeIntervals: Map<string, NodeJS.Timeout> = new Map();
@@ -178,6 +180,30 @@ export class SessionManager extends EventEmitter implements ISessionManager {
 			command: resolvedCommand,
 			args: [...inlineArgs, ...args],
 		};
+	}
+
+	private async ensureAgentCommandAvailable(command: string): Promise<void> {
+		const trimmedCommand = command.trim();
+		if (!trimmedCommand) {
+			throw new Error(
+				'Agent command is empty. Configure a valid command before starting a session.',
+			);
+		}
+
+		// Path-based commands are resolved by the shell/runtime directly.
+		if (trimmedCommand.includes('/') || trimmedCommand.includes('\\')) {
+			return;
+		}
+
+		const lookupCommand = process.platform === 'win32' ? 'where' : 'which';
+
+		try {
+			await execFileAsync(lookupCommand, [trimmedCommand]);
+		} catch {
+			throw new Error(
+				`Agent command "${trimmedCommand}" not found in PATH. Install it or update the configured agent command.`,
+			);
+		}
 	}
 
 	private shouldUsePromptLauncher(
@@ -669,6 +695,11 @@ ${commandTokens.join(' ')}
 		return Effect.tryPromise({
 			try: async () => {
 				const resolvedCommand = this.parseCommandAndInlineArgs(command, args);
+				const promptLauncherFailureKey = `${worktreePath}:${resolvedCommand.command}`;
+
+				if (agentKind !== 'terminal') {
+					await this.ensureAgentCommandAvailable(resolvedCommand.command);
+				}
 
 				// Spawn a persistent shell first; agent command runs inside it.
 				const shellCommand = getDefaultShell();
@@ -696,7 +727,16 @@ ${commandTokens.join(' ')}
 				// Terminal-kind sessions are plain interactive shells.
 				// Agent-kind sessions execute one bootstrap command, then return to shell prompt on exit.
 				if (agentKind !== 'terminal') {
+					const shouldSkipPromptInjection =
+						this.promptLauncherDisabledKeys.has(promptLauncherFailureKey) &&
+						this.shouldUsePromptLauncher(
+							shellCommand,
+							bootstrapOptions?.initialPrompt,
+							bootstrapOptions?.promptArg,
+						);
+
 					if (
+						!shouldSkipPromptInjection &&
 						this.shouldUsePromptLauncher(
 							shellCommand,
 							bootstrapOptions?.initialPrompt,
@@ -716,16 +756,15 @@ ${commandTokens.join(' ')}
 								scriptPath,
 							]);
 						} catch (error) {
+							this.promptLauncherDisabledKeys.add(promptLauncherFailureKey);
 							logger.warn(
-								`[SessionManager] Failed to create prompt launcher script, falling back to inline bootstrap: ${error}`,
+								`[SessionManager] Failed to create prompt launcher script, disabling startup prompt injection for ${resolvedCommand.command}: ${error}`,
 							);
 							this.bootstrapCommandInShell(
 								shellProcess,
 								shellCommand,
 								resolvedCommand.command,
 								resolvedCommand.args,
-								bootstrapOptions.initialPrompt,
-								bootstrapOptions.promptArg,
 							);
 						}
 					} else {
@@ -734,8 +773,12 @@ ${commandTokens.join(' ')}
 							shellCommand,
 							resolvedCommand.command,
 							resolvedCommand.args,
-							bootstrapOptions?.initialPrompt,
-							bootstrapOptions?.promptArg,
+							shouldSkipPromptInjection
+								? undefined
+								: bootstrapOptions?.initialPrompt,
+							shouldSkipPromptInjection
+								? undefined
+								: bootstrapOptions?.promptArg,
 						);
 					}
 				}
