@@ -23,6 +23,7 @@ import {
   ChevronDown,
   ChevronRight,
   RefreshCw,
+  XCircle,
 } from 'lucide-react'
 
 // Status column configuration
@@ -241,6 +242,17 @@ export function TaskBoard() {
     }
   }, [tdStatus?.projectState?.enabled, currentProject?.path, fetchTdBoard, fetchTdIssues])
 
+  // Escape key handler to close task board
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeTaskBoard()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [closeTaskBoard])
+
   // Client-side filter for issues
   const filterIssues = useCallback((issues: TdIssue[]) => {
     if (!searchQuery.trim()) return issues
@@ -339,6 +351,17 @@ export function TaskBoard() {
             <span className="font-medium truncate max-w-[120px]">{currentProject.name}</span>
           </div>
         )}
+
+        {/* Close button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0"
+          onClick={closeTaskBoard}
+          title="Close task board (Esc)"
+        >
+          <XCircle className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
       {/* Board View */}
