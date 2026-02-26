@@ -1,9 +1,9 @@
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
-import {Effect} from 'effect';
+import {Effect, Either} from 'effect';
 import {spawn, IPty} from 'node-pty';
 import {EventEmitter} from 'events';
 import {Session, DevcontainerConfig} from '../types/index.js';
-import {exec} from 'child_process';
+import {exec, execFile} from 'child_process';
 import {getDefaultShell} from '../utils/platform.js';
 
 // Mock node-pty
@@ -82,6 +82,15 @@ describe('SessionManager', () => {
 		configurationManager = configManagerModule.configurationManager;
 		sessionManager = new SessionManager();
 		mockPty = new MockPty();
+
+		// Default command lookup preflight to success.
+		vi.mocked(execFile).mockImplementation((...params: unknown[]) => {
+			const callback = params.find(param => typeof param === 'function') as
+				| ((error: Error | null, stdout: string, stderr: string) => void)
+				| undefined;
+			callback?.(null, '/usr/bin/mock-agent\n', '');
+			return {} as ReturnType<typeof execFile>;
+		});
 	});
 
 	afterEach(() => {
@@ -632,6 +641,113 @@ describe('SessionManager', () => {
 			const bootstrapCommand = mockPty.write.mock.calls[0]?.[0] as string;
 			expect(bootstrapCommand).toContain('bash');
 			expect(bootstrapCommand).toContain('/tmp/.cacd-startup-test.sh');
+		});
+
+		it('should fail with ProcessError before shell bootstrap when agent command is missing', async () => {
+			vi.mocked(execFile).mockImplementation((...params: unknown[]) => {
+				const callback = params.find(param => typeof param === 'function') as
+					| ((error: Error | null, stdout: string, stderr: string) => void)
+					| undefined;
+				callback?.(new Error('not found'), '', '');
+				return {} as ReturnType<typeof execFile>;
+			});
+
+			const result = await Effect.runPromise(
+				Effect.either(
+					sessionManager.createSessionWithAgentEffect(
+						'/test/worktree',
+						'missing-agent',
+						[],
+						'claude',
+						'Agent Session',
+						'missing-agent',
+						undefined,
+						'agent',
+						{
+							initialPrompt: 'Line 1\nLine 2',
+						},
+					),
+				),
+			);
+
+			expect(Either.isLeft(result)).toBe(true);
+			if (Either.isLeft(result)) {
+				expect(result.left._tag).toBe('ProcessError');
+				if (result.left._tag === 'ProcessError') {
+					expect(result.left.message).toContain(
+						'Agent command "missing-agent" not found in PATH',
+					);
+				}
+			}
+
+			expect(spawn).not.toHaveBeenCalled();
+			expect(mockPty.write).not.toHaveBeenCalled();
+		});
+
+		it('should stop retrying prompt launcher after a launcher write failure', async () => {
+			const firstPty = new MockPty();
+			const secondPty = new MockPty();
+			vi.mocked(spawn)
+				.mockReturnValueOnce(firstPty as unknown as IPty)
+				.mockReturnValueOnce(secondPty as unknown as IPty);
+
+			const writePromptLauncherScriptSpy = vi
+				.spyOn(
+					sessionManager as unknown as {
+						writePromptLauncherScript: (
+							worktreePath: string,
+							command: string,
+							args: string[],
+							initialPrompt: string,
+							promptArg?: string,
+						) => Promise<string>;
+					},
+					'writePromptLauncherScript',
+				)
+				.mockRejectedValue(new Error('disk full'));
+
+			await Effect.runPromise(
+				sessionManager.createSessionWithAgentEffect(
+					'/test/worktree',
+					'claude',
+					[],
+					'claude',
+					'Agent Session',
+					'claude',
+					undefined,
+					'agent',
+					{
+						initialPrompt: 'Line 1\nLine 2',
+					},
+				),
+			);
+
+			await Effect.runPromise(
+				sessionManager.createSessionWithAgentEffect(
+					'/test/worktree',
+					'claude',
+					[],
+					'claude',
+					'Agent Session 2',
+					'claude',
+					undefined,
+					'agent',
+					{
+						initialPrompt: 'Line 1\nLine 2',
+					},
+				),
+			);
+
+			expect(writePromptLauncherScriptSpy).toHaveBeenCalledTimes(1);
+			expect(firstPty.write).toHaveBeenCalledTimes(1);
+			expect(secondPty.write).toHaveBeenCalledTimes(1);
+
+			const firstBootstrap = firstPty.write.mock.calls[0]?.[0] as string;
+			const secondBootstrap = secondPty.write.mock.calls[0]?.[0] as string;
+			expect(firstBootstrap).toContain('claude');
+			expect(secondBootstrap).toContain('claude');
+			expect(firstBootstrap).not.toContain('Line 1');
+			expect(secondBootstrap).not.toContain('Line 1');
 		});
 
 		it('should honor sessionIdOverride for recovery flows', async () => {

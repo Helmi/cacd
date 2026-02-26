@@ -2,60 +2,102 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
+  verify:
+    name: Verify (Ubuntu, Node 22)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.x
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-node-22-bun-${{ hashFiles('bun.lock', 'client/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-node-22-bun-
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Build
+        run: bun run build
+
   test:
     name: Test (${{ matrix.os }}, Node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
 
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: [20.x, 22.x]
-        exclude:
-          # Only test Node 18 on Linux to save CI time
-          - os: macos-latest
-            node-version: 18.x
-          - os: windows-latest
-            node-version: 18.x
         include:
           - os: ubuntu-latest
-            node-version: 18.x
+            node-version: 22.x
+          - os: macos-latest
+            node-version: 22.x
+          - os: windows-latest
+            node-version: 22.x
+          - os: ubuntu-latest
+            node-version: 24.x
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Setup Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
 
-    - name: Install dependencies (Unix)
-      if: runner.os != 'Windows'
-      run: |
-        rm -f package-lock.json
-        npm install
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.x
 
-    - name: Install dependencies (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        if (Test-Path package-lock.json) { Remove-Item package-lock.json }
-        npm install
-      shell: pwsh
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-bun-${{ hashFiles('bun.lock', 'client/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ matrix.node-version }}-bun-
+            ${{ runner.os }}-bun-
 
-    - name: Run typecheck
-      run: npm run typecheck
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
 
-    - name: Run lint
-      run: npm run lint
-
-    - name: Run tests
-      run: npm test
-
-    - name: Build
-      run: npm run build
+      - name: Test
+        run: bun run test

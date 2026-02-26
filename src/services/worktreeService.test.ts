@@ -2,6 +2,7 @@ import {describe, it, expect, beforeEach, vi} from 'vitest';
 import {WorktreeService} from './worktreeService.js';
 import {execSync, execFileSync} from 'child_process';
 import {existsSync, statSync, Stats} from 'fs';
+import path from 'path';
 import {configurationManager} from './configurationManager.js';
 import {Effect} from 'effect';
 import {GitError} from '../types/errors.js';
@@ -86,8 +87,8 @@ describe('WorktreeService', () => {
 			const service = new WorktreeService('/some/path');
 			const result = service.getGitRootPath();
 
-			expect(result).toBe('/absolute/repo');
-			expect(result.startsWith('/')).toBe(true);
+			expect(result).toBe(path.dirname('/absolute/repo/.git'));
+			expect(path.isAbsolute(result)).toBe(true);
 		});
 
 		it('should convert relative path to absolute path', () => {
@@ -101,12 +102,13 @@ describe('WorktreeService', () => {
 				throw new Error('Command not mocked: ' + cmd);
 			});
 
-			const service = new WorktreeService('/work/project');
+			const rootPath = '/work/project';
+			const service = new WorktreeService(rootPath);
 			const result = service.getGitRootPath();
 
 			// Should resolve relative .git to absolute path
-			expect(result).toBe('/work/project');
-			expect(result.startsWith('/')).toBe(true);
+			expect(result).toBe(path.resolve(rootPath));
+			expect(path.isAbsolute(result)).toBe(true);
 		});
 
 		it('should handle relative paths with subdirectories', () => {
@@ -120,12 +122,13 @@ describe('WorktreeService', () => {
 				throw new Error('Command not mocked: ' + cmd);
 			});
 
-			const service = new WorktreeService('/work/project/subdir');
+			const rootPath = '/work/project/subdir';
+			const service = new WorktreeService(rootPath);
 			const result = service.getGitRootPath();
 
 			// Should resolve relative ../.git to absolute path
-			expect(result).toBe('/work/project');
-			expect(result.startsWith('/')).toBe(true);
+			expect(result).toBe(path.resolve('/work/project'));
+			expect(path.isAbsolute(result)).toBe(true);
 		});
 
 		it('should return absolute path on git command failure', () => {
@@ -143,8 +146,8 @@ describe('WorktreeService', () => {
 			const result = service.getGitRootPath();
 
 			// Should convert relative path to absolute path
-			expect(result.startsWith('/')).toBe(true);
-			expect(result.endsWith('relative/path')).toBe(true);
+			expect(result).toBe(path.resolve('relative/path'));
+			expect(path.isAbsolute(result)).toBe(true);
 		});
 
 		it('should handle worktree paths correctly', () => {
@@ -163,8 +166,8 @@ describe('WorktreeService', () => {
 			const result = service.getGitRootPath();
 
 			// Should get the parent of .git directory
-			expect(result).toBe('/main/repo');
-			expect(result.startsWith('/')).toBe(true);
+			expect(result).toBe(path.dirname('/main/repo/.git'));
+			expect(path.isAbsolute(result)).toBe(true);
 		});
 	});
 

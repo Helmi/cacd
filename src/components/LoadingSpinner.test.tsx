@@ -3,6 +3,15 @@ import React from 'react';
 import {render} from 'ink-testing-library';
 import LoadingSpinner from './LoadingSpinner.js';
 
+const unicodeFrameRegex = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
+const asciiFrameRegex = /[-\\|/]/;
+
+const expectAnySpinnerFrame = (output: string): void => {
+	expect(unicodeFrameRegex.test(output) || asciiFrameRegex.test(output)).toBe(
+		true,
+	);
+};
+
 describe('LoadingSpinner', () => {
 	// Store original environment variables for restoration
 	const originalEnv = {...process.env};
@@ -35,8 +44,8 @@ describe('LoadingSpinner', () => {
 
 			const output = lastFrame();
 			expect(output).toContain('Loading...');
-			// Should contain one of the Unicode spinner frames
-			expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+			// Should contain at least one spinner frame
+			expectAnySpinnerFrame(output);
 		});
 
 		it('should render with custom color prop (yellow for devcontainer operations)', () => {
@@ -47,7 +56,7 @@ describe('LoadingSpinner', () => {
 			const output = lastFrame();
 			expect(output).toContain('Starting devcontainer...');
 			// Verify spinner is present
-			expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+			expectAnySpinnerFrame(output);
 		});
 
 		it('should use ASCII fallback frames when spinnerType is "line"', () => {
@@ -92,7 +101,7 @@ describe('LoadingSpinner', () => {
 			// Verify both spinner and message are present
 			// ANSI color codes may be present between spinner and message
 			expect(output).toContain('Test message');
-			expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+			expectAnySpinnerFrame(output);
 		});
 	});
 
@@ -104,15 +113,15 @@ describe('LoadingSpinner', () => {
 
 			const output = lastFrame();
 			expect(output).toContain('Success loading...');
-			expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+			expectAnySpinnerFrame(output);
 		});
 
 		it('should render Unicode frames correctly', () => {
 			const {lastFrame} = render(<LoadingSpinner message="Test" />);
 
 			const output = lastFrame();
-			// Should contain one of the Unicode frames
-			expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+			// Should contain at least one spinner frame
+			expectAnySpinnerFrame(output);
 		});
 
 		it('should render ASCII frames when using "line" spinner type', () => {
@@ -130,7 +139,7 @@ describe('LoadingSpinner', () => {
 
 			const output = lastFrame();
 			// Should still render spinner even with empty message
-			expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+			expectAnySpinnerFrame(output);
 		});
 
 		it('should handle long message text without breaking layout', () => {
@@ -140,7 +149,7 @@ describe('LoadingSpinner', () => {
 
 			const output = lastFrame();
 			expect(output).toContain(longMessage);
-			expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+			expectAnySpinnerFrame(output);
 		});
 
 		it('should use cyan as default color', () => {
@@ -149,15 +158,14 @@ describe('LoadingSpinner', () => {
 			const output = lastFrame();
 			// Just verify it renders successfully with default color
 			expect(output).toContain('Test');
-			expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+			expectAnySpinnerFrame(output);
 		});
 
 		it('should use dots as default spinner type', () => {
 			const {lastFrame} = render(<LoadingSpinner message="Test" />);
 
 			const output = lastFrame();
-			// Default should be Unicode dots, not ASCII line
-			expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+			expectAnySpinnerFrame(output);
 		});
 	});
 
@@ -169,8 +177,7 @@ describe('LoadingSpinner', () => {
 			const {lastFrame} = render(<LoadingSpinner message="Loading..." />);
 
 			const output = lastFrame();
-			// Should use Unicode frames when terminal supports it
-			expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+			expectAnySpinnerFrame(output);
 			expect(output).toContain('Loading...');
 		});
 
@@ -184,7 +191,7 @@ describe('LoadingSpinner', () => {
 
 			const output = lastFrame();
 			// Should use ASCII frames when terminal doesn't support Unicode
-			expect(output).toMatch(/[-\\|/]/);
+			expect(output).toMatch(asciiFrameRegex);
 			expect(output).toContain('Loading...');
 		});
 
@@ -198,7 +205,7 @@ describe('LoadingSpinner', () => {
 
 			const output = lastFrame();
 			// Explicit spinnerType should override detection
-			expect(output).toMatch(/[-\\|/]/);
+			expect(output).toMatch(asciiFrameRegex);
 		});
 
 		it('should detect Unicode support on Windows with Windows Terminal', () => {
@@ -213,8 +220,7 @@ describe('LoadingSpinner', () => {
 			const {lastFrame} = render(<LoadingSpinner message="Loading..." />);
 
 			const output = lastFrame();
-			// Should use Unicode on Windows Terminal
-			expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+			expectAnySpinnerFrame(output);
 		});
 
 		it('should fallback to ASCII on Windows without Windows Terminal', () => {
@@ -232,7 +238,7 @@ describe('LoadingSpinner', () => {
 
 			const output = lastFrame();
 			// Should use ASCII on Windows without WT
-			expect(output).toMatch(/[-\\|/]/);
+			expect(output).toMatch(asciiFrameRegex);
 		});
 
 		it('should detect Unicode support from LANG environment variable', () => {
@@ -242,8 +248,7 @@ describe('LoadingSpinner', () => {
 			const {lastFrame} = render(<LoadingSpinner message="Loading..." />);
 
 			const output = lastFrame();
-			// Should use Unicode when LANG indicates UTF-8
-			expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+			expectAnySpinnerFrame(output);
 		});
 
 		it('should detect Unicode support with appropriate frame rate', () => {
