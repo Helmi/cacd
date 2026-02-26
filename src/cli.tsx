@@ -55,7 +55,7 @@ const cli = meow(
   Usage
     $ cacd                      Start daemon in background
     $ cacd start                Start daemon in background
-    $ cacd stop                 Stop running daemon
+    $ cacd stop [--force]       Stop daemon (preserve sessions by default)
     $ cacd status               Show daemon status
     $ cacd status --sessions    Show daemon status and active sessions
     $ cacd sessions list        List active sessions (legacy)
@@ -73,7 +73,7 @@ const cli = meow(
     $ cacd send <id> <msg>      Alias for cacd ui send ... (stub)
     $ cacd approve <id>         Alias for cacd ui approve ... (stub)
     $ cacd notify <msg>         Alias for cacd ui notify ... (stub)
-    $ cacd restart              Restart daemon
+    $ cacd restart [--force]    Restart daemon (preserve sessions by default)
     $ cacd tui                  Launch TUI (daemon must already be running)
     $ cacd daemon               Run daemon in foreground (for service managers)
     $ cacd setup                Run first-time setup wizard
@@ -128,7 +128,7 @@ const cli = meow(
     --no-web               Disable web interface
     --project <path>       Add specified path as first project
     --skip-project         Don't add any project
-    --force                Overwrite existing config without asking
+    --force                Setup: overwrite config. Daemon stop/restart: destructive session shutdown.
 
   Environment Variables
     CACD_CONFIG_DIR        Custom config directory (highest priority, overrides CACD_DEV)
@@ -149,7 +149,8 @@ const cli = meow(
     $ cacd agents list --json
     $ cacd ui focus session-123   # Set focused session in UI/daemon state
     $ cacd focus session-123      # Alias for ui focus
-    $ cacd stop                   # Stop daemon
+    $ cacd stop                   # Stop daemon and preserve sessions for recovery
+    $ cacd stop --force           # Stop daemon and terminate active sessions
     $ cacd tui                    # Launch TUI (requires running daemon)
     $ cacd daemon                 # Foreground daemon mode for systemd/launchd
     $ cacd setup --port 8080      # Setup with custom port
@@ -697,14 +698,13 @@ if (isDaemonMode) {
 		console.log(`\nReceived ${signal}, shutting down...`);
 
 		try {
-			globalSessionOrchestrator.destroyAllSessions();
-		} finally {
-			try {
-				await cleanupDaemonPidFile(daemonPidFilePath, daemonPid);
-			} finally {
-				process.exit(0);
-			}
+			// Intentionally avoid force-destroying sessions here.
+			// Startup rehydration recovers active sessions after daemon restarts.
+			await cleanupDaemonPidFile(daemonPidFilePath, daemonPid);
+		} catch (_error) {
+			// ignore cleanup errors during shutdown
 		}
+		process.exit(0);
 	};
 
 	process.on('SIGINT', () => {

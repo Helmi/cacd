@@ -3,12 +3,17 @@ import {mkdir} from 'fs/promises';
 import dgram from 'dgram';
 import dns from 'dns';
 import os from 'os';
+import {createApiClient, ApiClientError} from '../apiClient.js';
 import type {DaemonWebConfig} from '../../utils/daemonControl.js';
 import type {CliCommandContext} from '../types.js';
 
 const DAEMON_READY_TIMEOUT_MS = 15_000;
 const DAEMON_POLL_INTERVAL_MS = 200;
 const DAEMON_STOP_TIMEOUT_MS = 5_000;
+
+interface DaemonSessionPayload {
+	id?: string;
+}
 
 function sleep(ms: number): Promise<void> {
 	return new Promise(resolve => {
@@ -80,6 +85,61 @@ async function withNetworkLinks(
 			? `http://${hostname}:${baseConfig.port}${tokenPath}`
 			: undefined,
 	};
+}
+
+function normalizeApiError(error: unknown): Error {
+	if (error instanceof ApiClientError) {
+		return new Error(error.message);
+	}
+
+	if (error instanceof Error) {
+		return error;
+	}
+
+	return new Error(String(error));
+}
+
+async function listActiveSessionIds(
+	context: CliCommandContext,
+): Promise<string[]> {
+	const client = createApiClient({
+		host: '127.0.0.1',
+		port: context.port,
+		accessToken: context.accessToken,
+	});
+	const sessions = await client.get<DaemonSessionPayload[]>('/api/sessions');
+	return sessions
+		.map(session => session.id?.trim())
+		.filter((sessionId): sessionId is string => !!sessionId);
+}
+
+async function terminateActiveSessionsForLifecycle(
+	context: CliCommandContext,
+): Promise<{terminated: number; activeSessionIds: string[]}> {
+	const activeSessionIds = await listActiveSessionIds(context);
+	const client = createApiClient({
+		host: '127.0.0.1',
+		port: context.port,
+		accessToken: context.accessToken,
+	});
+	let terminated = 0;
+	for (const sessionId of activeSessionIds) {
+		const response = await client.post<{success?: boolean}>('/api/session/stop', {
+			id: sessionId,
+		});
+		if (response.success !== false) {
+			terminated += 1;
+		}
+	}
+
+	return {terminated, activeSessionIds};
+}
+
+function formatActiveSessionList(sessionIds: string[]): string {
+	if (sessionIds.length === 0) {
+		return 'none';
+	}
+	return `${sessionIds.slice(0, 5).join(', ')}${sessionIds.length > 5 ? ', ...' : ''}`;
 }
 
 async function startDaemonInBackground(context: CliCommandContext): Promise<{
@@ -248,6 +308,30 @@ export async function runDaemonLifecycleCommand(
 	}
 
 	if (context.subcommand === 'stop') {
+		let forceStopSummary:
+			| {terminated: number; activeSessionIds: string[]}
+			| undefined;
+		if (context.parsedArgs.flags.force) {
+			try {
+				forceStopSummary = await terminateActiveSessionsForLifecycle(context);
+			} catch (error) {
+				const message = normalizeApiError(error).message;
+				context.formatter.writeError({
+					text: [
+						`Failed to stop active sessions before force stop: ${message}`,
+						'The daemon was not stopped to avoid ambiguous lifecycle state.',
+					],
+					data: {
+						ok: false,
+						command: 'stop',
+						force: true,
+						error: {message},
+					},
+				});
+				return 1;
+			}
+		}
+
 		let result: {stopped: boolean; pid?: number};
 		try {
 			result = await stopDaemon(context);
@@ -279,12 +363,26 @@ export async function runDaemonLifecycleCommand(
 		}
 
 		context.formatter.write({
-			text: [`Daemon stopped (PID ${result.pid})`],
+			text: context.parsedArgs.flags.force
+				? [
+						`Daemon stopped (PID ${result.pid})`,
+						`Force mode: terminated ${forceStopSummary?.terminated || 0} active session(s) before shutdown.`,
+						`Sessions terminated: ${formatActiveSessionList(forceStopSummary?.activeSessionIds || [])}`,
+					]
+				: [
+						`Daemon stopped (PID ${result.pid})`,
+						'Session recovery mode: active sessions were preserved for next startup.',
+						'Use `cacd stop --force` for destructive shutdown.',
+					],
 			data: {
 				ok: true,
 				command: 'stop',
 				stopped: true,
 				pid: result.pid,
+				force: context.parsedArgs.flags.force,
+				preservedSessions: !context.parsedArgs.flags.force,
+				terminatedSessions: forceStopSummary?.terminated || 0,
+				activeSessions: forceStopSummary?.activeSessionIds || [],
 			},
 		});
 		return 0;
@@ -385,6 +483,89 @@ export async function runDaemonLifecycleCommand(
 				configDir: context.configDir,
 				pidFile: context.daemonPidFilePath,
 				logFile: context.daemonLogPath,
+			},
+		});
+		return 0;
+	}
+
+	if (context.subcommand === 'restart') {
+		let forceRestartSummary:
+			| {terminated: number; activeSessionIds: string[]}
+			| undefined;
+		if (context.parsedArgs.flags.force) {
+			try {
+				forceRestartSummary = await terminateActiveSessionsForLifecycle(context);
+			} catch (error) {
+				const message = normalizeApiError(error).message;
+				context.formatter.writeError({
+					text: [
+						`Failed to stop active sessions before force restart: ${message}`,
+						'The daemon was not restarted to avoid ambiguous lifecycle state.',
+					],
+					data: {
+						ok: false,
+						command: 'restart',
+						force: true,
+						error: {message},
+					},
+				});
+				return 1;
+			}
+		}
+
+		let result: {pid: number; started: boolean; webConfig: DaemonWebConfig};
+		try {
+			await stopDaemon(context);
+			result = await startDaemonInBackground(context);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			context.formatter.writeError({
+				text: [`Failed to restart daemon: ${message}`],
+				data: {
+					ok: false,
+					command: 'restart',
+					error: {
+						message,
+					},
+				},
+			});
+			return 1;
+		}
+
+		context.formatter.write({
+			text: context.parsedArgs.flags.force
+				? [
+						`Daemon restarted (PID ${result.pid})`,
+						`Local URL:    ${result.webConfig.url}`,
+						`External URL: ${result.webConfig.externalUrl || '(unavailable)'}`,
+						`Config Dir:   ${context.configDir}`,
+						`PID File:     ${context.daemonPidFilePath}`,
+						`Log File:     ${context.daemonLogPath}`,
+						`Force mode: terminated ${forceRestartSummary?.terminated || 0} active session(s) before restart.`,
+						`Sessions terminated: ${formatActiveSessionList(forceRestartSummary?.activeSessionIds || [])}`,
+					]
+				: [
+						`Daemon restarted (PID ${result.pid})`,
+						`Local URL:    ${result.webConfig.url}`,
+						`External URL: ${result.webConfig.externalUrl || '(unavailable)'}`,
+						`Config Dir:   ${context.configDir}`,
+						`PID File:     ${context.daemonPidFilePath}`,
+						`Log File:     ${context.daemonLogPath}`,
+						'Session recovery mode: active sessions were preserved and will be rehydrated.',
+						'Use `cacd restart --force` for destructive restart.',
+					],
+			data: {
+				ok: true,
+				command: 'restart',
+				pid: result.pid,
+				webConfig: result.webConfig,
+				configDir: context.configDir,
+				pidFile: context.daemonPidFilePath,
+				logFile: context.daemonLogPath,
+				force: context.parsedArgs.flags.force,
+				preservedSessions: !context.parsedArgs.flags.force,
+				terminatedSessions: forceRestartSummary?.terminated || 0,
+				activeSessions: forceRestartSummary?.activeSessionIds || [],
 			},
 		});
 		return 0;

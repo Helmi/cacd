@@ -40,6 +40,7 @@ export interface SessionCounts {
 interface AgentBootstrapOptions {
 	initialPrompt?: string;
 	promptArg?: string;
+	sessionIdOverride?: string;
 }
 
 export class SessionManager extends EventEmitter implements ISessionManager {
@@ -511,9 +512,14 @@ ${commandTokens.join(' ')}
 			devcontainerConfig?: DevcontainerConfig;
 			sessionName?: string;
 			agentId?: string;
+			sessionId?: string;
 		} = {},
 	): Promise<Session> {
-		const id = this.createSessionId();
+		const resolvedSessionId = options.sessionId?.trim();
+		const id = resolvedSessionId || this.createSessionId();
+		if (this.sessions.has(id)) {
+			throw new Error(`Session with ID ${id} already exists`);
+		}
 		const terminal = this.createTerminal();
 
 		const session: Session = {
@@ -683,6 +689,7 @@ ${commandTokens.join(' ')}
 						detectionStrategy: detectionStrategy,
 						sessionName: sessionName,
 						agentId: agentId,
+						sessionId: bootstrapOptions?.sessionIdOverride,
 					},
 				);
 

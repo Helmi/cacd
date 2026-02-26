@@ -8,7 +8,7 @@ import {logger} from '../utils/logger.js';
 import {configurationManager} from './configurationManager.js';
 import {projectManager} from './projectManager.js';
 import {authService} from './authService.js';
-import {ConfigurationData, TdConfig, AgentConfig} from '../types/index.js';
+import {ConfigurationData, TdConfig} from '../types/index.js';
 import {ValidationError} from '../types/errors.js';
 import {Effect} from 'effect';
 import path from 'path';
@@ -46,8 +46,14 @@ import {
 	type ProjectConfig,
 } from '../utils/projectConfig.js';
 import {sessionStore, SessionIntent} from './sessionStore.js';
+import type {SessionRecord} from './sessionStore.js';
 import {adapterRegistry} from '../adapters/index.js';
-import type {Session, SessionState} from '../types/index.js';
+import type {
+	AgentConfig,
+	Session,
+	SessionState,
+	StateDetectionStrategy,
+} from '../types/index.js';
 import {
 	toApiSessionPayload,
 	toSessionUpdatePayload,
@@ -141,6 +147,15 @@ interface PendingTdPromptInjection {
 	prompt: string;
 	taskId?: string;
 	timeout: NodeJS.Timeout;
+}
+
+type SessionRecoveryMode = 'resume' | 'fallback';
+
+interface SessionRecoveryOutcome {
+	ok: boolean;
+	recoveryMode: SessionRecoveryMode;
+	notice?: string;
+	error?: string;
 }
 
 const TD_FALLBACK_DEFAULT_PROMPT_NAME = 'Begin Work on Task';
@@ -351,6 +366,7 @@ export class APIServer {
 		PendingTdPromptInjection
 	>();
 	private pendingFallbackSessionEndTimes = new Map<string, number>();
+	private hasRehydratedSessions = false;
 
 	constructor() {
 		this.app = Fastify({logger: false});
@@ -404,6 +420,349 @@ export class APIServer {
 		} finally {
 			this.clearPendingTdPromptInjection(session.id);
 		}
+	}
+
+	private normalizeRecoveryOptions(
+		rawOptions: Record<string, unknown>,
+	): Record<string, boolean | string> {
+		const normalized: Record<string, boolean | string> = {};
+		for (const [key, value] of Object.entries(rawOptions || {})) {
+			if (typeof value === 'boolean') {
+				normalized[key] = value;
+				continue;
+			}
+			if (typeof value === 'string') {
+				const trimmed = value.trim();
+				if (trimmed.length > 0) {
+					normalized[key] = trimmed;
+				}
+			}
+		}
+		return normalized;
+	}
+
+	private applyRecoveryResumeOptions(
+		agent: AgentConfig,
+		options: Record<string, boolean | string>,
+		record: SessionRecord,
+	): {options: Record<string, boolean | string>; usedResumeHint: boolean} {
+		const next = {...options};
+		const hasActiveValue = (value: boolean | string | undefined): boolean =>
+			value !== undefined && value !== false && value !== '';
+
+		const resumeModeOptions = agent.options.filter(
+			option => option.group === 'resume-mode',
+		);
+		const hasResumeModeSet = resumeModeOptions.some(option =>
+			hasActiveValue(next[option.id]),
+		);
+
+		if (hasResumeModeSet) {
+			return {options: next, usedResumeHint: true};
+		}
+
+		const findOption = (id: string) => agent.options.find(option => option.id === id);
+		const setIfAvailable = (
+			id: string,
+			value: boolean | string | undefined,
+		): boolean => {
+			const option = findOption(id);
+			if (!option) return false;
+			if (option.type === 'boolean') {
+				next[id] = value === true;
+				return value === true;
+			}
+			if (option.type === 'string' && typeof value === 'string' && value) {
+				next[id] = value;
+				return true;
+			}
+			return false;
+		};
+
+		if (record.agentSessionPath && setIfAvailable('session', record.agentSessionPath)) {
+			return {options: next, usedResumeHint: true};
+		}
+
+		if (record.agentSessionId && setIfAvailable('resume', record.agentSessionId)) {
+			return {options: next, usedResumeHint: true};
+		}
+
+		if (setIfAvailable('continue', true)) {
+			return {options: next, usedResumeHint: true};
+		}
+
+		const usedResumeHint = setIfAvailable('resume', true);
+		return {options: next, usedResumeHint};
+	}
+
+	private resolveRecoveryAgent(record: SessionRecord): AgentConfig {
+		const configuredAgent =
+			configurationManager.getAgentById(record.agentProfileId) ||
+			configurationManager.getAgentById(record.agentType);
+		if (configuredAgent) {
+			return configuredAgent;
+		}
+
+		const adapter =
+			adapterRegistry.getById(record.agentType) ||
+			adapterRegistry.getByAgentType(record.agentType);
+		const fallbackCommand = adapter?.command || record.agentType || 'sh';
+		const fallbackStrategy = adapter?.detectionStrategy;
+
+		return {
+			id: record.agentProfileId || record.agentType || 'restored-agent',
+			name: record.agentProfileName || record.agentType || 'Restored Agent',
+			kind: 'agent',
+			command: fallbackCommand,
+			options: [],
+			detectionStrategy: fallbackStrategy as StateDetectionStrategy | undefined,
+		};
+	}
+
+	private applyCodexRecoveryArgs(
+		agent: AgentConfig,
+		record: SessionRecord,
+		args: string[],
+	): {args: string[]; usedResumeHint: boolean} {
+		const command = agent.command.trim().split(/\s+/)[0]?.toLowerCase();
+		if (agent.id !== 'codex' && command !== 'codex') {
+			return {args, usedResumeHint: false};
+		}
+
+		const firstArg = args[0]?.toLowerCase();
+		if (firstArg === 'resume' || firstArg === 'fork') {
+			return {args, usedResumeHint: true};
+		}
+
+		const sessionId = record.agentSessionId?.trim();
+		return {
+			args: ['resume', sessionId || '--last', ...args],
+			usedResumeHint: true,
+		};
+	}
+
+	private buildRestartFallbackPrompt(record: SessionRecord): string {
+		const lines = [
+			`This session (${record.id}) was restarted by CA⚡CD.`,
+			'',
+			'Resume context safely:',
+			`1) Review recent session history${record.agentSessionPath ? ` in ${record.agentSessionPath}` : ''}.`,
+			`2) Continue work in ${record.worktreePath}.`,
+			'3) Re-state the exact next step before making changes.',
+		];
+
+		if (record.tdTaskId) {
+			lines.push(`4) Keep task linkage intact: ${record.tdTaskId}.`);
+		}
+
+		return lines.join('\n');
+	}
+
+	private markRecoveryFailed(sessionId: string): void {
+		try {
+			sessionStore.markSessionEnded(sessionId);
+		} catch (error) {
+			logger.warn(
+				`API: Failed to mark unrecoverable session ${sessionId} as ended: ${String(error)}`,
+			);
+		}
+	}
+
+	private persistSessionMetadataIfMissing(session: Session): void {
+		try {
+			if (sessionStore.getSessionById(session.id)) {
+				return;
+			}
+
+			const configuredAgent = session.agentId
+				? configurationManager.getAgentById(session.agentId)
+				: undefined;
+			const detectedAgentType = configuredAgent
+				? adapterRegistry.getById(configuredAgent.id)?.id ||
+					adapterRegistry.getByAgentType(inferAgentType(configuredAgent))
+						?.id ||
+					inferAgentType(configuredAgent)
+				: session.detectionStrategy || session.agentId || 'terminal';
+			const createdAt = resolveSessionCreatedAt(session);
+
+			sessionStore.createSessionRecord({
+				id: session.id,
+				agentProfileId:
+					configuredAgent?.id || session.agentId || detectedAgentType,
+				agentProfileName:
+					configuredAgent?.name || session.agentId || detectedAgentType,
+				agentType: detectedAgentType,
+				agentOptions: {},
+				worktreePath: session.worktreePath,
+				branchName: resolveGitField(session.worktreePath, [
+					'branch',
+					'--show-current',
+				]),
+				projectPath: resolveGitField(session.worktreePath, [
+					'rev-parse',
+					'--show-toplevel',
+				]),
+				sessionName: session.name,
+				intent: 'manual',
+				createdAt,
+			});
+
+			sessionStore.scheduleAgentSessionDiscovery({
+				sessionId: session.id,
+				agentType: detectedAgentType,
+				worktreePath: session.worktreePath,
+			});
+
+			const pendingEndedAt = this.pendingFallbackSessionEndTimes.get(session.id);
+			if (pendingEndedAt) {
+				sessionStore.markSessionEnded(session.id, pendingEndedAt);
+				this.pendingFallbackSessionEndTimes.delete(session.id);
+			}
+		} catch (error) {
+			logger.warn(
+				`API: Failed to persist fallback session metadata for ${session.id}: ${String(error)}`,
+			);
+		}
+	}
+
+	private async recoverSessionFromRecord(
+		record: SessionRecord,
+		options: {
+			injectFallbackPrompt?: boolean;
+			markEndedOnFailure?: boolean;
+		} = {},
+	): Promise<SessionRecoveryOutcome> {
+		const injectFallbackPrompt = options.injectFallbackPrompt ?? false;
+		const markEndedOnFailure = options.markEndedOnFailure ?? true;
+
+		try {
+			const agent = this.resolveRecoveryAgent(record);
+			const normalizedOptions = this.normalizeRecoveryOptions(record.agentOptions);
+			const resumeOptionPlan = this.applyRecoveryResumeOptions(
+				agent,
+				normalizedOptions,
+				record,
+			);
+			const builtArgs = configurationManager.buildAgentArgs(
+				agent,
+				resumeOptionPlan.options,
+			);
+			const codexArgsPlan = this.applyCodexRecoveryArgs(agent, record, builtArgs);
+			const recoveryMode: SessionRecoveryMode =
+				resumeOptionPlan.usedResumeHint || codexArgsPlan.usedResumeHint
+					? 'resume'
+					: 'fallback';
+			const command = agent.command === '$SHELL' ? getDefaultShell() : agent.command;
+			const extraEnv: Record<string, string> = {};
+			if (record.tdTaskId) {
+				extraEnv['TD_TASK_ID'] = record.tdTaskId;
+			}
+			if (record.tdSessionId) {
+				extraEnv['TD_SESSION_ID'] = record.tdSessionId;
+			}
+			const promptArg = agent.promptArg?.trim();
+			const canInjectFallbackPrompt =
+				recoveryMode === 'fallback' &&
+				injectFallbackPrompt &&
+				agent.kind !== 'terminal' &&
+				promptArg?.toLowerCase() !== 'none';
+			const fallbackPrompt = this.buildRestartFallbackPrompt(record);
+
+			const effect = coreService.sessionManager.createSessionWithAgentEffect(
+				record.worktreePath,
+				command,
+				codexArgsPlan.args,
+				agent.detectionStrategy,
+				record.sessionName || undefined,
+				agent.id,
+				Object.keys(extraEnv).length > 0 ? extraEnv : undefined,
+				agent.kind,
+				{
+					promptArg,
+					sessionIdOverride: record.id,
+					initialPrompt: canInjectFallbackPrompt ? fallbackPrompt : undefined,
+				},
+			);
+			const result = await Effect.runPromise(Effect.either(effect));
+			if (result._tag === 'Left') {
+				if (markEndedOnFailure) {
+					this.markRecoveryFailed(record.id);
+				}
+				return {
+					ok: false,
+					recoveryMode,
+					error: result.left.message,
+				};
+			}
+
+			coreService.sessionManager.setSessionActive(record.id, true);
+
+			if (
+				recoveryMode === 'fallback' &&
+				injectFallbackPrompt &&
+				!canInjectFallbackPrompt
+			) {
+				try {
+					result.right.process.write(`${fallbackPrompt}\r`);
+				} catch (error) {
+					logger.warn(
+						`API: Failed to inject fallback restart prompt for ${record.id}: ${String(error)}`,
+					);
+				}
+			}
+
+			return {
+				ok: true,
+				recoveryMode,
+				notice:
+					recoveryMode === 'fallback'
+						? 'Session restarted without deterministic resume. CACD started a fresh session with a recovery prompt.'
+						: undefined,
+			};
+		} catch (error) {
+			if (markEndedOnFailure) {
+				this.markRecoveryFailed(record.id);
+			}
+			return {
+				ok: false,
+				recoveryMode: 'fallback',
+				error: String(error),
+			};
+		}
+	}
+
+	private async rehydratePersistedSessions(): Promise<void> {
+		const recoverableSessions = sessionStore
+			.querySessions({limit: 5000, offset: 0})
+			.filter(record => record.endedAt === null)
+			.sort((a, b) => a.createdAt - b.createdAt);
+
+		if (recoverableSessions.length === 0) {
+			logger.info('API: No persisted live sessions found for recovery');
+			return;
+		}
+
+		let restoredCount = 0;
+		for (const record of recoverableSessions) {
+			if (coreService.sessionManager.getSession(record.id)) {
+				continue;
+			}
+			const outcome = await this.recoverSessionFromRecord(record, {
+				injectFallbackPrompt: false,
+				markEndedOnFailure: true,
+			});
+			if (!outcome.ok) {
+				logger.warn(
+					`API: Failed to recover session ${record.id}: ${outcome.error || 'unknown error'}`,
+				);
+				continue;
+			}
+			restoredCount += 1;
+		}
+
+		logger.info(
+			`API: Session recovery complete (${restoredCount}/${recoverableSessions.length} restored)`,
+		);
 	}
 
 	private async setup(): Promise<void> {
@@ -1690,6 +2049,54 @@ export class APIServer {
 
 				coreService.sessionManager.destroySession(id);
 				return {success: true};
+			},
+		);
+
+		this.app.post<{Body: {id: string}}>(
+			'/api/session/restart',
+			async (request, reply) => {
+				const {id} = request.body;
+				logger.info(`API: Restarting session ${id}`);
+
+				const liveSession = coreService.sessionManager.getSession(id);
+				if (liveSession) {
+					this.persistSessionMetadataIfMissing(liveSession);
+				}
+
+				const storedSession = sessionStore.getSessionById(id);
+				if (!liveSession && !storedSession) {
+					return reply.code(404).send({error: 'Session not found'});
+				}
+
+				if (liveSession) {
+					coreService.sessionManager.destroySession(id);
+				}
+
+				const restartRecord =
+					storedSession || sessionStore.getSessionById(id);
+				if (!restartRecord) {
+					return reply
+						.code(409)
+						.send({error: 'Session metadata unavailable for restart'});
+				}
+
+				const outcome = await this.recoverSessionFromRecord(restartRecord, {
+					injectFallbackPrompt: true,
+					markEndedOnFailure: false,
+				});
+				if (!outcome.ok) {
+					return reply
+						.code(500)
+						.send({error: outcome.error || 'Failed to restart session'});
+				}
+
+				sessionStore.markSessionResumed(id);
+				return {
+					success: true,
+					id,
+					recoveryMode: outcome.recoveryMode,
+					notice: outcome.notice,
+				};
 			},
 		);
 
@@ -3002,67 +3409,6 @@ export class APIServer {
 			this.io?.emit('session_update', toSessionUpdatePayload(session));
 		};
 
-		const persistSessionMetadataIfMissing = (session: Session) => {
-			try {
-				if (sessionStore.getSessionById(session.id)) {
-					return;
-				}
-
-				const configuredAgent = session.agentId
-					? configurationManager.getAgentById(session.agentId)
-					: undefined;
-				const detectedAgentType = configuredAgent
-					? adapterRegistry.getById(configuredAgent.id)?.id ||
-						adapterRegistry.getByAgentType(inferAgentType(configuredAgent))
-							?.id ||
-						inferAgentType(configuredAgent)
-					: session.detectionStrategy || session.agentId || 'terminal';
-				const createdAt = resolveSessionCreatedAt(session);
-
-				sessionStore.createSessionRecord({
-					id: session.id,
-					agentProfileId:
-						configuredAgent?.id || session.agentId || detectedAgentType,
-					agentProfileName:
-						configuredAgent?.name || session.agentId || detectedAgentType,
-					agentType: detectedAgentType,
-					agentOptions: {},
-					worktreePath: session.worktreePath,
-					branchName: resolveGitField(session.worktreePath, [
-						'branch',
-						'--show-current',
-					]),
-					projectPath: resolveGitField(session.worktreePath, [
-						'rev-parse',
-						'--show-toplevel',
-					]),
-					sessionName: session.name,
-					intent: 'manual',
-					createdAt,
-				});
-
-				sessionStore.scheduleAgentSessionDiscovery({
-					sessionId: session.id,
-					agentType: detectedAgentType,
-					worktreePath: session.worktreePath,
-					// Fallback path must allow linking already-existing transcript files
-					// (for resumed/history sessions) that may predate CACD session creation.
-				});
-
-				const pendingEndedAt = this.pendingFallbackSessionEndTimes.get(
-					session.id,
-				);
-				if (pendingEndedAt) {
-					sessionStore.markSessionEnded(session.id, pendingEndedAt);
-					this.pendingFallbackSessionEndTimes.delete(session.id);
-				}
-			} catch (error) {
-				logger.warn(
-					`API: Failed to persist fallback session metadata for ${session.id}: ${String(error)}`,
-				);
-			}
-		};
-
 		coreService.on('sessionStateChanged', session => {
 			this.injectPendingTdPromptIfReady(session);
 			notifyUpdate(session);
@@ -3070,7 +3416,7 @@ export class APIServer {
 		coreService.on('sessionUpdated', notifyUpdate);
 		coreService.on('sessionCreated', session => {
 			setTimeout(() => {
-				persistSessionMetadataIfMissing(session);
+				this.persistSessionMetadataIfMissing(session);
 			}, 500);
 			notifyUpdate(session);
 		});
@@ -3192,6 +3538,17 @@ export class APIServer {
 					}
 				} else {
 					logger.info(`Open in browser: ${baseUrl}`);
+				}
+
+				if (!this.hasRehydratedSessions) {
+					try {
+						await this.rehydratePersistedSessions();
+						this.hasRehydratedSessions = true;
+					} catch (error) {
+						logger.warn(
+							`API: Session rehydration failed during startup: ${String(error)}`,
+						);
+					}
 				}
 				return {address, port: currentPort};
 			} catch (err: unknown) {
