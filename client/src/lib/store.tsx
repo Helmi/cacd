@@ -327,6 +327,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tdIssues, setTdIssues] = useState<TdIssue[]>([])
   const [tdBoardView, setTdBoardView] = useState<Record<string, TdIssue[]>>({})
   const [taskBoardOpen, setTaskBoardOpen] = useState(false)
+  const [taskBoardReturnSessionId, setTaskBoardReturnSessionId] = useState<string | null>(null)
   const [conversationViewOpen, setConversationViewOpen] = useState(false)
   const [conversationInitialSessionId, setConversationInitialSessionId] = useState<string | null>(null)
   const [conversationTaskFilterId, setConversationTaskFilterId] = useState<string | null>(null)
@@ -644,14 +645,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const openTaskBoard = useCallback(() => {
+    // Remember the active session so closing the board can return to it.
+    setTaskBoardReturnSessionId(focusedSessionId || selectedSessions[0] || null)
     setConversationViewOpen(false)
     setConversationInitialSessionId(null)
     setConversationTaskFilterId(null)
+    // Clear session selection to indicate task board view
+    setSelectedSessions([])
+    setFocusedSessionId(null)
+    setContextSidebarSessionId(null)
     setTaskBoardOpen(true)
-  }, [])
-  const closeTaskBoard = useCallback(() => setTaskBoardOpen(false), [])
+  }, [focusedSessionId, selectedSessions])
+  const closeTaskBoard = useCallback(() => {
+    setTaskBoardOpen(false)
+
+    // Restore the session that was visible before opening the task board, when still available.
+    if (selectedSessions.length === 0 && taskBoardReturnSessionId && sessions.some(s => s.id === taskBoardReturnSessionId)) {
+      setSelectedSessions([taskBoardReturnSessionId])
+      setFocusedSessionId(taskBoardReturnSessionId)
+      if (sessionsWithSidebarOpen.has(taskBoardReturnSessionId)) {
+        setContextSidebarSessionId(taskBoardReturnSessionId)
+      } else {
+        setContextSidebarSessionId(null)
+      }
+    }
+
+    setTaskBoardReturnSessionId(null)
+  }, [selectedSessions.length, taskBoardReturnSessionId, sessions, sessionsWithSidebarOpen])
   const openConversationView = useCallback((context?: { sessionId?: string; taskId?: string }) => {
     setTaskBoardOpen(false)
+    setTaskBoardReturnSessionId(null)
     setConversationInitialSessionId(context?.sessionId || null)
     setConversationTaskFilterId(context?.taskId || null)
     setConversationViewOpen(true)
@@ -859,6 +882,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   const selectSession = (sessionId: string) => {
+    // Close task board and conversation view when selecting a session
+    setTaskBoardOpen(false)
+    setTaskBoardReturnSessionId(null)
+    setConversationViewOpen(false)
+    setConversationInitialSessionId(null)
+    setConversationTaskFilterId(null)
     setSelectedSessions([sessionId])
     setFocusedSessionId(sessionId)
     // Restore per-session sidebar preference
