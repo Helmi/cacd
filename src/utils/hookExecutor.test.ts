@@ -27,10 +27,12 @@ vi.mock('../services/worktreeService.js', () => ({
 }));
 
 // Note: This file contains integration tests that execute real commands
+const toNodeCommand = (script: string): string =>
+	`node -e "${script.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
 describe('hookExecutor Integration Tests', () => {
 	describe('executeHook (real execution)', () => {
-		it('should execute a simple echo command', async () => {
+		it('should execute a simple command successfully', async () => {
 			// Arrange
 			const tmpDir = await mkdtemp(join(tmpdir(), 'hook-test-'));
 			const environment = {
@@ -43,7 +45,11 @@ describe('hookExecutor Integration Tests', () => {
 				// Act & Assert - should not throw
 				await expect(
 					Effect.runPromise(
-						executeHook('echo "Test successful"', tmpDir, environment),
+						executeHook(
+							toNodeCommand('process.stdout.write("ok\\n")'),
+							tmpDir,
+							environment,
+						),
 					),
 				).resolves.toBeUndefined();
 			} finally {
@@ -64,7 +70,9 @@ describe('hookExecutor Integration Tests', () => {
 			try {
 				// Act & Assert
 				await expect(
-					Effect.runPromise(executeHook('exit 1', tmpDir, environment)),
+					Effect.runPromise(
+						executeHook(toNodeCommand('process.exit(1)'), tmpDir, environment),
+					),
 				).rejects.toThrow();
 			} finally {
 				// Cleanup
@@ -86,7 +94,9 @@ describe('hookExecutor Integration Tests', () => {
 				await expect(
 					Effect.runPromise(
 						executeHook(
-							'>&2 echo "Error details here"; exit 1',
+							toNodeCommand(
+								"process.stderr.write('Error details here\\n'); process.exit(1);",
+							),
 							tmpDir,
 							environment,
 						),
@@ -114,7 +124,9 @@ describe('hookExecutor Integration Tests', () => {
 				try {
 					await Effect.runPromise(
 						executeHook(
-							'>&2 echo "Line 1"; >&2 echo "Line 2"; exit 3',
+							toNodeCommand(
+								"process.stderr.write('Line 1\\n'); process.stderr.write('Line 2\\n'); process.exit(3);",
+							),
 							tmpDir,
 							environment,
 						),
@@ -128,7 +140,9 @@ describe('hookExecutor Integration Tests', () => {
 
 				// Test with empty stderr
 				try {
-					await Effect.runPromise(executeHook('exit 4', tmpDir, environment));
+					await Effect.runPromise(
+						executeHook(toNodeCommand('process.exit(4)'), tmpDir, environment),
+					);
 					expect.fail('Should have thrown');
 				} catch (error) {
 					expect(error).toBeInstanceOf(Error);
@@ -155,7 +169,9 @@ describe('hookExecutor Integration Tests', () => {
 				await expect(
 					Effect.runPromise(
 						executeHook(
-							'>&2 echo "Warning message"; exit 0',
+							toNodeCommand(
+								"process.stderr.write('Warning message\\n'); process.exit(0);",
+							),
 							tmpDir,
 							environment,
 						),
@@ -175,16 +191,22 @@ describe('hookExecutor Integration Tests', () => {
 				CACD_WORKTREE_PATH: tmpDir,
 				CACD_WORKTREE_BRANCH: 'test-branch',
 				CACD_GIT_ROOT: '/some/other/path',
+				CACD_TEST_OUTPUT_FILE: outputFile,
 			};
 
 			try {
 				// Act - write current directory to file
 				await Effect.runPromise(
-					executeHook(`pwd > "${outputFile}"`, tmpDir, environment),
+					executeHook(
+						toNodeCommand(
+							"require('node:fs').writeFileSync(process.env.CACD_TEST_OUTPUT_FILE, process.cwd());",
+						),
+						tmpDir,
+						environment,
+					),
 				);
 
 				// Read the output
-				const {readFile} = await import('fs/promises');
 				const output = await readFile(outputFile, 'utf-8');
 
 				// Assert - should be executed in tmpDir
@@ -213,7 +235,12 @@ describe('hookExecutor Integration Tests', () => {
 				// Act & Assert - should not throw even with failing command
 				await expect(
 					Effect.runPromise(
-						executeWorktreePostCreationHook('exit 1', worktree, tmpDir, 'main'),
+						executeWorktreePostCreationHook(
+							toNodeCommand('process.exit(1)'),
+							worktree,
+							tmpDir,
+							'main',
+						),
 					),
 				).resolves.toBeUndefined();
 			} finally {
@@ -238,7 +265,9 @@ describe('hookExecutor Integration Tests', () => {
 				// Act - write current directory to file
 				await Effect.runPromise(
 					executeWorktreePostCreationHook(
-						`pwd > "${outputFile}"`,
+						toNodeCommand(
+							"require('node:fs').writeFileSync('cwd.txt', process.cwd());",
+						),
 						worktree,
 						gitRoot,
 						'main',
@@ -246,7 +275,6 @@ describe('hookExecutor Integration Tests', () => {
 				);
 
 				// Read the output
-				const {readFile} = await import('fs/promises');
 				const output = await readFile(outputFile, 'utf-8');
 
 				// Assert - should be executed in worktree path, not git root
@@ -278,7 +306,9 @@ describe('hookExecutor Integration Tests', () => {
 				// Act - change to git root and write its path
 				await Effect.runPromise(
 					executeWorktreePostCreationHook(
-						`cd "$CACD_GIT_ROOT" && pwd > "${outputFile}"`,
+						toNodeCommand(
+							"require('node:fs').writeFileSync('gitroot.txt', process.env.CACD_GIT_ROOT || '');",
+						),
 						worktree,
 						tmpGitRootDir,
 						'main',
@@ -286,7 +316,6 @@ describe('hookExecutor Integration Tests', () => {
 				);
 
 				// Read the output
-				const {readFile} = await import('fs/promises');
 				const output = await readFile(outputFile, 'utf-8');
 
 				// Assert - should have changed to git root
@@ -298,7 +327,7 @@ describe('hookExecutor Integration Tests', () => {
 			}
 		});
 
-		it('should wait for all child processes to complete', async () => {
+		it('should wait for asynchronous hook command completion', async () => {
 			// Arrange
 			const tmpDir = await mkdtemp(join(tmpdir(), 'hook-wait-test-'));
 			const outputFile = join(tmpDir, 'delayed.txt');
@@ -310,20 +339,19 @@ describe('hookExecutor Integration Tests', () => {
 			};
 
 			try {
-				// Act - execute a command that spawns a background process with a delay
-				// The background process writes to a file after a delay
-				// We use a shell command that creates a background process and then exits
+				// Act - execute an async command with delayed file write
 				await Effect.runPromise(
 					executeWorktreePostCreationHook(
-						`(sleep 0.1 && echo "completed" > "${outputFile}") & wait`,
+						toNodeCommand(
+							"setTimeout(() => { require('node:fs').writeFileSync('delayed.txt', 'completed'); }, 100);",
+						),
 						worktree,
 						tmpDir,
 						'main',
 					),
 				);
 
-				// Read the output - this should exist because we waited for the background process
-				const {readFile} = await import('fs/promises');
+				// Read the output - this should exist because executeHook awaited completion
 				const output = await readFile(outputFile, 'utf-8');
 
 				// Assert - the file should contain the expected content
@@ -379,7 +407,9 @@ describe('hookExecutor Integration Tests', () => {
 			vi.mocked(configurationManager.getStatusHooks).mockReturnValue({
 				busy: {
 					enabled: true,
-					command: `sleep 0.1 && echo "Hook executed" > "${outputFile}"`,
+					command: toNodeCommand(
+						"setTimeout(() => { require('node:fs').writeFileSync('status-hook-output.txt', 'Hook executed'); }, 100);",
+					),
 				},
 				idle: {enabled: false, command: ''},
 				waiting_input: {enabled: false, command: ''},
@@ -441,7 +471,7 @@ describe('hookExecutor Integration Tests', () => {
 			vi.mocked(configurationManager.getStatusHooks).mockReturnValue({
 				busy: {
 					enabled: true,
-					command: 'exit 1',
+					command: toNodeCommand('process.exit(1);'),
 				},
 				idle: {enabled: false, command: ''},
 				waiting_input: {enabled: false, command: ''},
@@ -502,7 +532,9 @@ describe('hookExecutor Integration Tests', () => {
 			vi.mocked(configurationManager.getStatusHooks).mockReturnValue({
 				busy: {
 					enabled: false,
-					command: `echo "Should not run" > "${outputFile}"`,
+					command: toNodeCommand(
+						"require('node:fs').writeFileSync('should-not-exist.txt', 'Should not run');",
+					),
 				},
 				idle: {enabled: false, command: ''},
 				waiting_input: {enabled: false, command: ''},
@@ -563,7 +595,9 @@ describe('hookExecutor Integration Tests', () => {
 			vi.mocked(configurationManager.getStatusHooks).mockReturnValue({
 				busy: {
 					enabled: true,
-					command: `echo "Hook ran with branch: $CACD_WORKTREE_BRANCH" > "${outputFile}"`,
+					command: toNodeCommand(
+						"require('node:fs').writeFileSync('hook-output.txt', 'Hook ran with branch: ' + (process.env.CACD_WORKTREE_BRANCH || ''));",
+					),
 				},
 				idle: {enabled: false, command: ''},
 				waiting_input: {enabled: false, command: ''},
