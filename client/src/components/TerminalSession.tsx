@@ -24,6 +24,7 @@ import {
 	GitBranch,
 	ArrowDown,
 	Pencil,
+	RotateCcw,
 } from 'lucide-react';
 import {cn} from '@/lib/utils';
 import type {Session} from '@/lib/types';
@@ -121,6 +122,7 @@ export const TerminalSession = memo(function TerminalSession({
 		toggleContextSidebar,
 		contextSidebarSessionId,
 		stopSession,
+		restartSession,
 		renameSession,
 		theme,
 		font,
@@ -624,6 +626,14 @@ export const TerminalSession = memo(function TerminalSession({
 		await stopSession(session.id);
 	};
 
+	const handleRestartSession = async () => {
+		const confirmed = window.confirm(
+			`Restart session "${session.name || formatName(session.path)}"? This only restarts this session.`,
+		);
+		if (!confirmed) return;
+		await restartSession(session.id);
+	};
+
 	const handleRenameSession = async () => {
 		const currentLabel = session.name || formatName(session.path);
 		const nextName = window.prompt('Rename session', currentLabel);
@@ -771,6 +781,10 @@ export const TerminalSession = memo(function TerminalSession({
 							<DropdownMenuItem onClick={handleRenameSession}>
 								<Pencil className="mr-2 h-3 w-3" />
 								Rename session
+							</DropdownMenuItem>
+							<DropdownMenuItem onClick={handleRestartSession}>
+								<RotateCcw className="mr-2 h-3 w-3" />
+								Restart session
 							</DropdownMenuItem>
 							<DropdownMenuItem
 								className="text-destructive"

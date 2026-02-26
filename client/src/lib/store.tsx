@@ -156,6 +156,7 @@ interface AppActions {
   ) => Promise<boolean>
   renameSession: (sessionId: string, name: string) => Promise<boolean>
   stopSession: (sessionId: string) => Promise<void>
+  restartSession: (sessionId: string) => Promise<void>
 
   // Project management
   addProject: (path: string, name?: string) => Promise<boolean>
@@ -1126,6 +1127,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const restartSession = async (sessionId: string) => {
+    try {
+      const res = await fetch('/api/session/restart', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sessionId })
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(data.error || 'Failed to restart session')
+        return
+      }
+      await fetchData()
+      if (typeof data.notice === 'string' && data.notice.trim().length > 0) {
+        setError(data.notice)
+      }
+    } catch (e) {
+      console.error(e)
+      setError('Failed to restart session. Check your connection.')
+    }
+  }
+
   const clearError = () => setError(null)
 
   // Inline View actions
@@ -1412,6 +1436,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     createSessionWithAgent,
     renameSession,
     stopSession,
+    restartSession,
     addProject,
     updateProject,
     removeProject,

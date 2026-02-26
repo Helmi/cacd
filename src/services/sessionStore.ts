@@ -334,6 +334,14 @@ export class SessionStore {
 		});
 	}
 
+	markSessionResumed(sessionId: string): void {
+		this.withRecovery(() => {
+			this.db
+				.prepare('UPDATE sessions SET ended_at = NULL WHERE id = ?')
+				.run(sessionId);
+		});
+	}
+
 	updateSessionName(sessionId: string, sessionName?: string): void {
 		this.withRecovery(() => {
 			this.db

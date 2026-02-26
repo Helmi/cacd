@@ -117,7 +117,7 @@ describe('CLI', () => {
 			vi.resetModules();
 		});
 
-		it('gracefully shuts down daemon and cleans sessions on SIGTERM', async () => {
+		it('gracefully shuts down daemon on SIGTERM without force-destroying sessions', async () => {
 			const originalArgv = [...process.argv];
 			process.argv = ['node', '/tmp/unified-entry.tsx', 'daemon'];
 
@@ -264,7 +264,7 @@ describe('CLI', () => {
 					setTimeout(resolve, 0);
 				});
 
-				expect(destroyAllSessions).toHaveBeenCalledTimes(1);
+				expect(destroyAllSessions).not.toHaveBeenCalled();
 				expect(cleanupDaemonPidFile).toHaveBeenCalledWith(
 					'/tmp/cacd-test/daemon.pid',
 					process.pid,
@@ -557,6 +557,77 @@ describe('CLI', () => {
 			}
 		});
 
+		it('stops daemon with --force and terminates active sessions first', async () => {
+			process.argv = ['node', '/tmp/unified-entry.tsx', 'stop', '--force'];
+			setupCommonMocks();
+
+			const readDaemonPidFile = vi.fn(async () => 4242);
+			const isProcessRunning = vi
+				.fn()
+				.mockReturnValueOnce(true)
+				.mockReturnValueOnce(false);
+			const cleanupDaemonPidFile = vi.fn(async () => {});
+			const fetchSpy = vi.fn(async (input: unknown, init?: RequestInit) => {
+				const url = String(input);
+				if (url.endsWith('/api/sessions')) {
+					return new Response(
+						JSON.stringify([{id: 'session-1'}, {id: 'session-2'}]),
+						{
+							status: 200,
+							headers: {'content-type': 'application/json'},
+						},
+					);
+				}
+				if (url.endsWith('/api/session/stop')) {
+					const payload = JSON.parse(String(init?.body || '{}')) as {id?: string};
+					expect(['session-1', 'session-2']).toContain(payload.id);
+					return new Response(JSON.stringify({success: true}), {
+						status: 200,
+						headers: {'content-type': 'application/json'},
+					});
+				}
+				throw new Error(`Unexpected fetch URL: ${url}`);
+			});
+			vi.stubGlobal('fetch', fetchSpy as typeof globalThis.fetch);
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile,
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile,
+				isProcessRunning,
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(),
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon: vi.fn(),
+				waitForDaemonPid: vi.fn(),
+				waitForDaemonApiReady: vi.fn(),
+			}));
+
+			const processKillSpy = vi
+				.spyOn(process, 'kill')
+				.mockImplementation((() => true) as never);
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				expect(fetchSpy).toHaveBeenCalledTimes(3);
+				expect(processKillSpy).toHaveBeenCalledWith(4242, 'SIGTERM');
+				expect(cleanupDaemonPidFile).toHaveBeenCalledWith(
+					'/tmp/cacd-test/daemon.pid',
+					4242,
+				);
+			} finally {
+				processKillSpy.mockRestore();
+				processExitSpy.mockRestore();
+			}
+		});
+
 		it('reports running daemon status', async () => {
 			process.argv = ['node', '/tmp/unified-entry.tsx', 'status'];
 			setupCommonMocks();
@@ -694,6 +765,87 @@ describe('CLI', () => {
 
 			try {
 				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				expect(processKillSpy).toHaveBeenCalledWith(4242, 'SIGTERM');
+				expect(spawnDetachedDaemon).toHaveBeenCalledWith(
+					'/tmp/unified-entry.tsx',
+					3000,
+					{logFilePath: '/tmp/cacd-test/daemon.log'},
+				);
+			} finally {
+				processKillSpy.mockRestore();
+				processExitSpy.mockRestore();
+			}
+		});
+
+		it('restarts daemon with --force after terminating active sessions', async () => {
+			process.argv = ['node', '/tmp/unified-entry.tsx', 'restart', '--force'];
+			setupCommonMocks();
+
+			const readDaemonPidFile = vi
+				.fn<(_: string) => Promise<number | undefined>>()
+				.mockResolvedValueOnce(4242)
+				.mockResolvedValueOnce(undefined);
+			const isProcessRunning = vi
+				.fn()
+				.mockReturnValueOnce(true)
+				.mockReturnValueOnce(false);
+			const cleanupDaemonPidFile = vi.fn(async () => {});
+			const spawnDetachedDaemon = vi.fn(() => ({pid: 9090, unref: vi.fn()}));
+			const waitForDaemonPid = vi.fn(async () => 9090);
+			const waitForDaemonApiReady = vi.fn(async () => {});
+			const fetchSpy = vi.fn(async (input: unknown, init?: RequestInit) => {
+				const url = String(input);
+				if (url.endsWith('/api/sessions')) {
+					return new Response(JSON.stringify([{id: 'session-1'}]), {
+						status: 200,
+						headers: {'content-type': 'application/json'},
+					});
+				}
+				if (url.endsWith('/api/session/stop')) {
+					const payload = JSON.parse(String(init?.body || '{}')) as {id?: string};
+					expect(payload.id).toBe('session-1');
+					return new Response(JSON.stringify({success: true}), {
+						status: 200,
+						headers: {'content-type': 'application/json'},
+					});
+				}
+				throw new Error(`Unexpected fetch URL: ${url}`);
+			});
+			vi.stubGlobal('fetch', fetchSpy as typeof globalThis.fetch);
+
+			vi.doMock('./utils/daemonLifecycle.js', () => ({
+				prepareDaemonPidFile: vi.fn(),
+				cleanupDaemonPidFile,
+				getDaemonPidFilePath: vi.fn(() => '/tmp/cacd-test/daemon.pid'),
+				readDaemonPidFile,
+				isProcessRunning,
+			}));
+			vi.doMock('./utils/daemonControl.js', () => ({
+				buildDaemonWebConfig: vi.fn(() => ({
+					url: 'http://127.0.0.1:3000/token',
+					port: 3000,
+					configDir: '/tmp/cacd-test',
+					isCustomConfigDir: false,
+					isDevMode: false,
+				})),
+				ensureDaemonForTui: vi.fn(),
+				spawnDetachedDaemon,
+				waitForDaemonPid,
+				waitForDaemonApiReady,
+			}));
+
+			const processKillSpy = vi
+				.spyOn(process, 'kill')
+				.mockImplementation((() => true) as never);
+			const processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((
+				code?: number,
+			) => {
+				throw new Error(`exit:${code ?? 0}`);
+			}) as never);
+
+			try {
+				await expect(import('./cli.js')).rejects.toThrow('exit:0');
+				expect(fetchSpy).toHaveBeenCalledTimes(2);
 				expect(processKillSpy).toHaveBeenCalledWith(4242, 'SIGTERM');
 				expect(spawnDetachedDaemon).toHaveBeenCalledWith(
 					'/tmp/unified-entry.tsx',

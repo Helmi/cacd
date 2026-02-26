@@ -78,12 +78,13 @@ describe('SessionStore', () => {
 			'rollout-abc',
 		);
 		store.markSessionEnded('session-2', 1_720_000_200);
+		store.markSessionResumed('session-2');
 
 		const stored = store.getSessionById('session-2');
 		expect(stored?.sessionName).toBe('Renamed');
 		expect(stored?.agentSessionPath).toBe('/tmp/sessions/rollout-abc.jsonl');
 		expect(stored?.agentSessionId).toBe('rollout-abc');
-		expect(stored?.endedAt).toBe(1_720_000_200);
+		expect(stored?.endedAt).toBeNull();
 	});
 
 	it('supports query helpers and filtering', () => {

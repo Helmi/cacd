@@ -8,11 +8,22 @@ import {
 	vi,
 } from 'vitest';
 import {Effect} from 'effect';
+import {coreService} from './coreService.js';
 
 const mockExecFileSync = vi.fn();
 const mockLoadPromptTemplatesByScope = vi.fn();
 const mockTdReaderGetIssueWithDetails = vi.fn();
 const mockCreateWorktreeEffect = vi.fn();
+const mockSessionStoreQuerySessions = vi.fn(() => []);
+const mockSessionStoreGetSessionById = vi.fn(() => null);
+const mockSessionStoreCreateSessionRecord = vi.fn();
+const mockSessionStoreScheduleDiscovery = vi.fn();
+const mockSessionStoreCancelDiscovery = vi.fn();
+const mockSessionStoreMarkSessionEnded = vi.fn();
+const mockSessionStoreMarkSessionResumed = vi.fn();
+const mockSessionStoreHydratePreview = vi.fn(async () => {});
+const mockSessionStoreGetLatestByTdSessionId = vi.fn(() => null);
+const mockSessionStoreCountSessions = vi.fn(() => 0);
 
 vi.mock('child_process', async importOriginal => {
 	const actual = await importOriginal<typeof import('child_process')>();
@@ -141,6 +152,22 @@ vi.mock('./tdReader.js', () => ({
 	})),
 }));
 
+vi.mock('./sessionStore.js', () => ({
+	sessionStore: {
+		querySessions: mockSessionStoreQuerySessions,
+		getSessionById: mockSessionStoreGetSessionById,
+		createSessionRecord: mockSessionStoreCreateSessionRecord,
+		scheduleAgentSessionDiscovery: mockSessionStoreScheduleDiscovery,
+		cancelAgentSessionDiscovery: mockSessionStoreCancelDiscovery,
+		markSessionEnded: mockSessionStoreMarkSessionEnded,
+		markSessionResumed: mockSessionStoreMarkSessionResumed,
+		hydrateSessionContentPreview: mockSessionStoreHydratePreview,
+		getLatestByTdSessionId: mockSessionStoreGetLatestByTdSessionId,
+		countSessions: mockSessionStoreCountSessions,
+	},
+}));
+
+
 describe('APIServer td create-with-agent validation ordering', () => {
 	interface InjectRequest {
 		method: string;
@@ -183,9 +210,37 @@ describe('APIServer td create-with-agent validation ordering', () => {
 	});
 
 	beforeEach(() => {
+		const mockedSessionManager = (coreService as unknown as {
+			sessionManager: {
+				createSessionWithAgentEffect: ReturnType<typeof vi.fn>;
+				setSessionActive: ReturnType<typeof vi.fn>;
+				getSession: ReturnType<typeof vi.fn>;
+			};
+		}).sessionManager;
+
 		mockExecFileSync.mockReset();
 		mockTdReaderGetIssueWithDetails.mockReset();
 		mockCreateWorktreeEffect.mockReset();
+		mockSessionStoreQuerySessions.mockReset();
+		mockSessionStoreGetSessionById.mockReset();
+		mockSessionStoreCreateSessionRecord.mockReset();
+		mockSessionStoreScheduleDiscovery.mockReset();
+		mockSessionStoreCancelDiscovery.mockReset();
+		mockSessionStoreMarkSessionEnded.mockReset();
+		mockSessionStoreMarkSessionResumed.mockReset();
+		mockSessionStoreHydratePreview.mockReset();
+		mockSessionStoreGetLatestByTdSessionId.mockReset();
+		mockSessionStoreCountSessions.mockReset();
+		mockSessionStoreQuerySessions.mockReturnValue([]);
+		mockSessionStoreGetSessionById.mockReturnValue(null);
+		mockSessionStoreCountSessions.mockReturnValue(0);
+		mockedSessionManager.createSessionWithAgentEffect.mockReset();
+		mockedSessionManager.createSessionWithAgentEffect.mockReturnValue(
+			Effect.succeed({id: 'session-restored'}) as never,
+		);
+		mockedSessionManager.setSessionActive.mockReset();
+		mockedSessionManager.getSession.mockReset();
+		mockedSessionManager.getSession.mockReturnValue(undefined);
 		mockLoadPromptTemplatesByScope.mockReturnValue([
 			{
 				name: 'Begin Work on Task',
@@ -194,6 +249,112 @@ describe('APIServer td create-with-agent validation ordering', () => {
 				source: 'global',
 			},
 		]);
+	});
+
+	it('rehydrates persisted live sessions with stable IDs', async () => {
+		const mockedSessionManager = (coreService as unknown as {
+			sessionManager: {
+				createSessionWithAgentEffect: ReturnType<typeof vi.fn>;
+				setSessionActive: ReturnType<typeof vi.fn>;
+			};
+		}).sessionManager;
+
+		mockSessionStoreQuerySessions.mockReturnValue([
+			{
+				id: 'session-recover-1',
+				agentProfileId: 'codex',
+				agentProfileName: 'Codex',
+				agentType: 'codex',
+				agentOptions: {model: 'gpt-5'},
+				agentSessionId: 'rollout-123',
+				agentSessionPath: '/tmp/rollout-123.jsonl',
+				worktreePath: '/repo/.worktrees/feat-recover',
+				branchName: 'feat-recover',
+				projectPath: '/repo',
+				tdTaskId: null,
+				tdSessionId: null,
+				sessionName: 'Recovered Session',
+				contentPreview: null,
+				intent: 'manual',
+				createdAt: 1_720_000_000,
+				endedAt: null,
+			},
+		]);
+
+		await (
+			apiServer as unknown as {rehydratePersistedSessions: () => Promise<void>}
+		).rehydratePersistedSessions();
+
+		expect(mockedSessionManager.createSessionWithAgentEffect).toHaveBeenCalled();
+		const call = mockedSessionManager.createSessionWithAgentEffect.mock.calls[0];
+		expect(call?.[0]).toBe('/repo/.worktrees/feat-recover');
+		expect(call?.[8]).toEqual(
+			expect.objectContaining({sessionIdOverride: 'session-recover-1'}),
+		);
+		expect(mockedSessionManager.setSessionActive).toHaveBeenCalledWith(
+			'session-recover-1',
+			true,
+		);
+	});
+
+	it('restarts only the requested session via /api/session/restart', async () => {
+		const mockedSessionManager = (coreService as unknown as {
+			sessionManager: {
+				createSessionWithAgentEffect: ReturnType<typeof vi.fn>;
+				setSessionActive: ReturnType<typeof vi.fn>;
+				getSession: ReturnType<typeof vi.fn>;
+				destroySession: ReturnType<typeof vi.fn>;
+			};
+		}).sessionManager;
+
+		const record = {
+			id: 'session-restart-1',
+			agentProfileId: 'codex',
+			agentProfileName: 'Codex',
+			agentType: 'codex',
+			agentOptions: {model: 'gpt-5'},
+			agentSessionId: 'rollout-abc',
+			agentSessionPath: '/tmp/rollout-abc.jsonl',
+			worktreePath: '/repo/.worktrees/feat-restart',
+			branchName: 'feat-restart',
+			projectPath: '/repo',
+			tdTaskId: 'td-123',
+			tdSessionId: 'ses_123456',
+			sessionName: 'Restart Me',
+			contentPreview: null,
+			intent: 'work',
+			createdAt: 1_720_000_100,
+			endedAt: null,
+		};
+
+		mockSessionStoreGetSessionById.mockReturnValue(record);
+		mockedSessionManager.getSession.mockReturnValue({
+			id: 'session-restart-1',
+		});
+
+		const response = await apiServer.app.inject({
+			method: 'POST',
+			url: '/api/session/restart',
+			headers: {cookie: 'cacd_session=test'},
+			payload: {id: 'session-restart-1'},
+		});
+
+		expect(response.statusCode).toBe(200);
+		expect(mockedSessionManager.destroySession).toHaveBeenCalledWith(
+			'session-restart-1',
+		);
+		expect(mockedSessionManager.createSessionWithAgentEffect).toHaveBeenCalled();
+		const call = mockedSessionManager.createSessionWithAgentEffect.mock.calls[0];
+		expect(call?.[8]).toEqual(
+			expect.objectContaining({sessionIdOverride: 'session-restart-1'}),
+		);
+		expect(mockedSessionManager.setSessionActive).toHaveBeenCalledWith(
+			'session-restart-1',
+			true,
+		);
+		expect(mockSessionStoreMarkSessionResumed).toHaveBeenCalledWith(
+			'session-restart-1',
+		);
 	});
 
 	it('does not auto-start td task when prompt validation fails with 400', async () => {

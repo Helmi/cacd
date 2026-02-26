@@ -633,6 +633,29 @@ describe('SessionManager', () => {
 			expect(bootstrapCommand).toContain('bash');
 			expect(bootstrapCommand).toContain('/tmp/.cacd-startup-test.sh');
 		});
+
+		it('should honor sessionIdOverride for recovery flows', async () => {
+			vi.mocked(spawn).mockReturnValue(mockPty as unknown as IPty);
+
+			const session = await Effect.runPromise(
+				sessionManager.createSessionWithAgentEffect(
+					'/test/worktree',
+					'claude',
+					['--resume'],
+					'claude',
+					'Recovered Session',
+					'claude',
+					undefined,
+					'agent',
+					{
+						sessionIdOverride: 'session-recovered-1',
+					},
+				),
+			);
+
+			expect(session.id).toBe('session-recovered-1');
+			expect(sessionManager.getSession('session-recovered-1')).toBeDefined();
+		});
 	});
 
 	describe('session lifecycle', () => {

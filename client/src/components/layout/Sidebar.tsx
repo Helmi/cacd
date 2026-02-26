@@ -38,6 +38,7 @@ import {
   PanelLeftClose,
   Pencil,
   Plus,
+  RotateCcw,
   X,
 } from 'lucide-react'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -75,6 +76,7 @@ export function Sidebar() {
     renameSession,
     deleteWorktree,
     stopSession,
+    restartSession,
   } = useAppStore()
 
   const isMobile = useIsMobile()
@@ -106,6 +108,11 @@ export function Sidebar() {
   }>({ open: false, worktree: null, deleteBranch: false, projectPath: null })
 
   const [stopSessionDialog, setStopSessionDialog] = useState<{
+    open: boolean
+    session: Session | null
+  }>({ open: false, session: null })
+
+  const [restartSessionDialog, setRestartSessionDialog] = useState<{
     open: boolean
     session: Session | null
   }>({ open: false, session: null })
@@ -222,6 +229,10 @@ export function Sidebar() {
   // Confirm stop session
   const confirmStopSession = (session: Session) => {
     setStopSessionDialog({ open: true, session })
+  }
+
+  const confirmRestartSession = (session: Session) => {
+    setRestartSessionDialog({ open: true, session })
   }
 
   // Tree expansion state - persisted to localStorage
@@ -882,6 +893,12 @@ export function Sidebar() {
                                                 <Pencil className="h-3.5 w-3.5 mr-2" />
                                                 Rename
                                               </DropdownMenuItem>
+                                              <DropdownMenuItem
+                                                onClick={() => confirmRestartSession(session)}
+                                              >
+                                                <RotateCcw className="h-3.5 w-3.5 mr-2" />
+                                                Restart Session
+                                              </DropdownMenuItem>
                                               <DropdownMenuSeparator />
                                               <DropdownMenuItem
                                                 className="text-destructive focus:text-destructive"
@@ -908,6 +925,12 @@ export function Sidebar() {
                                         <ContextMenuItem onClick={() => startRenameSession(session)}>
                                           <Pencil className="h-3.5 w-3.5 mr-2" />
                                           Rename
+                                        </ContextMenuItem>
+                                        <ContextMenuItem
+                                          onClick={() => confirmRestartSession(session)}
+                                        >
+                                          <RotateCcw className="h-3.5 w-3.5 mr-2" />
+                                          Restart Session
                                         </ContextMenuItem>
                                         <ContextMenuSeparator />
                                         <ContextMenuItem
@@ -1002,6 +1025,19 @@ export function Sidebar() {
         onConfirm={() => {
           if (stopSessionDialog.session) {
             stopSession(stopSessionDialog.session.id)
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={restartSessionDialog.open}
+        onOpenChange={(open) => setRestartSessionDialog(prev => ({ ...prev, open }))}
+        title="Restart Session"
+        description={`Restart session "${restartSessionDialog.session?.name || restartSessionDialog.session?.path.split('/').pop()}"? This restarts only this session.`}
+        confirmLabel="Restart"
+        onConfirm={() => {
+          if (restartSessionDialog.session) {
+            restartSession(restartSessionDialog.session.id)
           }
         }}
       />
