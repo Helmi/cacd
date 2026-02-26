@@ -1,9 +1,16 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/lib/store'
 import type { TdIssueWithChildren, TdHandoffParsed, TdIssue } from '@/lib/types'
+import {
+  getLinkedSessions,
+  getTaskDetailLayoutCounts,
+  parseAcceptanceCriteria,
+} from '@/lib/taskDetailLayout'
+import type { LucideIcon } from 'lucide-react'
 import {
   X,
   Circle,
@@ -22,6 +29,8 @@ import {
   RotateCcw,
   MessageSquare,
 } from 'lucide-react'
+
+type TaskDetailTab = 'overview' | 'activity' | 'details'
 
 /**
  * Parse Go-formatted timestamps like "2026-02-19 08:30:10.451538 +0100 CET m=+0.117390418"
@@ -120,6 +129,42 @@ function HandoffSection({ handoff }: { handoff: TdHandoffParsed }) {
   )
 }
 
+interface CollapsibleSectionProps {
+  title: string
+  icon?: LucideIcon
+  defaultOpen?: boolean
+  count?: number
+  children: ReactNode
+}
+
+function CollapsibleSection({ title, icon: Icon, defaultOpen = false, count, children }: CollapsibleSectionProps) {
+  const [isOpen, setIsOpen] = useState(defaultOpen)
+
+  return (
+    <section className="rounded-md border border-border bg-card/40 overflow-hidden">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-accent/40 transition-colors"
+        onClick={() => setIsOpen(open => !open)}
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <ChevronRight className={cn('h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform', isOpen && 'rotate-90')} />
+          {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground truncate">{title}</span>
+        </span>
+        {typeof count === 'number' && (
+          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">{count}</span>
+        )}
+      </button>
+      {isOpen && (
+        <div className="px-3 py-2 border-t border-border">
+          {children}
+        </div>
+      )}
+    </section>
+  )
+}
+
 interface TaskDetailModalProps {
   issueId: string
   onClose: () => void
@@ -137,6 +182,7 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
   const [actionLoading, setActionLoading] = useState(false)
   const [showCommentInput, setShowCommentInput] = useState(false)
   const [commentText, setCommentText] = useState('')
+  const [activeTab, setActiveTab] = useState<TaskDetailTab>('overview')
 
   // Animate in
   useEffect(() => {
@@ -162,6 +208,9 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
   // Fetch issue details
   useEffect(() => {
     setLoading(true)
+    setActiveTab('overview')
+    setShowCommentInput(false)
+    setCommentText('')
     fetch(`/api/td/issues/${issueId}`, { credentials: 'include' })
       .then(res => res.json())
       .then(data => setIssue(data.issue || null))
@@ -172,13 +221,12 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
   const status = issue ? statusConfig[issue.status] : null
   const StatusIcon = status?.icon || Circle
   const priority = issue ? priorityConfig[issue.priority] : null
-  const labels = issue?.labels ? issue.labels.split(',').filter(Boolean) : []
-  const linkedSessions: Array<{ label: string; id: string }> = issue
-    ? [
-      { label: 'Implementer', id: issue.implementer_session },
-      { label: 'Reviewer', id: issue.reviewer_session },
-    ].filter((entry): entry is { label: string; id: string } => !!entry.id && entry.id.trim().length > 0)
-    : []
+  const labels = issue?.labels ? issue.labels.split(',').map(label => label.trim()).filter(Boolean) : []
+  const linkedSessions = issue ? getLinkedSessions(issue) : []
+  const acceptanceCriteria = issue ? parseAcceptanceCriteria(issue.acceptance) : []
+  const layoutCounts = issue
+    ? getTaskDetailLayoutCounts(issue)
+    : { overview: 0, activity: 0, details: 0 }
 
   const resolveConversationSessionId = useCallback(async (tdSessionId: string): Promise<string | null> => {
     if (!issue?.id) return null
@@ -244,56 +292,28 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
         ) : (
           <ScrollArea className="flex-1">
             <div className="p-4 space-y-4">
-              {/* Title */}
-              <h2 className="text-base font-medium leading-snug">{issue.title}</h2>
-
-              {/* Status + Priority + Type badges */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className={cn('text-[11px] rounded-full px-2 py-0.5', status?.bg, status?.color)}>
-                  {status?.label}
-                </span>
-                <span className={cn('text-[11px] rounded-full px-2 py-0.5', priority?.color)}>
-                  {issue.priority} — {priority?.label}
-                </span>
-                {issue.type !== 'task' && (
-                  <span className="flex items-center gap-1 text-[11px] rounded-full px-2 py-0.5 bg-purple-500/10 text-purple-400">
-                    <Layers className="h-3 w-3" />
-                    {issue.type}
+              {/* Title + badges */}
+              <div className="space-y-2">
+                <h2 className="text-base font-medium leading-snug">{issue.title}</h2>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={cn('text-[11px] rounded-full px-2 py-0.5', status?.bg, status?.color)}>
+                    {status?.label}
                   </span>
-                )}
+                  <span className={cn('text-[11px] rounded-full px-2 py-0.5', priority?.color)}>
+                    {issue.priority} — {priority?.label}
+                  </span>
+                  {issue.type !== 'task' && (
+                    <span className="flex items-center gap-1 text-[11px] rounded-full px-2 py-0.5 bg-purple-500/10 text-purple-400">
+                      <Layers className="h-3 w-3" />
+                      {issue.type}
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {linkedSessions.length > 0 && (
-                <div className="space-y-1">
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Linked Sessions
-                  </h3>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {linkedSessions.map(linkedSession => (
-                      <Button
-                        key={linkedSession.id}
-                        size="sm"
-                        variant="outline"
-                        className="h-6 text-[11px] font-mono"
-                        onClick={async () => {
-                          const resolvedConversationId = await resolveConversationSessionId(linkedSession.id)
-                          openConversationView({
-                            sessionId: resolvedConversationId || linkedSession.id,
-                            taskId: issue.id,
-                          })
-                          handleClose()
-                        }}
-                      >
-                        {linkedSession.label}: {linkedSession.id}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Actions */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
+              <div className="space-y-2 rounded-md border border-border bg-card/40 p-3">
+                <div className="flex items-center gap-2 flex-wrap">
                   {onStartWorking && issue.status !== 'closed' && issue.status !== 'in_review' && (
                     <Button
                       size="sm"
@@ -444,114 +464,174 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
                 )}
               </div>
 
-              {/* Labels */}
-              {labels.length > 0 && (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {labels.map(label => (
-                    <span
-                      key={label}
-                      className="inline-flex items-center gap-1 text-[10px] rounded-full px-2 py-0.5 bg-muted text-muted-foreground"
-                    >
-                      <Tag className="h-2.5 w-2.5" />
-                      {label.trim()}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TaskDetailTab)}>
+                <TabsList className="grid h-8 w-full grid-cols-3">
+                  <TabsTrigger value="overview" className="h-6 text-xs px-2">
+                    Overview
+                    {layoutCounts.overview > 0 && (
+                      <span className="ml-1 text-[10px] text-muted-foreground">({layoutCounts.overview})</span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="activity" className="h-6 text-xs px-2">
+                    Activity
+                    {layoutCounts.activity > 0 && (
+                      <span className="ml-1 text-[10px] text-muted-foreground">({layoutCounts.activity})</span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="details" className="h-6 text-xs px-2">
+                    Details
+                    {layoutCounts.details > 0 && (
+                      <span className="ml-1 text-[10px] text-muted-foreground">({layoutCounts.details})</span>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
 
-              {/* Description */}
-              {issue.description && (
-                <div className="space-y-1">
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Description</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                    {issue.description}
-                  </p>
-                </div>
-              )}
-
-              {/* Children / Subtasks */}
-              {issue.children?.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Subtasks ({issue.children.length})
-                  </h3>
-                  <div className="space-y-1">
-                    {issue.children.map((child: TdIssue) => {
-                      const childStatus = statusConfig[child.status]
-                      const ChildIcon = childStatus?.icon || Circle
-                      return (
-                        <button
-                          key={child.id}
-                          onClick={() => onNavigate?.(child.id)}
-                          className="flex items-center gap-2 w-full text-left rounded px-2 py-1.5 hover:bg-accent/50 transition-colors"
-                        >
-                          <ChildIcon className={cn('h-3 w-3 shrink-0', childStatus?.color)} />
-                          <span className="text-[10px] font-mono text-muted-foreground shrink-0">{child.id}</span>
-                          <span className="text-xs truncate flex-1">{child.title}</span>
-                          <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Files */}
-              {issue.files?.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Files ({issue.files.length})
-                  </h3>
-                  <div className="space-y-1">
-                    {issue.files.map(file => (
-                      <div key={file.id} className="flex items-center gap-2 text-xs">
-                        <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span className="font-mono text-muted-foreground truncate">{file.file_path}</span>
-                        {file.role && (
-                          <span className="text-[10px] text-muted-foreground/50 shrink-0">{file.role}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Handoffs */}
-              {issue.handoffs?.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Handoffs ({issue.handoffs.length})
-                  </h3>
-                  {issue.handoffs.map((handoff, i) => (
-                    <div key={handoff.id} className={cn(
-                      'rounded border border-border p-3',
-                      i === 0 && 'border-primary/30'
-                    )}>
-                      {i === 0 && (
-                        <span className="text-[9px] uppercase tracking-wider text-primary mb-1.5 block">Latest</span>
-                      )}
-                      <HandoffSection handoff={handoff} />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Metadata */}
-              <div className="space-y-1 pt-2 border-t border-border">
-                <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Details</h3>
-                <div className="grid grid-cols-2 gap-y-1 text-xs">
-                  <span className="text-muted-foreground">Created</span>
-                  <span>{parseGoDate(issue.created_at)?.toLocaleString() ?? '—'}</span>
-                  <span className="text-muted-foreground">Updated</span>
-                  <span>{parseGoDate(issue.updated_at)?.toLocaleString() ?? '—'}</span>
-                  {issue.created_branch && (
-                    <>
-                      <span className="text-muted-foreground">Branch</span>
-                      <span className="font-mono">{issue.created_branch}</span>
-                    </>
+                <TabsContent value="overview" className="mt-2 space-y-2">
+                  {issue.description && (
+                    <CollapsibleSection title="Description" icon={FileText} defaultOpen>
+                      <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                        {issue.description}
+                      </p>
+                    </CollapsibleSection>
                   )}
-                </div>
-              </div>
+
+                  {acceptanceCriteria.length > 0 && (
+                    <CollapsibleSection title="Acceptance Criteria" icon={CheckCircle2} count={acceptanceCriteria.length} defaultOpen>
+                      <ul className="space-y-1">
+                        {acceptanceCriteria.map((item, i) => (
+                          <li key={`${item}-${i}`} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                            <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0 mt-0.5" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </CollapsibleSection>
+                  )}
+
+                  {issue.children.length > 0 && (
+                    <CollapsibleSection title="Subtasks" icon={Layers} count={issue.children.length} defaultOpen>
+                      <div className="space-y-1">
+                        {issue.children.map((child: TdIssue) => {
+                          const childStatus = statusConfig[child.status]
+                          const ChildIcon = childStatus?.icon || Circle
+                          return (
+                            <button
+                              key={child.id}
+                              onClick={() => onNavigate?.(child.id)}
+                              className="flex items-center gap-2 w-full text-left rounded px-2 py-1.5 hover:bg-accent/50 transition-colors"
+                            >
+                              <ChildIcon className={cn('h-3 w-3 shrink-0', childStatus?.color)} />
+                              <span className="text-[10px] font-mono text-muted-foreground shrink-0">{child.id}</span>
+                              <span className="text-xs truncate flex-1">{child.title}</span>
+                              <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+
+                  {labels.length > 0 && (
+                    <CollapsibleSection title="Labels" icon={Tag} count={labels.length}>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {labels.map(label => (
+                          <span
+                            key={label}
+                            className="inline-flex items-center gap-1 text-[10px] rounded-full px-2 py-0.5 bg-muted text-muted-foreground"
+                          >
+                            <Tag className="h-2.5 w-2.5" />
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="activity" className="mt-2 space-y-2">
+                  {linkedSessions.length > 0 && (
+                    <CollapsibleSection title="Linked Sessions" icon={MessageSquare} count={linkedSessions.length} defaultOpen>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {linkedSessions.map(linkedSession => (
+                          <Button
+                            key={linkedSession.id}
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[11px] font-mono"
+                            onClick={async () => {
+                              const resolvedConversationId = await resolveConversationSessionId(linkedSession.id)
+                              openConversationView({
+                                sessionId: resolvedConversationId || linkedSession.id,
+                                taskId: issue.id,
+                              })
+                              handleClose()
+                            }}
+                          >
+                            {linkedSession.label}: {linkedSession.id}
+                          </Button>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+
+                  {issue.handoffs.length > 0 && (
+                    <CollapsibleSection title="Handoffs" icon={Clock} count={issue.handoffs.length} defaultOpen>
+                      <div className="space-y-3">
+                        {issue.handoffs.map((handoff, i) => (
+                          <div key={handoff.id} className={cn(
+                            'rounded border border-border p-3',
+                            i === 0 && 'border-primary/30'
+                          )}>
+                            {i === 0 && (
+                              <span className="text-[9px] uppercase tracking-wider text-primary mb-1.5 block">Latest</span>
+                            )}
+                            <HandoffSection handoff={handoff} />
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+
+                  {linkedSessions.length === 0 && issue.handoffs.length === 0 && (
+                    <div className="rounded border border-dashed border-border p-3 text-xs text-muted-foreground">
+                      No activity yet.
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="details" className="mt-2 space-y-2">
+                  {issue.files.length > 0 && (
+                    <CollapsibleSection title="Files" icon={FileText} count={issue.files.length} defaultOpen>
+                      <div className="space-y-1">
+                        {issue.files.map(file => (
+                          <div key={file.id} className="flex items-center gap-2 text-xs">
+                            <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
+                            <span className="font-mono text-muted-foreground truncate">{file.file_path}</span>
+                            {file.role && (
+                              <span className="text-[10px] text-muted-foreground/50 shrink-0">{file.role}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+
+                  <CollapsibleSection title="Metadata" icon={Clock} defaultOpen>
+                    <div className="grid grid-cols-2 gap-y-1 text-xs">
+                      <span className="text-muted-foreground">Created</span>
+                      <span>{parseGoDate(issue.created_at)?.toLocaleString() ?? '—'}</span>
+                      <span className="text-muted-foreground">Updated</span>
+                      <span>{parseGoDate(issue.updated_at)?.toLocaleString() ?? '—'}</span>
+                      {issue.created_branch && (
+                        <>
+                          <span className="text-muted-foreground">Branch</span>
+                          <span className="font-mono">{issue.created_branch}</span>
+                        </>
+                      )}
+                    </div>
+                  </CollapsibleSection>
+                </TabsContent>
+              </Tabs>
             </div>
           </ScrollArea>
         )}
