@@ -26,6 +26,7 @@ describe('worktreeConfig', () => {
 				{
 					cwd: '/test/path',
 					encoding: 'utf8',
+					stdio: ['ignore', 'pipe', 'pipe'],
 				},
 			);
 		});

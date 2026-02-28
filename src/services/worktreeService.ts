@@ -64,9 +64,11 @@ export class WorktreeService {
 	private getGitRepositoryRoot(): string {
 		try {
 			// Get the common git directory
+			// Note: stdio 'pipe' captures stderr to prevent git errors from leaking to console
 			const gitCommonDir = execSync('git rev-parse --git-common-dir', {
 				cwd: this.rootPath,
 				encoding: 'utf8',
+				stdio: ['ignore', 'pipe', 'pipe'],
 			}).trim();
 
 			// Make sure we have an absolute path

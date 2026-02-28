@@ -49,6 +49,7 @@ function getGitRepositoryName(projectPath: string): string {
 		const gitCommonDir = execSync('git rev-parse --git-common-dir', {
 			cwd: projectPath,
 			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'pipe'],
 		}).trim();
 
 		const absoluteGitCommonDir = path.isAbsolute(gitCommonDir)

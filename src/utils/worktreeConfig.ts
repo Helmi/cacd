@@ -11,6 +11,7 @@ export function isWorktreeConfigEnabled(gitPath?: string): boolean {
 		const result = execSync('git config extensions.worktreeConfig', {
 			cwd: gitPath || process.cwd(),
 			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'pipe'],
 		}).trim();
 		return result === 'true';
 	} catch {
