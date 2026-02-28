@@ -1,6 +1,8 @@
 /* global Response */
+import {existsSync, readFileSync} from 'fs';
+import {join} from 'path';
 import {ENV_VARS} from '../constants/env.js';
-import {configurationManager} from '../services/configurationManager.js';
+import {getConfigDir} from '../utils/configDir.js';
 import type {ConfigurationData} from '../types/index.js';
 
 const DEFAULT_API_PORT = 3000;
@@ -17,6 +19,25 @@ function parsePort(portValue: string | undefined): number | undefined {
 	}
 
 	return parsed;
+}
+
+function loadConfigForApiClient(): Partial<ConfigurationData> {
+	try {
+		const configDir = getConfigDir();
+		const configPath = join(configDir, 'config.json');
+		if (!existsSync(configPath)) {
+			return {};
+		}
+		const raw = readFileSync(configPath, 'utf-8');
+		const parsed = JSON.parse(raw);
+		if (!parsed || typeof parsed !== 'object') {
+			return {};
+		}
+		return parsed as Partial<ConfigurationData>;
+	} catch {
+		// Be permissive for CLI startup paths; callers can still override via options/env.
+		return {};
+	}
 }
 
 export interface ResolvedDaemonApiConfig {
@@ -36,7 +57,7 @@ export interface ResolveDaemonApiConfigOptions {
 export function resolveDaemonApiConfig(
 	options: ResolveDaemonApiConfigOptions = {},
 ): ResolvedDaemonApiConfig {
-	const config = options.config ?? configurationManager.getConfiguration();
+	const config = options.config ?? loadConfigForApiClient();
 	const env = options.env ?? process.env;
 	const host = options.host ?? 'localhost';
 	const resolvedPort =

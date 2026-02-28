@@ -6,8 +6,9 @@ import LoadingSpinner from './LoadingSpinner.js';
 const unicodeFrameRegex = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
 const asciiFrameRegex = /[-\\|/]/;
 
-const expectAnySpinnerFrame = (output: string): void => {
-	expect(unicodeFrameRegex.test(output) || asciiFrameRegex.test(output)).toBe(
+const expectAnySpinnerFrame = (output: string | undefined): void => {
+	const value = output ?? '';
+	expect(unicodeFrameRegex.test(value) || asciiFrameRegex.test(value)).toBe(
 		true,
 	);
 };
