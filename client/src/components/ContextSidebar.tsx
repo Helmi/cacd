@@ -6,12 +6,12 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { StatusIndicator, statusLabels } from '@/components/StatusIndicator'
+import { StatusIndicator } from '@/components/StatusIndicator'
 import { AgentIcon, getLegacyAgentIconProps } from '@/components/AgentIcon'
 import { FileBrowser } from '@/components/FileBrowser'
 import { mapSessionState, ChangedFile } from '@/lib/types'
 import { TaskContextCard } from '@/components/TaskContextCard'
-import { X, GitBranch, Folder, Copy, Check, FileText, FilePlus, FileX, FileEdit, FileQuestion, GitCommit, FolderTree, Pencil } from 'lucide-react'
+import { X, GitBranch, Copy, Check, FileText, FilePlus, FileX, FileEdit, FileQuestion, GitCommit, FolderTree, Pencil } from 'lucide-react'
 import { cn, formatPath, copyToClipboard } from '@/lib/utils'
 
 export function ContextSidebar() {
@@ -19,7 +19,6 @@ export function ContextSidebar() {
     sessions,
     worktrees,
     agents,
-    currentProject,
     contextSidebarSessionId,
     closeContextSidebar,
     openFileDiff,
@@ -45,12 +44,11 @@ export function ContextSidebar() {
   // Find the worktree for this session
   const worktree = session ? worktrees.find((w) => w.path === session.path) : null
 
-  // Find agent config (for icon + label)
+  // Find agent config (for icon)
   const agentConfig = session?.agentId ? agents.find(a => a.id === session.agentId) : undefined
   const legacyIconProps = session?.agentId ? getLegacyAgentIconProps(session.agentId) : undefined
   const agentIcon = agentConfig?.icon || legacyIconProps?.icon
   const agentIconColor = agentConfig?.iconColor || legacyIconProps?.iconColor
-  const agentLabel = agentConfig?.name || session?.agentId || 'unknown'
 
   // Fetch changed files function
   const fetchChangedFiles = useCallback(async () => {
@@ -162,8 +160,8 @@ export function ContextSidebar() {
   // Content shared between mobile and desktop
   const mainContent = (
     <>
-      {/* Session Info */}
-          <div className="space-y-2">
+      {/* Session Info - Header area with status dot, icon, and name */}
+          <div className="space-y-3">
             <div className="flex items-center gap-2 min-w-0">
               <StatusIndicator status={mapSessionState(session.state)} size="md" />
               <AgentIcon icon={agentIcon} iconColor={agentIconColor} className="h-5 w-5 shrink-0" />
@@ -181,64 +179,40 @@ export function ContextSidebar() {
                 <span className="font-medium text-sm truncate">{session.name || formatName(session.path)}</span>
               )}
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className={cn(
-                'rounded-full px-2 py-0.5',
-                session.state === 'busy' && 'bg-status-active/20 text-status-active',
-                session.state === 'idle' && 'bg-muted/50 text-muted-foreground',
-                session.state === 'waiting_input' && 'bg-status-pending/20 text-status-pending'
-              )}>
-                {statusLabels[mapSessionState(session.state)] || session.state}
-              </span>
-              <span className="text-border">•</span>
-              <span>{agentLabel}</span>
-            </div>
-          </div>
 
-          {/* Divider */}
-          <div className="border-t border-border" />
-
-          {/* Project Info */}
-          <div className="space-y-2 min-w-0">
-            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Location
+            {/* Compact location info below session name - no section header */}
+            <div className="space-y-1.5 min-w-0">
+              {worktree && (
+                <div className="flex items-center gap-2 text-xs min-w-0">
+                  <GitBranch className="h-3.5 w-3.5 shrink-0 text-accent" />
+                  <span className={cn(
+                    'truncate',
+                    worktree.isMainWorktree && 'font-bold text-yellow-500'
+                  )}>
+                    {worktree.branch || formatName(worktree.path)}
+                  </span>
+                </div>
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleCopyPath}
+                    className="group flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-left min-w-0"
+                  >
+                    <span className="truncate flex-1 font-mono text-[11px]">{formatPath(session.path)}</span>
+                    {copied ? (
+                      <Check className="h-3 w-3 shrink-0 text-green-500" />
+                    ) : (
+                      <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <p className="font-mono text-xs break-all">{session.path}</p>
+                  <p className="text-muted-foreground text-xs mt-1">Click to copy</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
-            {currentProject && (
-              <div className="flex items-center gap-2 text-xs min-w-0">
-                <Folder className="h-3.5 w-3.5 shrink-0 text-primary" />
-                <span className="truncate">{currentProject.name}</span>
-              </div>
-            )}
-            {worktree && (
-              <div className="flex items-center gap-2 text-xs min-w-0">
-                <GitBranch className="h-3.5 w-3.5 shrink-0 text-accent" />
-                <span className={cn(
-                  'truncate',
-                  worktree.isMainWorktree && 'font-bold text-yellow-500'
-                )}>
-                  {worktree.branch || formatName(worktree.path)}
-                </span>
-              </div>
-            )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleCopyPath}
-                  className="group flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-left min-w-0"
-                >
-                  <span className="truncate flex-1 font-mono text-[11px]">{formatPath(session.path)}</span>
-                  {copied ? (
-                    <Check className="h-3 w-3 shrink-0 text-green-500" />
-                  ) : (
-                    <Copy className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-xs">
-                <p className="font-mono text-xs break-all">{session.path}</p>
-                <p className="text-muted-foreground text-xs mt-1">Click to copy</p>
-              </TooltipContent>
-            </Tooltip>
           </div>
 
           {/* Task Context (only when td is enabled) */}
