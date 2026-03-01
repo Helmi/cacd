@@ -54,6 +54,10 @@ export function executeHook(
 ): Effect.Effect<void, ProcessError> {
 	return Effect.async<void, ProcessError>(resume => {
 		// Use spawn with shell to execute the command and wait for all child processes
+		// INTENTIONAL: shell: true is required here — user-configured hook
+		// commands need shell features (pipes, &&, variable expansion).
+		// Untrusted data is passed via environment variables, not interpolated
+		// into the command string. Safe per Unix conventions.
 		const child = spawn(command, [], {
 			cwd,
 			env: {

@@ -200,6 +200,10 @@ export class AutoApprovalVerifier {
 				});
 			};
 
+			// INTENTIONAL: shell: true is required here — user-configured verifier
+			// commands need shell features (pipes, &&, variable expansion).
+			// Untrusted data (prompt, terminalOutput) is passed via env vars,
+			// not interpolated into the command string. Safe per Unix conventions.
 			const spawnOptions: SpawnOptions = {
 				shell: true,
 				env: {

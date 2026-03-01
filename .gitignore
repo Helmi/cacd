@@ -30,3 +30,10 @@ docs.archive/
 .sidecar-base
 .td-root
 .sidecar-*
+
+# Agent plugin config (local)
+.agents/
+.claude/
+
+# Stale task files
+TASK.md

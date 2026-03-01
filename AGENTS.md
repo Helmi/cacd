@@ -1,184 +1,92 @@
-# CA⚡CD - Coding Agent Control Desk - Repository Guidelines
+# CACD — Coding Agent Control Desk
 
-## MANDATORY: Use td for Task Management
+A local development orchestrator for AI coding agent sessions. Runs as a **daemon** exposing a **Fastify API + Socket.IO** server, a **React WebUI**, and a **CLI** (`cacd`). Manages PTY sessions for coding agents (Codex, Claude Code, Pi, etc.), git worktrees, and task integration via `td`.
 
-You must run td usage --new-session at conversation start (or after /clear) to see current work.
-Use td usage -q for subsequent reads.
+Originally forked from [kbwo/ccmanager](https://github.com/kbwo/ccmanager) — codebases have fully diverged, no compatibility. Occasionally worth checking their `sessionManager` and `worktreeService` for bug fix ideas.
 
-**Coding Agent Control Desk (CACD)** is a hard fork of the original `ccmanager` project.
-**Primary Goal:** Evolve the tool into a comprehensive control plane for AI agents, featuring a robust WebUI alongside the original TUI, and significantly extending the feature set beyond simple session management.
+**Repo:** [github.com/Helmi/cacd](https://github.com/Helmi/cacd) (private)
 
-## Upstream Repository
+## Task Management
 
-- **Original repo:** https://github.com/kbwo/ccmanager (for reference only, not a git remote)
-- **This repo:** git@github.com:Helmi/cacd.git (remote: `origin`)
-- **Note:** This project has fully diverged from upstream. No backward compatibility with ccmanager configs.
+Run `td usage --new-session` at conversation start (or after `/clear`). Use `td usage -q` for subsequent reads.
 
-### Upstream Compatibility Guidelines
+## Safety Guardrails
 
-**Stay close to upstream's code structure** to benefit from improvements and bug fixes in the original `ccmanager` repo:
+- **CRITICAL:** Never run `bun run build` or `bun run install:global` without explicit user confirmation. The global install is used productively.
+- **NEVER** execute release commands autonomously. See the `cacd-release` skill for the release workflow.
+- **NEVER** push to `main` without a passing build.
 
-- **Preserve file/folder layout** in `src/` — don't reorganize core services or components without good reason
-- **Keep service interfaces stable** — SessionManager, WorktreeService, ConfigurationManager should maintain similar APIs
-- **Avoid renaming** core modules unless upstream does the same
-- **When adding features**, prefer extending existing patterns over introducing new architectural concepts
-- **Periodically check upstream** for bug fixes, especially in `sessionManager.ts`, `worktreeService.ts`, and state detection logic
-- **Document divergences** — when CACD must deviate significantly, note it here so future merges are easier
+## Project Structure
 
-### CACD-Specific Additions (divergences from upstream)
+- `src/` — Backend: daemon, API server, session management, PTY handling
+  - `services/` — Core domain logic (SessionManager, CoreService, APIServer, ProjectManager)
+  - `cli/` — CLI commands (thin API client, no business logic)
+  - `utils/` — Shared utilities, hook executor
+- `client/` — React + Vite WebUI (Tailwind + Lucide)
+- `dist/` — Compiled backend (`cli.js`)
+- `scripts/` — Build and release tooling
+- `.agents/skills/` — Agent skills (cross-agent, symlinked to `.claude/skills/` etc.)
 
-- `client/` — Full React WebUI (not in upstream)
-- `src/services/apiServer.ts` — Fastify + Socket.IO server
-- `src/services/coreService.ts` — State orchestration between TUI and WebUI
-- Multi-project support via `ProjectManager` and `GlobalSessionOrchestrator`
+## Build, Test & Dev
 
-## UI Reference
+**Package manager:** `bun` only. Use `bun run <script>` (not bare `bun test` — that invokes Bun's runner instead of Vitest).
 
-The UI reference design is located at `.ui-reference/` in the project root (gitignored).
-- **Source repo:** https://github.com/Helmi/v0-agent-control-desk (branch: `v0-updates`)
-
-Use this as a guide for UI/UX improvements when rebuilding the WebUI.
-
-## Project Structure & Module Organization
-- `src/` (Backend/TUI): Holds the Node.js source code.
-    - `components/`: Ink-based TUI components.
-    - `services/`: Core domain logic (SessionManager, CoreService, APIServer).
-    - `hooks/`: Custom React hooks for Ink.
-    - `utils/`: Shared utilities and helpers.
-- `client/` (Frontend): Holds the React + Vite WebUI source code.
-    - `src/components/`: Web UI components (Tailwind + Lucide).
-    - `dist/`: Compiled frontend assets served by the backend.
-- `dist/`: Compiled backend artifacts (`cli.js`).
-- `docs/`: Long-form documentation and architectural notes.
-
-## Package Manager
-
-Use **bun** for this project. Important: use `bun run <script>` (not bare `bun test` which uses Bun's test runner instead of Vitest).
-
-## Build, Test & Development Commands
-- `bun install`: Install dependencies.
-- `bun run build`: Compiles the Backend (`tsc`) **AND** the Frontend (`client/` build).
-- `bun run start`: Runs the compiled CLI/Server (`dist/cli.js`).
-- `bun run test`: Runs the Vitest suite for the backend.
-- `bun run lint`: Checks code style across the project.
-
-### Development Workflow
-
-**Hot-reload dev server** (recommended for development):
 ```bash
-bun run dev
+bun install                    # Install deps
+bun run build                  # Build backend (tsc) + frontend (vite)
+bun run test                   # Run Vitest suite
+bun run test -- src/services/sessionManager.test.ts  # Scoped test run
+bun run lint                   # ESLint + Prettier check
+bun run dev                    # Hot-reload: backend (headless) + frontend (Vite) concurrently
+bun run install:global         # Build + install globally (npm nested strategy)
 ```
-Runs both backend (tsx watch + headless) and frontend (Vite dev server) concurrently with hot reload. Access WebUI at `http://localhost:5173` (Vite proxies API requests to backend).
 
-**Individual dev commands:**
-- `bun run dev:server` — Backend only in headless mode (API server, no TUI)
-- `bun run dev:client` — Frontend Vite dev server only
-- `bun run dev:tui` — Backend with TUI (original dev mode)
-
-**Note:** PTY sessions die when the backend restarts. This is unavoidable without architecture changes. For development, just restart sessions as needed.
-
-**Version Display:** In development mode, the version displays with a `-dev` suffix (e.g., `0.2.0-dev`). This is handled automatically in `client/vite.config.ts` based on Vite's mode. Production builds show the clean version number.
-
-### Global Install Workflow
-
-Build and install globally for system-wide access:
-```bash
-bun run install:global
-```
-This builds both backend and frontend, then installs via `npm install -g . --install-strategy=nested` so `cacd` command is available globally. The nested strategy is required to avoid ink/ansi-styles dependency conflicts. Run again to update after changes.
+PTY sessions die on backend restart during dev — just restart them.
 
 ## Architecture
-The application operates in a **Hybrid Mode**:
-1.  **TUI (Terminal User Interface):** Powered by `ink`, running directly in the terminal.
-2.  **Web Server:** A `fastify` server (default port 3000) hosting the `client/` React app and a `Socket.IO` server for real-time terminal streaming.
-3.  **Core Service:** A singleton (`coreService.ts`) that orchestrates state between the TUI and WebUI.
 
-## Coding Style & Naming Conventions
-- **Backend (src/):**
-    - PascalCase for Components/Services.
-    - `Effect-ts` patterns for error handling and side effects.
-    - `logger.info()` instead of `console.log`.
-- **Frontend (client/src/):**
-    - React functional components.
-    - Tailwind CSS for styling.
-    - Lucide React for icons.
-- **General:**
-    - Explicit types (avoid `any`).
-    - Prettier/ESLint rules enforced.
+- **Daemon:** Node.js process owning all PTY sessions. Runs headless by default.
+- **API:** Fastify server (configurable port) + Socket.IO for real-time terminal streaming.
+- **WebUI:** React SPA served by the daemon. Vite dev server proxies to backend in dev.
+- **CLI:** `cacd` — thin client that talks to the daemon API. No business logic in CLI layer.
+- **Core Service:** Singleton (`coreService.ts`) orchestrating state across all interfaces.
+- **Legacy TUI:** Ink-based terminal UI exists but is being phased out.
 
-## Security Notes
+## Coding Style
 
-### shell: true in spawn calls
-The following files intentionally use `shell: true` in spawn calls:
-- `src/services/autoApprovalVerifier.ts` — custom verifier commands
-- `src/utils/hookExecutor.ts` — user-configured hook commands
+Prettier + ESLint enforced. Beyond that:
 
-**This is by design.** These are user-configured shell commands that need shell features (pipes, `&&`, variable expansion). Untrusted data is passed via environment variables, not interpolated into the command string. This follows the standard Unix security model where env vars are safe unless the script explicitly misuses them. Do not flag this as a security issue in reviews.
+```ts
+// const over let — use ternaries or early returns
+const mode = headless ? 'daemon' : 'tui'
 
-## Testing Guidelines
-- **Backend:** Write Vitest unit tests alongside files (`*.test.ts`).
-    - Use `vi.mock` for external dependencies (git, fs, child_process).
-- **Frontend:** (Future) Add component tests for React views.
-- **Coverage:** Maintain high coverage for core services (`SessionManager`, `WorktreeService`).
+// Avoid else — prefer early returns
+function resolve(session: Session) {
+  if (!session.active) return null
+  return session.worktree
+}
 
-## Commit & Pull Request Guidelines
-- **Conventional Commits:** `type: subject` (e.g., `feat: add web terminal view`, `refactor: rename environment variable`).
-- **Context:** Mention if a change affects TUI, WebUI, or both.
-- **Verification:** Ensure `bun run build` passes (builds both ends) before pushing.
+// Avoid destructuring — dot notation preserves context
+session.id        // ✓
+const { id } = s  // ✗
 
-## Release Process
+// Single-word names where possible
+const sessions = manager.list()  // ✓
+const sessionList = manager.list()  // ✗
 
-**Versioning:** Semver (major.minor.patch). Version in `package.json` reflects the target release version during development.
-
-**Development workflow:**
-1. Set `package.json` version to target (e.g., `0.2.0`) at start of dev cycle
-2. Dev UI shows `0.2.0-dev` (suffix added automatically in dev mode)
-3. When ready to release, run `bun run release`
-
-**Release commands:**
-- `bun run release` — Interactive release (prompts for version, suggests based on commits)
-- `bun run release 0.2.0` — Direct release to specified version
-- `bun run release:dry` — Preview without making changes
-
-**What release does:**
-1. Analyzes commits since last tag and suggests bump type
-2. Prompts for target version (or uses provided version)
-3. Runs standard-version to update `package.json`, `CHANGELOG.md`, create commit and tag
-
-**After release:**
-```bash
-git push --follow-tags    # Push commit + tag to trigger GitHub Actions
+// Inline when used once
+const config = await Bun.file(path.join(dir, 'config.json')).json()  // ✓
+// not: const configPath = path.join(dir, 'config.json')
+//      const config = await Bun.file(configPath).json()
 ```
-Then update `package.json` to the next target version for the next dev cycle.
 
-GitHub Actions handles npm publish and GitHub release creation.
+- **Error handling:** Effect-ts patterns. No raw try/catch.
+- **Logging:** `logger.info()` / `logger.error()` — never `console.log`.
+- **Types:** Explicit, avoid `any`. Prefer functional array methods (`map`, `filter`, `flatMap`) over `for` loops.
+- **Backend naming:** PascalCase for services/components, camelCase for functions/variables.
 
-### Agent Instructions for Builds
+## Conventions
 
-**CRITICAL:** Never run `bun run build` or `bun run install:global` without explicit user confirmation. The globally installed build is used productively on this system and must not be overwritten without consent.
-
-### Agent Instructions for Releases
-
-**IMPORTANT:** Never execute release commands autonomously.
-
-**When to suggest a release:**
-- After an **epic is completed** and merged → suggest **minor** bump (e.g., 0.3.0 → 0.4.0)
-- After **bug fixes only** are merged → suggest **patch** bump (e.g., 0.4.0 → 0.4.1)
-- After a **breaking change** (API, config format, CLI interface change) → suggest **minor** bump (pre-1.0) or **major** bump (post-1.0)
-- When **multiple features/fixes accumulate** without a release → proactively suggest cutting one
-
-**When NOT to suggest:**
-- Work is still in progress or known to be flaky
-- Only chore/docs commits since last release
-- User explicitly deferred a release
-
-**How to suggest:**
-1. State current version and proposed next version with reasoning
-2. Summarize what's in the release (features, fixes)
-3. Offer `bun run release:dry` first to preview
-4. **Only execute after explicit user confirmation**
-
-Example:
-> "TD Integration epic is done and persistent sessions merged. That's v0.4.0 material (two features). Want me to dry-run it first?"
-
-**Changelog quality:** After `standard-version` generates CHANGELOG.md, review it. Rewrite vague commit messages into user-facing descriptions if needed before the release commit.
+- **Commits:** Conventional Commits — `type: subject` (e.g., `feat: add session restore`, `fix: worktree cleanup on exit`). Note if change affects backend, frontend, or both.
+- **Testing:** Vitest unit tests alongside files (`*.test.ts`). Use `vi.mock` for externals (git, fs, child_process). Maintain high coverage on core services.
+- **CLI rule:** CLI is a thin API client. Fallback to direct service only on `ECONNREFUSED` (daemon unreachable), never on 404 from a running daemon.
