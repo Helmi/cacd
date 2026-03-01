@@ -442,7 +442,7 @@ describe('CLI', () => {
 				expect(spawnDetachedDaemon).toHaveBeenCalledWith(
 					'/tmp/unified-entry.tsx',
 					3000,
-					{logFilePath: '/tmp/cacd-test/daemon.log'},
+					{logFilePath: path.join('/tmp/cacd-test', 'daemon.log')},
 				);
 				expect(waitForDaemonPid).toHaveBeenCalled();
 				expect(waitForDaemonApiReady).toHaveBeenCalledWith({
@@ -502,7 +502,7 @@ describe('CLI', () => {
 				expect(spawnDetachedDaemon).toHaveBeenCalledWith(
 					'/tmp/unified-entry.tsx',
 					3000,
-					{logFilePath: '/tmp/cacd-test/daemon.log'},
+					{logFilePath: path.join('/tmp/cacd-test', 'daemon.log')},
 				);
 			} finally {
 				processExitSpy.mockRestore();
@@ -771,7 +771,7 @@ describe('CLI', () => {
 				expect(spawnDetachedDaemon).toHaveBeenCalledWith(
 					'/tmp/unified-entry.tsx',
 					3000,
-					{logFilePath: '/tmp/cacd-test/daemon.log'},
+					{logFilePath: path.join('/tmp/cacd-test', 'daemon.log')},
 				);
 			} finally {
 				processKillSpy.mockRestore();
@@ -854,7 +854,7 @@ describe('CLI', () => {
 				expect(spawnDetachedDaemon).toHaveBeenCalledWith(
 					'/tmp/unified-entry.tsx',
 					3000,
-					{logFilePath: '/tmp/cacd-test/daemon.log'},
+					{logFilePath: path.join('/tmp/cacd-test', 'daemon.log')},
 				);
 			} finally {
 				processKillSpy.mockRestore();
