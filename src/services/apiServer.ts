@@ -462,7 +462,8 @@ export class APIServer {
 			return {options: next, usedResumeHint: true};
 		}
 
-		const findOption = (id: string) => agent.options.find(option => option.id === id);
+		const findOption = (id: string) =>
+			agent.options.find(option => option.id === id);
 		const setIfAvailable = (
 			id: string,
 			value: boolean | string | undefined,
@@ -480,11 +481,17 @@ export class APIServer {
 			return false;
 		};
 
-		if (record.agentSessionPath && setIfAvailable('session', record.agentSessionPath)) {
+		if (
+			record.agentSessionPath &&
+			setIfAvailable('session', record.agentSessionPath)
+		) {
 			return {options: next, usedResumeHint: true};
 		}
 
-		if (record.agentSessionId && setIfAvailable('resume', record.agentSessionId)) {
+		if (
+			record.agentSessionId &&
+			setIfAvailable('resume', record.agentSessionId)
+		) {
 			return {options: next, usedResumeHint: true};
 		}
 
@@ -580,8 +587,7 @@ export class APIServer {
 				: undefined;
 			const detectedAgentType = configuredAgent
 				? adapterRegistry.getById(configuredAgent.id)?.id ||
-					adapterRegistry.getByAgentType(inferAgentType(configuredAgent))
-						?.id ||
+					adapterRegistry.getByAgentType(inferAgentType(configuredAgent))?.id ||
 					inferAgentType(configuredAgent)
 				: session.detectionStrategy || session.agentId || 'terminal';
 			const createdAt = resolveSessionCreatedAt(session);
@@ -614,7 +620,9 @@ export class APIServer {
 				worktreePath: session.worktreePath,
 			});
 
-			const pendingEndedAt = this.pendingFallbackSessionEndTimes.get(session.id);
+			const pendingEndedAt = this.pendingFallbackSessionEndTimes.get(
+				session.id,
+			);
 			if (pendingEndedAt) {
 				sessionStore.markSessionEnded(session.id, pendingEndedAt);
 				this.pendingFallbackSessionEndTimes.delete(session.id);
@@ -638,7 +646,9 @@ export class APIServer {
 
 		try {
 			const agent = this.resolveRecoveryAgent(record);
-			const normalizedOptions = this.normalizeRecoveryOptions(record.agentOptions);
+			const normalizedOptions = this.normalizeRecoveryOptions(
+				record.agentOptions,
+			);
 			const resumeOptionPlan = this.applyRecoveryResumeOptions(
 				agent,
 				normalizedOptions,
@@ -648,12 +658,17 @@ export class APIServer {
 				agent,
 				resumeOptionPlan.options,
 			);
-			const codexArgsPlan = this.applyCodexRecoveryArgs(agent, record, builtArgs);
+			const codexArgsPlan = this.applyCodexRecoveryArgs(
+				agent,
+				record,
+				builtArgs,
+			);
 			const recoveryMode: SessionRecoveryMode =
 				resumeOptionPlan.usedResumeHint || codexArgsPlan.usedResumeHint
 					? 'resume'
 					: 'fallback';
-			const command = agent.command === '$SHELL' ? getDefaultShell() : agent.command;
+			const command =
+				agent.command === '$SHELL' ? getDefaultShell() : agent.command;
 			const extraEnv: Record<string, string> = {};
 			if (record.tdTaskId) {
 				extraEnv['TD_TASK_ID'] = record.tdTaskId;
@@ -2079,8 +2094,7 @@ export class APIServer {
 					coreService.sessionManager.destroySession(id);
 				}
 
-				const restartRecord =
-					storedSession || sessionStore.getSessionById(id);
+				const restartRecord = storedSession || sessionStore.getSessionById(id);
 				if (!restartRecord) {
 					return reply
 						.code(409)

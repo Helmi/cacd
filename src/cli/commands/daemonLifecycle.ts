@@ -124,9 +124,12 @@ async function terminateActiveSessionsForLifecycle(
 	});
 	let terminated = 0;
 	for (const sessionId of activeSessionIds) {
-		const response = await client.post<{success?: boolean}>('/api/session/stop', {
-			id: sessionId,
-		});
+		const response = await client.post<{success?: boolean}>(
+			'/api/session/stop',
+			{
+				id: sessionId,
+			},
+		);
 		if (response.success !== false) {
 			terminated += 1;
 		}
@@ -494,7 +497,8 @@ export async function runDaemonLifecycleCommand(
 			| undefined;
 		if (context.parsedArgs.flags.force) {
 			try {
-				forceRestartSummary = await terminateActiveSessionsForLifecycle(context);
+				forceRestartSummary =
+					await terminateActiveSessionsForLifecycle(context);
 			} catch (error) {
 				const message = normalizeApiError(error).message;
 				context.formatter.writeError({

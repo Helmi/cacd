@@ -579,7 +579,9 @@ describe('CLI', () => {
 					);
 				}
 				if (url.endsWith('/api/session/stop')) {
-					const payload = JSON.parse(String(init?.body || '{}')) as {id?: string};
+					const payload = JSON.parse(String(init?.body || '{}')) as {
+						id?: string;
+					};
 					expect(['session-1', 'session-2']).toContain(payload.id);
 					return new Response(JSON.stringify({success: true}), {
 						status: 200,
@@ -802,7 +804,9 @@ describe('CLI', () => {
 					});
 				}
 				if (url.endsWith('/api/session/stop')) {
-					const payload = JSON.parse(String(init?.body || '{}')) as {id?: string};
+					const payload = JSON.parse(String(init?.body || '{}')) as {
+						id?: string;
+					};
 					expect(payload.id).toBe('session-1');
 					return new Response(JSON.stringify({success: true}), {
 						status: 200,

@@ -175,7 +175,6 @@ vi.mock('./sessionStore.js', () => ({
 	},
 }));
 
-
 describe('APIServer td create-with-agent validation ordering', () => {
 	interface InjectRequest {
 		method: string;
@@ -218,13 +217,15 @@ describe('APIServer td create-with-agent validation ordering', () => {
 	});
 
 	beforeEach(() => {
-		const mockedSessionManager = (coreService as unknown as {
-			sessionManager: {
-				createSessionWithAgentEffect: ReturnType<typeof vi.fn>;
-				setSessionActive: ReturnType<typeof vi.fn>;
-				getSession: ReturnType<typeof vi.fn>;
-			};
-		}).sessionManager;
+		const mockedSessionManager = (
+			coreService as unknown as {
+				sessionManager: {
+					createSessionWithAgentEffect: ReturnType<typeof vi.fn>;
+					setSessionActive: ReturnType<typeof vi.fn>;
+					getSession: ReturnType<typeof vi.fn>;
+				};
+			}
+		).sessionManager;
 
 		mockExecFileSync.mockReset();
 		mockGetAllActiveSessions.mockReset();
@@ -262,12 +263,14 @@ describe('APIServer td create-with-agent validation ordering', () => {
 	});
 
 	it('rehydrates persisted live sessions with stable IDs', async () => {
-		const mockedSessionManager = (coreService as unknown as {
-			sessionManager: {
-				createSessionWithAgentEffect: ReturnType<typeof vi.fn>;
-				setSessionActive: ReturnType<typeof vi.fn>;
-			};
-		}).sessionManager;
+		const mockedSessionManager = (
+			coreService as unknown as {
+				sessionManager: {
+					createSessionWithAgentEffect: ReturnType<typeof vi.fn>;
+					setSessionActive: ReturnType<typeof vi.fn>;
+				};
+			}
+		).sessionManager;
 
 		mockSessionStoreQuerySessions.mockReturnValue([
 			{
@@ -295,8 +298,11 @@ describe('APIServer td create-with-agent validation ordering', () => {
 			apiServer as unknown as {rehydratePersistedSessions: () => Promise<void>}
 		).rehydratePersistedSessions();
 
-		expect(mockedSessionManager.createSessionWithAgentEffect).toHaveBeenCalled();
-		const call = mockedSessionManager.createSessionWithAgentEffect.mock.calls[0];
+		expect(
+			mockedSessionManager.createSessionWithAgentEffect,
+		).toHaveBeenCalled();
+		const call =
+			mockedSessionManager.createSessionWithAgentEffect.mock.calls[0];
 		expect(call?.[0]).toBe('/repo/.worktrees/feat-recover');
 		expect(call?.[8]).toEqual(
 			expect.objectContaining({sessionIdOverride: 'session-recover-1'}),
@@ -308,14 +314,16 @@ describe('APIServer td create-with-agent validation ordering', () => {
 	});
 
 	it('restarts only the requested session via /api/session/restart', async () => {
-		const mockedSessionManager = (coreService as unknown as {
-			sessionManager: {
-				createSessionWithAgentEffect: ReturnType<typeof vi.fn>;
-				setSessionActive: ReturnType<typeof vi.fn>;
-				getSession: ReturnType<typeof vi.fn>;
-				destroySession: ReturnType<typeof vi.fn>;
-			};
-		}).sessionManager;
+		const mockedSessionManager = (
+			coreService as unknown as {
+				sessionManager: {
+					createSessionWithAgentEffect: ReturnType<typeof vi.fn>;
+					setSessionActive: ReturnType<typeof vi.fn>;
+					getSession: ReturnType<typeof vi.fn>;
+					destroySession: ReturnType<typeof vi.fn>;
+				};
+			}
+		).sessionManager;
 
 		const record = {
 			id: 'session-restart-1',
@@ -353,8 +361,11 @@ describe('APIServer td create-with-agent validation ordering', () => {
 		expect(mockedSessionManager.destroySession).toHaveBeenCalledWith(
 			'session-restart-1',
 		);
-		expect(mockedSessionManager.createSessionWithAgentEffect).toHaveBeenCalled();
-		const call = mockedSessionManager.createSessionWithAgentEffect.mock.calls[0];
+		expect(
+			mockedSessionManager.createSessionWithAgentEffect,
+		).toHaveBeenCalled();
+		const call =
+			mockedSessionManager.createSessionWithAgentEffect.mock.calls[0];
 		expect(call?.[8]).toEqual(
 			expect.objectContaining({sessionIdOverride: 'session-restart-1'}),
 		);
@@ -490,11 +501,7 @@ describe('APIServer td create-with-agent validation ordering', () => {
 		}>;
 		expect(sessions).toHaveLength(3);
 		expect(sessions.map(s => s.id)).toEqual(
-			expect.arrayContaining([
-				'ses-project-a',
-				'ses-project-b',
-				'ses-global',
-			]),
+			expect.arrayContaining(['ses-project-a', 'ses-project-b', 'ses-global']),
 		);
 	});
 
@@ -563,9 +570,7 @@ describe('APIServer td create-with-agent validation ordering', () => {
 		}>;
 
 		const mainWt = worktrees.find(w => w.path === '/repo/main');
-		const featWt = worktrees.find(
-			w => w.path === '/repo/.worktrees/feat-x',
-		);
+		const featWt = worktrees.find(w => w.path === '/repo/.worktrees/feat-x');
 
 		expect(mainWt?.hasSession).toBe(false);
 		expect(featWt?.hasSession).toBe(true);
