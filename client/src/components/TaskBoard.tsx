@@ -18,12 +18,10 @@ import {
   PauseCircle,
   AlertCircle,
   Layers,
-  Tag,
   FolderGit2,
-  ChevronDown,
-  ChevronRight,
   RefreshCw,
   XCircle,
+  ChevronRight,
 } from 'lucide-react'
 
 // Status column configuration
@@ -35,13 +33,6 @@ const STATUS_COLUMNS = [
   { key: 'closed', label: 'Closed', icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
 ]
 
-const priorityColors: Record<string, string> = {
-  P0: 'border-l-red-500',
-  P1: 'border-l-orange-500',
-  P2: 'border-l-border',
-  P3: 'border-l-border/50',
-}
-
 type ViewMode = 'board' | 'list'
 
 function normalizeBranchName(branch?: string): string {
@@ -49,46 +40,51 @@ function normalizeBranchName(branch?: string): string {
   return branch.replace(/^refs\/heads\//, '').trim()
 }
 
-function IssueCard({ issue, compact, indent, onSelect }: { issue: TdIssue; compact?: boolean; indent?: boolean; onSelect: (id: string) => void }) {
-  const labels = issue.labels ? issue.labels.split(',').filter(Boolean) : []
+function priorityBadgeClass(priority: string): string {
+  if (priority === 'P0') return 'bg-red-500/15 text-red-400'
+  if (priority === 'P1') return 'bg-orange-500/15 text-orange-400'
+  if (priority === 'P2') return 'bg-muted text-muted-foreground'
+  return 'bg-muted/50 text-muted-foreground/50'
+}
 
+function IssueCard({ issue, compact, indent, onSelect, childCount }: { issue: TdIssue; compact?: boolean; indent?: boolean; onSelect: (id: string) => void; childCount?: number }) {
   return (
     <button
       onClick={() => onSelect(issue.id)}
       className={cn(
         'w-full text-left rounded border border-border/50 bg-card p-2 transition-colors',
         'hover:bg-accent/50 hover:border-border',
-        'border-l-2',
-        priorityColors[issue.priority] || 'border-l-border',
         compact && 'p-1.5',
         indent && 'ml-4',
       )}
     >
-      <div className="flex items-start gap-1.5">
-        <span className="text-[10px] font-mono text-muted-foreground shrink-0 mt-0.5">
-          {issue.id}
-        </span>
-        <div className="flex-1 min-w-0">
-          <p className={cn('text-xs leading-snug', compact ? 'line-clamp-1' : 'line-clamp-2')}>
-            {issue.title}
-          </p>
-          {!compact && labels.length > 0 && (
-            <div className="flex items-center gap-1 mt-1 flex-wrap">
-              {labels.slice(0, 3).map(label => (
-                <span
-                  key={label}
-                  className="inline-flex items-center gap-0.5 text-[9px] rounded-full px-1.5 py-0 bg-muted text-muted-foreground"
-                >
-                  <Tag className="h-2 w-2" />
-                  {label.trim()}
-                </span>
-              ))}
-            </div>
-          )}
+      <div className="flex flex-col gap-1.5">
+        {/* Title — full width */}
+        <p className="text-xs leading-snug line-clamp-2">
+          {issue.title}
+        </p>
+        {/* Bottom row */}
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1">
+            {/* Priority badge */}
+            <span className={cn('text-[9px] font-medium px-1 py-0 rounded', priorityBadgeClass(issue.priority))}>
+              {issue.priority}
+            </span>
+            {/* Epic child count */}
+            {issue.type === 'epic' && (
+              <div className="flex items-center gap-0.5">
+                <Layers className="h-2.5 w-2.5 text-purple-400" />
+                {childCount != null && childCount > 0 && (
+                  <span className="text-[9px] text-muted-foreground">{childCount}</span>
+                )}
+              </div>
+            )}
+          </div>
+          {/* Task ID */}
+          <span className="text-[9px] font-mono text-muted-foreground/60 shrink-0">
+            {issue.id}
+          </span>
         </div>
-        {issue.type === 'epic' && (
-          <Layers className="h-3 w-3 text-purple-400 shrink-0" />
-        )}
       </div>
     </button>
   )
@@ -126,69 +122,81 @@ function groupIssuesWithChildren(issues: TdIssue[]): Array<{ issue: TdIssue; chi
   return result
 }
 
-function StatusColumn({ status, issues, onSelect }: {
+function StatusColumn({ status, issues, onSelect, childCountByEpicId }: {
   status: typeof STATUS_COLUMNS[0]
   issues: TdIssue[]
   onSelect: (id: string) => void
+  childCountByEpicId: Map<string, number>
 }) {
   const StatusIcon = status.icon
-  const grouped = useMemo(() => groupIssuesWithChildren(issues), [issues])
-  const [collapsedEpics, setCollapsedEpics] = useState<Set<string>>(new Set())
+  const [isCollapsed, setIsCollapsed] = useState(issues.length === 0)
+  const [showAllClosed, setShowAllClosed] = useState(false)
 
-  const toggleEpic = (epicId: string) => {
-    setCollapsedEpics(prev => {
-      const next = new Set(prev)
-      if (next.has(epicId)) next.delete(epicId)
-      else next.add(epicId)
-      return next
-    })
+  useEffect(() => {
+    if (issues.length === 0) setIsCollapsed(true)
+  }, [issues.length])
+
+  const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000).toISOString()
+  const visibleIssues = (status.key === 'closed' && !showAllClosed)
+    ? issues.filter(i => (i.closed_at ?? '') >= threeDaysAgo)
+    : issues
+
+  if (isCollapsed) {
+    return (
+      <div
+        className="flex flex-col items-center gap-2 py-2 px-1 rounded border border-border/30 bg-muted/10 cursor-pointer w-8 shrink-0"
+        onClick={() => setIsCollapsed(false)}
+        title={`${status.label} (${issues.length})`}
+      >
+        <StatusIcon className={cn('h-3 w-3', status.color)} />
+        <span
+          className="text-[9px] text-muted-foreground font-medium"
+          style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+        >
+          {status.label}
+        </span>
+        <span className="text-[9px] text-muted-foreground/60">{issues.length}</span>
+      </div>
+    )
   }
 
   return (
-    <div className="flex flex-col min-w-[200px] max-w-[280px] flex-1">
+    <div className="flex flex-col flex-1">
       <div className={cn('flex items-center gap-1.5 px-2 py-1.5 rounded-t', status.bg)}>
         <StatusIcon className={cn('h-3 w-3', status.color)} />
         <span className="text-xs font-medium">{status.label}</span>
         <span className="text-[10px] text-muted-foreground ml-auto">{issues.length}</span>
+        <button
+          onClick={() => setIsCollapsed(true)}
+          className="ml-1 text-muted-foreground/40 hover:text-muted-foreground"
+          title="Collapse column"
+        >
+          <ChevronRight className="h-3 w-3" />
+        </button>
       </div>
       <ScrollArea className="flex-1 min-h-0">
         <div className="space-y-1.5 p-1.5">
-          {issues.length === 0 ? (
+          {visibleIssues.length === 0 ? (
             <p className="text-[10px] text-muted-foreground/50 text-center py-4">
               No issues
             </p>
           ) : (
-            grouped.map(({ issue, children }) => (
-              <div key={issue.id}>
-                {issue.type === 'epic' && children.length > 0 ? (
-                  <div>
-                    <button
-                      onClick={() => toggleEpic(issue.id)}
-                      className="flex items-center gap-1 w-full text-left mb-1"
-                    >
-                      {collapsedEpics.has(issue.id) ? (
-                        <ChevronRight className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
-                      ) : (
-                        <ChevronDown className="h-2.5 w-2.5 text-muted-foreground shrink-0" />
-                      )}
-                      <Layers className="h-2.5 w-2.5 text-purple-400 shrink-0" />
-                      <span className="text-[10px] font-medium text-muted-foreground truncate">
-                        {issue.title}
-                      </span>
-                      <span className="text-[9px] text-muted-foreground/50 shrink-0">{children.length}</span>
-                    </button>
-                    <IssueCard issue={issue} onSelect={onSelect} />
-                    {!collapsedEpics.has(issue.id) && children.map(child => (
-                      <div key={child.id} className="mt-1.5">
-                        <IssueCard issue={child} indent onSelect={onSelect} />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <IssueCard issue={issue} onSelect={onSelect} />
-                )}
-              </div>
+            visibleIssues.map(issue => (
+              <IssueCard
+                key={issue.id}
+                issue={issue}
+                onSelect={onSelect}
+                childCount={issue.type === 'epic' ? childCountByEpicId.get(issue.id) : undefined}
+              />
             ))
+          )}
+          {status.key === 'closed' && !showAllClosed && issues.length > visibleIssues.length && (
+            <button
+              onClick={() => setShowAllClosed(true)}
+              className="w-full text-[10px] text-muted-foreground/60 hover:text-muted-foreground py-1.5 text-center"
+            >
+              Show {issues.length - visibleIssues.length} older
+            </button>
           )}
         </div>
       </ScrollArea>
@@ -211,6 +219,16 @@ export function TaskBoard() {
   const [viewMode, setViewMode] = useState<ViewMode>('board')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null)
+
+  const childCountByEpicId = useMemo(() => {
+    const counts = new Map<string, number>()
+    tdIssues.forEach(issue => {
+      if (issue.parent_id && issue.status !== 'closed') {
+        counts.set(issue.parent_id, (counts.get(issue.parent_id) ?? 0) + 1)
+      }
+    })
+    return counts
+  }, [tdIssues])
 
   const projectWorktrees = useMemo(() => {
     if (!currentProject) return []
@@ -374,6 +392,7 @@ export function TaskBoard() {
                 status={status}
                 issues={(filteredBoard[status.key] || []).filter(i => !i.deleted_at)}
                 onSelect={setSelectedIssueId}
+                childCountByEpicId={childCountByEpicId}
               />
             ))}
           </div>
@@ -393,6 +412,7 @@ export function TaskBoard() {
                     issue={issue}
                     compact
                     onSelect={setSelectedIssueId}
+                    childCount={issue.type === 'epic' ? childCountByEpicId.get(issue.id) : undefined}
                   />
                   {children.map(child => (
                     <div key={child.id} className="mt-1">
