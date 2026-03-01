@@ -195,7 +195,7 @@ function StatusColumn({ status, issues, onSelect, childCountByEpicId }: {
               onClick={() => setShowAllClosed(true)}
               className="w-full text-[10px] text-muted-foreground/60 hover:text-muted-foreground py-1.5 text-center"
             >
-              Show {issues.length - visibleIssues.length} older
+              Show more
             </button>
           )}
         </div>
