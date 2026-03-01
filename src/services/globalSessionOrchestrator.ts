@@ -33,15 +33,37 @@ class GlobalSessionOrchestrator {
 		return manager;
 	}
 
+	findSession(
+		sessionId: string,
+	): {session: Session; manager: SessionManager} | undefined {
+		const globalHit = this.globalManager.getSession(sessionId);
+		if (globalHit) return {session: globalHit, manager: this.globalManager};
+
+		for (const manager of this.projectManagers.values()) {
+			const hit = manager.getSession(sessionId);
+			if (hit) return {session: hit, manager};
+		}
+		return undefined;
+	}
+
 	getAllActiveSessions(): Session[] {
+		const seen = new Set<string>();
 		const sessions: Session[] = [];
 
-		// Get sessions from global manager
-		sessions.push(...this.globalManager.getAllSessions());
+		for (const s of this.globalManager.getAllSessions()) {
+			if (!seen.has(s.id)) {
+				seen.add(s.id);
+				sessions.push(s);
+			}
+		}
 
-		// Get sessions from all project managers
 		for (const manager of this.projectManagers.values()) {
-			sessions.push(...manager.getAllSessions());
+			for (const s of manager.getAllSessions()) {
+				if (!seen.has(s.id)) {
+					seen.add(s.id);
+					sessions.push(s);
+				}
+			}
 		}
 
 		return sessions;

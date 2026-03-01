@@ -201,6 +201,48 @@ describe('GlobalSessionManager', () => {
 		});
 	});
 
+	it('should find a session in the global manager', () => {
+		const globalManager =
+			globalSessionOrchestrator.getManagerForProject() as unknown as MockSessionManager;
+		globalManager.sessions.set('g1', {id: 'g1'});
+
+		const result = globalSessionOrchestrator.findSession('g1');
+		expect(result).toBeDefined();
+		expect(result!.session.id).toBe('g1');
+		expect(result!.manager).toBe(globalManager);
+	});
+
+	it('should find a session in a project manager', () => {
+		const projectManager = globalSessionOrchestrator.getManagerForProject(
+			'/proj',
+		) as unknown as MockSessionManager;
+		projectManager.sessions.set('p1', {id: 'p1'});
+
+		const result = globalSessionOrchestrator.findSession('p1');
+		expect(result).toBeDefined();
+		expect(result!.session.id).toBe('p1');
+		expect(result!.manager).toBe(projectManager);
+	});
+
+	it('should return undefined for non-existent session', () => {
+		expect(globalSessionOrchestrator.findSession('nope')).toBeUndefined();
+	});
+
+	it('should deduplicate sessions in getAllActiveSessions', () => {
+		const globalManager =
+			globalSessionOrchestrator.getManagerForProject() as unknown as MockSessionManager;
+		const projectManager = globalSessionOrchestrator.getManagerForProject(
+			'/dup-proj',
+		) as unknown as MockSessionManager;
+
+		const shared = {id: 'dup-1'};
+		globalManager.sessions.set('dup-1', shared);
+		projectManager.sessions.set('dup-1', shared);
+
+		const all = globalSessionOrchestrator.getAllActiveSessions();
+		expect(all.filter(s => s.id === 'dup-1')).toHaveLength(1);
+	});
+
 	it('should get sessions for a specific project', () => {
 		const project1Manager = globalSessionOrchestrator.getManagerForProject(
 			'/project1',

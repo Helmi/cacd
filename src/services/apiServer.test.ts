@@ -157,6 +157,17 @@ vi.mock('./tdReader.js', () => ({
 vi.mock('./globalSessionOrchestrator.js', () => ({
 	globalSessionOrchestrator: {
 		getAllActiveSessions: mockGetAllActiveSessions,
+		getManagerForProject: () => coreService.sessionManager,
+		findSession: (id: string) => {
+			const session = (
+				coreService.sessionManager as unknown as {
+					getSession: (id: string) => unknown;
+				}
+			).getSession(id);
+			return session
+				? {session, manager: coreService.sessionManager}
+				: undefined;
+		},
 	},
 }));
 

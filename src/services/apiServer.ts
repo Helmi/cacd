@@ -49,6 +49,7 @@ import {sessionStore, SessionIntent} from './sessionStore.js';
 import type {SessionRecord} from './sessionStore.js';
 import {adapterRegistry} from '../adapters/index.js';
 import {globalSessionOrchestrator} from './globalSessionOrchestrator.js';
+import type {SessionManager} from './sessionManager.js';
 import type {
 	AgentConfig,
 	Session,
@@ -639,10 +640,12 @@ export class APIServer {
 		options: {
 			injectFallbackPrompt?: boolean;
 			markEndedOnFailure?: boolean;
+			targetManager?: SessionManager;
 		} = {},
 	): Promise<SessionRecoveryOutcome> {
 		const injectFallbackPrompt = options.injectFallbackPrompt ?? false;
 		const markEndedOnFailure = options.markEndedOnFailure ?? true;
+		const manager = options.targetManager ?? coreService.sessionManager;
 
 		try {
 			const agent = this.resolveRecoveryAgent(record);
@@ -684,7 +687,7 @@ export class APIServer {
 				promptArg?.toLowerCase() !== 'none';
 			const fallbackPrompt = this.buildRestartFallbackPrompt(record);
 
-			const effect = coreService.sessionManager.createSessionWithAgentEffect(
+			const effect = manager.createSessionWithAgentEffect(
 				record.worktreePath,
 				command,
 				codexArgsPlan.args,
@@ -711,7 +714,7 @@ export class APIServer {
 				};
 			}
 
-			coreService.sessionManager.setSessionActive(record.id, true);
+			manager.setSessionActive(record.id, true);
 
 			if (
 				recoveryMode === 'fallback' &&
@@ -1932,9 +1935,9 @@ export class APIServer {
 
 			const refreshed =
 				sessionStore.getSessionById(storedSession.id) || storedSession;
-			const liveSession = coreService.sessionManager.getSession(
+			const liveSession = globalSessionOrchestrator.findSession(
 				storedSession.id,
-			);
+			)?.session;
 			const missingSessionFile =
 				!!refreshed.agentSessionPath && !existsSync(refreshed.agentSessionPath);
 
@@ -2063,13 +2066,12 @@ export class APIServer {
 				const {id} = request.body;
 				logger.info(`API: Stopping session ${id}`);
 
-				const session = coreService.sessionManager.getSession(id);
-
-				if (!session) {
+				const hit = globalSessionOrchestrator.findSession(id);
+				if (!hit) {
 					return reply.code(404).send({error: 'Session not found'});
 				}
 
-				coreService.sessionManager.destroySession(id);
+				hit.manager.destroySession(id);
 				return {success: true};
 			},
 		);
@@ -2080,7 +2082,8 @@ export class APIServer {
 				const {id} = request.body;
 				logger.info(`API: Restarting session ${id}`);
 
-				const liveSession = coreService.sessionManager.getSession(id);
+				const liveHit = globalSessionOrchestrator.findSession(id);
+				const liveSession = liveHit?.session;
 				if (liveSession) {
 					this.persistSessionMetadataIfMissing(liveSession);
 				}
@@ -2090,8 +2093,8 @@ export class APIServer {
 					return reply.code(404).send({error: 'Session not found'});
 				}
 
-				if (liveSession) {
-					coreService.sessionManager.destroySession(id);
+				if (liveHit) {
+					liveHit.manager.destroySession(id);
 				}
 
 				const restartRecord = storedSession || sessionStore.getSessionById(id);
@@ -2125,12 +2128,12 @@ export class APIServer {
 			'/api/session/set-active',
 			async (request, reply) => {
 				const {id, isActive} = request.body;
-				const session = coreService.sessionManager.getSession(id);
-				if (!session) {
+				const hit = globalSessionOrchestrator.findSession(id);
+				if (!hit) {
 					return reply.code(404).send({error: 'Session not found'});
 				}
 
-				coreService.sessionManager.setSessionActive(id, isActive);
+				hit.manager.setSessionActive(id, isActive);
 				return {success: true};
 			},
 		);
@@ -2139,12 +2142,12 @@ export class APIServer {
 			'/api/session/cancel-auto-approval',
 			async (request, reply) => {
 				const {id, reason} = request.body;
-				const session = coreService.sessionManager.getSession(id);
-				if (!session) {
+				const hit = globalSessionOrchestrator.findSession(id);
+				if (!hit) {
 					return reply.code(404).send({error: 'Session not found'});
 				}
 
-				coreService.sessionManager.cancelAutoApproval(id, reason);
+				hit.manager.cancelAutoApproval(id, reason);
 				return {success: true};
 			},
 		);
@@ -2155,12 +2158,12 @@ export class APIServer {
 				const {id, name} = request.body;
 				logger.info(`API: Renaming session ${id}`);
 
-				const session = coreService.sessionManager.getSession(id);
-				if (!session) {
+				const hit = globalSessionOrchestrator.findSession(id);
+				if (!hit) {
 					return reply.code(404).send({error: 'Session not found'});
 				}
 
-				coreService.sessionManager.renameSession(id, name);
+				hit.manager.renameSession(id, name);
 				try {
 					sessionStore.updateSessionName(id, name);
 				} catch (error) {
@@ -3279,8 +3282,8 @@ export class APIServer {
 					logger.info(`Client ${socketId} subscribed to session ${sessionId}`);
 
 					// Find session and send current history
-					const sessions = coreService.sessionManager.getAllSessions();
-					const session = sessions.find(s => s.id === sessionId);
+					const session =
+						globalSessionOrchestrator.findSession(sessionId)?.session;
 					if (session) {
 						const fullHistory = Buffer.concat(session.outputHistory).toString(
 							'utf8',
@@ -3310,8 +3313,8 @@ export class APIServer {
 				socket.on(
 					'input',
 					({sessionId, data}: {sessionId: string; data: string}) => {
-						const sessions = coreService.sessionManager.getAllSessions();
-						const session = sessions.find(s => s.id === sessionId);
+						const session =
+							globalSessionOrchestrator.findSession(sessionId)?.session;
 						if (session) {
 							session.process.write(data);
 						}
@@ -3329,8 +3332,8 @@ export class APIServer {
 						cols: number;
 						rows: number;
 					}) => {
-						const sessions = coreService.sessionManager.getAllSessions();
-						const session = sessions.find(s => s.id === sessionId);
+						const session =
+							globalSessionOrchestrator.findSession(sessionId)?.session;
 						if (session) {
 							session.process.resize(cols, rows);
 						}
