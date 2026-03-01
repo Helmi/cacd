@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.2](https://github.com/Helmi/cacd/compare/v0.4.1...v0.4.2) (2026-03-01)
+
+
+### Features
+
+* **ui:** simplify session detail sidebar — remove redundant status badge, agent label, and location header; keep branch + path with copy ([#19](https://github.com/Helmi/cacd/issues/19)) ([d7a6ba0](https://github.com/Helmi/cacd/commit/d7a6ba0210db2c608bc3067b94b36138d7f4dacc))
+
+
+### Bug Fixes
+
+* **ci:** fix npm publish workflow failing when version already bumped ([c7259fa](https://github.com/Helmi/cacd/commit/c7259fa0e49722826b2e92093b3fb6392bd16429))
+
 ### [0.4.1](https://github.com/Helmi/cacd/compare/v0.4.0...v0.4.1) (2026-03-01)
 
 
