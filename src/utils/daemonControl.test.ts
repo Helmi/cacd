@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
+import {join} from 'path';
 import {buildDaemonWebConfig, ensureDaemonForTui} from './daemonControl.js';
 
 describe('daemonControl', () => {
@@ -185,7 +186,7 @@ describe('daemonControl', () => {
 
 		expect(result.started).toBe(true);
 		expect(result.pid).toBe(8888);
-		expect(removePidFile).toHaveBeenCalledWith('/tmp/cacd/daemon.pid');
+		expect(removePidFile).toHaveBeenCalledWith(join('/tmp/cacd', 'daemon.pid'));
 		expect(removePidFile.mock.invocationCallOrder[0]).toBeLessThan(
 			spawnDaemon.mock.invocationCallOrder[0]!,
 		);

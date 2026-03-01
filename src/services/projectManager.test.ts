@@ -495,7 +495,7 @@ describe('ProjectManager', () => {
 			const service = projectManager.getWorktreeService();
 
 			expect(service).toBeDefined();
-			expect(service.getGitRootPath()).toBe('/test/project');
+			expect(service.getGitRootPath()).toBe(path.resolve('/test/project'));
 		});
 
 		it('should cache worktree services', () => {

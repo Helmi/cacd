@@ -199,7 +199,7 @@ describe('WorktreeService', () => {
 				'git',
 				['symbolic-ref', 'refs/remotes/origin/HEAD'],
 				expect.objectContaining({
-					cwd: '/fake/path',
+					cwd: path.resolve('/fake/path'),
 					encoding: 'utf8',
 				}),
 			);
@@ -345,7 +345,7 @@ origin/feature/test
 			expect(execSync).toHaveBeenCalledWith(
 				'git rev-parse --abbrev-ref HEAD',
 				expect.objectContaining({
-					cwd: '/fake/path',
+					cwd: path.resolve('/fake/path'),
 					encoding: 'utf8',
 				}),
 			);
@@ -595,8 +595,8 @@ branch refs/heads/feature-branch
 				throw new Error('Command not mocked: ' + cmd);
 			});
 
-			mockedExistsSync.mockImplementation(path => {
-				return path === '/fake/path/feature-branch/.claude';
+			mockedExistsSync.mockImplementation(p => {
+				return String(p) === path.join('/fake/path/feature-branch', '.claude');
 			});
 
 			mockedStatSync.mockImplementation(
@@ -611,10 +611,10 @@ branch refs/heads/feature-branch
 
 			expect(result).toBe(true);
 			expect(existsSync).toHaveBeenCalledWith(
-				'/fake/path/feature-branch/.claude',
+				path.join('/fake/path/feature-branch', '.claude'),
 			);
 			expect(statSync).toHaveBeenCalledWith(
-				'/fake/path/feature-branch/.claude',
+				path.join('/fake/path/feature-branch', '.claude'),
 			);
 		});
 
@@ -645,7 +645,7 @@ branch refs/heads/feature-branch
 
 			expect(result).toBe(false);
 			expect(existsSync).toHaveBeenCalledWith(
-				'/fake/path/feature-branch/.claude',
+				path.join('/fake/path/feature-branch', '.claude'),
 			);
 		});
 
@@ -715,7 +715,9 @@ branch refs/heads/main
 			const result = await Effect.runPromise(effect);
 
 			expect(result).toBe(true);
-			expect(existsSync).toHaveBeenCalledWith('/fake/path/.claude');
+			expect(existsSync).toHaveBeenCalledWith(
+				path.join('/fake/path', '.claude'),
+			);
 		});
 
 		it('should return Effect with false when branch not found in any worktree', async () => {
@@ -780,7 +782,9 @@ branch refs/heads/other-branch
 			const result = await Effect.runPromise(effect);
 
 			expect(result).toBe(true);
-			expect(existsSync).toHaveBeenCalledWith('/fake/path/.claude');
+			expect(existsSync).toHaveBeenCalledWith(
+				path.join('/fake/path', '.claude'),
+			);
 		});
 	});
 
@@ -912,7 +916,7 @@ branch refs/heads/main
 
 			expect(result).toHaveLength(1);
 			expect(result[0]).toMatchObject({
-				path: '/fake/path',
+				path: path.resolve('/fake/path'),
 				branch: 'main',
 				isMainWorktree: true,
 			});

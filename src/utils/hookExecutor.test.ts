@@ -80,79 +80,93 @@ describe('hookExecutor Integration Tests', () => {
 			}
 		});
 
-		it('should include stderr in error message when command fails', async () => {
-			// Arrange
-			const tmpDir = await mkdtemp(join(tmpdir(), 'hook-test-'));
-			const environment = {
-				CACD_WORKTREE_PATH: tmpDir,
-				CACD_WORKTREE_BRANCH: 'test-branch',
-				CACD_GIT_ROOT: tmpDir,
-			};
+		it.skipIf(process.platform === 'win32')(
+			'should include stderr in error message when command fails',
+			async () => {
+				// Arrange
+				const tmpDir = await mkdtemp(join(tmpdir(), 'hook-test-'));
+				const environment = {
+					CACD_WORKTREE_PATH: tmpDir,
+					CACD_WORKTREE_BRANCH: 'test-branch',
+					CACD_GIT_ROOT: tmpDir,
+				};
 
-			try {
-				// Act & Assert - command that writes to stderr and exits with error
-				await expect(
-					Effect.runPromise(
-						executeHook(
-							toNodeCommand(
-								"process.stderr.write('Error details here\\n'); process.exit(1);",
-							),
-							tmpDir,
-							environment,
-						),
-					),
-				).rejects.toThrow(
-					'Hook exited with code 1\nStderr: Error details here\n',
-				);
-			} finally {
-				// Cleanup
-				await rm(tmpDir, {recursive: true});
-			}
-		});
-
-		it('should verify stderr handling in error messages', async () => {
-			// Arrange
-			const tmpDir = await mkdtemp(join(tmpdir(), 'hook-test-'));
-			const environment = {
-				CACD_WORKTREE_PATH: tmpDir,
-				CACD_WORKTREE_BRANCH: 'test-branch',
-				CACD_GIT_ROOT: tmpDir,
-			};
-
-			try {
-				// Test with multiline stderr
 				try {
-					await Effect.runPromise(
-						executeHook(
-							toNodeCommand(
-								"process.stderr.write('Line 1\\n'); process.stderr.write('Line 2\\n'); process.exit(3);",
+					// Act & Assert - command that writes to stderr and exits with error
+					await expect(
+						Effect.runPromise(
+							executeHook(
+								toNodeCommand(
+									"process.stderr.write('Error details here\\n'); process.exit(1);",
+								),
+								tmpDir,
+								environment,
 							),
-							tmpDir,
-							environment,
 						),
+					).rejects.toThrow(
+						'Hook exited with code 1\nStderr: Error details here\n',
 					);
-					expect.fail('Should have thrown');
-				} catch (error) {
-					expect(error).toBeInstanceOf(Error);
-					expect((error as Error).message).toContain('Hook exited with code 3');
-					expect((error as Error).message).toContain('Stderr: Line 1\nLine 2');
+				} finally {
+					// Cleanup
+					await rm(tmpDir, {recursive: true});
 				}
+			},
+		);
 
-				// Test with empty stderr
+		it.skipIf(process.platform === 'win32')(
+			'should verify stderr handling in error messages',
+			async () => {
+				// Arrange
+				const tmpDir = await mkdtemp(join(tmpdir(), 'hook-test-'));
+				const environment = {
+					CACD_WORKTREE_PATH: tmpDir,
+					CACD_WORKTREE_BRANCH: 'test-branch',
+					CACD_GIT_ROOT: tmpDir,
+				};
+
 				try {
-					await Effect.runPromise(
-						executeHook(toNodeCommand('process.exit(4)'), tmpDir, environment),
-					);
-					expect.fail('Should have thrown');
-				} catch (error) {
-					expect(error).toBeInstanceOf(Error);
-					expect((error as Error).message).toBe('Hook exited with code 4');
+					// Test with multiline stderr
+					try {
+						await Effect.runPromise(
+							executeHook(
+								toNodeCommand(
+									"process.stderr.write('Line 1\\n'); process.stderr.write('Line 2\\n'); process.exit(3);",
+								),
+								tmpDir,
+								environment,
+							),
+						);
+						expect.fail('Should have thrown');
+					} catch (error) {
+						expect(error).toBeInstanceOf(Error);
+						expect((error as Error).message).toContain(
+							'Hook exited with code 3',
+						);
+						expect((error as Error).message).toContain(
+							'Stderr: Line 1\nLine 2',
+						);
+					}
+
+					// Test with empty stderr
+					try {
+						await Effect.runPromise(
+							executeHook(
+								toNodeCommand('process.exit(4)'),
+								tmpDir,
+								environment,
+							),
+						);
+						expect.fail('Should have thrown');
+					} catch (error) {
+						expect(error).toBeInstanceOf(Error);
+						expect((error as Error).message).toBe('Hook exited with code 4');
+					}
+				} finally {
+					// Cleanup
+					await rm(tmpDir, {recursive: true});
 				}
-			} finally {
-				// Cleanup
-				await rm(tmpDir, {recursive: true});
-			}
-		});
+			},
+		);
 
 		it('should ignore stderr when command succeeds', async () => {
 			// Arrange

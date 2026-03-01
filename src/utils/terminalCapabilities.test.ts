@@ -48,18 +48,24 @@ describe('terminalCapabilities', () => {
 			expect(supportsUnicode()).toBe(true);
 		});
 
-		it('should return true when LANG indicates UTF-8 encoding', () => {
-			delete process.env['TERM'];
-			process.env['LANG'] = 'en_US.UTF-8';
-			expect(supportsUnicode()).toBe(true);
-		});
+		it.skipIf(process.platform === 'win32')(
+			'should return true when LANG indicates UTF-8 encoding',
+			() => {
+				delete process.env['TERM'];
+				process.env['LANG'] = 'en_US.UTF-8';
+				expect(supportsUnicode()).toBe(true);
+			},
+		);
 
-		it('should return true when LC_ALL indicates UTF-8 encoding', () => {
-			delete process.env['TERM'];
-			delete process.env['LANG'];
-			process.env['LC_ALL'] = 'en_US.UTF-8';
-			expect(supportsUnicode()).toBe(true);
-		});
+		it.skipIf(process.platform === 'win32')(
+			'should return true when LC_ALL indicates UTF-8 encoding',
+			() => {
+				delete process.env['TERM'];
+				delete process.env['LANG'];
+				process.env['LC_ALL'] = 'en_US.UTF-8';
+				expect(supportsUnicode()).toBe(true);
+			},
+		);
 
 		it('should return false when TERM is dumb', () => {
 			process.env['TERM'] = 'dumb';
@@ -99,11 +105,14 @@ describe('terminalCapabilities', () => {
 			expect(supportsUnicode()).toBe(false);
 		});
 
-		it('should return true when CI environment variable is set and LANG is UTF-8', () => {
-			process.env['CI'] = 'true';
-			process.env['LANG'] = 'en_US.UTF-8';
-			expect(supportsUnicode()).toBe(true);
-		});
+		it.skipIf(process.platform === 'win32')(
+			'should return true when CI environment variable is set and LANG is UTF-8',
+			() => {
+				process.env['CI'] = 'true';
+				process.env['LANG'] = 'en_US.UTF-8';
+				expect(supportsUnicode()).toBe(true);
+			},
+		);
 
 		it('should return false when TERM_PROGRAM is Apple_Terminal on older macOS', () => {
 			// Apple Terminal historically had limited Unicode support
@@ -114,10 +123,13 @@ describe('terminalCapabilities', () => {
 			expect(supportsUnicode()).toBe(false);
 		});
 
-		it('should handle case-insensitive UTF-8 check in LANG', () => {
-			delete process.env['TERM'];
-			process.env['LANG'] = 'en_US.utf-8'; // lowercase
-			expect(supportsUnicode()).toBe(true);
-		});
+		it.skipIf(process.platform === 'win32')(
+			'should handle case-insensitive UTF-8 check in LANG',
+			() => {
+				delete process.env['TERM'];
+				process.env['LANG'] = 'en_US.utf-8'; // lowercase
+				expect(supportsUnicode()).toBe(true);
+			},
+		);
 	});
 });

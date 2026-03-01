@@ -118,8 +118,9 @@ describe('TdService', () => {
 			mockedExistsSync.mockImplementation((p: unknown) => {
 				const s = String(p);
 				if (s.endsWith('.td-root')) return false;
-				if (s === '/project/.todos') return true;
-				if (s === '/project/.todos/issues.db') return true;
+				if (s === path.join(path.resolve('/project'), '.todos')) return true;
+				if (s === path.join(path.resolve('/project'), '.todos', 'issues.db'))
+					return true;
 				return false;
 			});
 
@@ -132,7 +133,7 @@ describe('TdService', () => {
 			expect(result.initialized).toBe(true);
 			expect(result.enabled).toBe(false);
 			expect(result.binaryAvailable).toBe(false);
-			expect(result.tdRoot).toBe('/project');
+			expect(result.tdRoot).toBe(path.resolve('/project'));
 		});
 
 		it('should resolve via .td-root file', () => {
@@ -142,12 +143,15 @@ describe('TdService', () => {
 				.mockReturnValueOnce('v1.0\n' as never);
 			tdService.checkAvailability();
 
+			const resolvedWorktree = path.resolve('/worktree');
+			const resolvedMain = path.resolve(resolvedWorktree, '/main/project');
+
 			// .td-root exists and points to /main/project
 			mockedExistsSync.mockImplementation((p: unknown) => {
 				const s = String(p);
-				if (s === '/worktree/.td-root') return true;
-				if (s === '/main/project/.todos') return true;
-				if (s === '/main/project/.todos/issues.db') return true;
+				if (s === path.join(resolvedWorktree, '.td-root')) return true;
+				if (s === path.join(resolvedMain, '.todos')) return true;
+				if (s === path.join(resolvedMain, '.todos', 'issues.db')) return true;
 				return false;
 			});
 
@@ -163,9 +167,9 @@ describe('TdService', () => {
 			expect(result.enabled).toBe(true);
 			expect(result.initialized).toBe(true);
 			expect(result.binaryAvailable).toBe(true);
-			expect(result.tdRoot).toBe('/main/project');
+			expect(result.tdRoot).toBe(resolvedMain);
 			expect(result.dbPath).toBe(
-				path.join('/main/project', '.todos', 'issues.db'),
+				path.join(resolvedMain, '.todos', 'issues.db'),
 			);
 		});
 
@@ -175,11 +179,14 @@ describe('TdService', () => {
 				.mockReturnValueOnce('v1.0\n' as never);
 			tdService.checkAvailability();
 
+			const resolvedProject = path.resolve('/project');
+
 			mockedExistsSync.mockImplementation((p: unknown) => {
 				const s = String(p);
 				if (s.endsWith('.td-root')) return false;
-				if (s === '/project/.todos') return true;
-				if (s === '/project/.todos/issues.db') return true;
+				if (s === path.join(resolvedProject, '.todos')) return true;
+				if (s === path.join(resolvedProject, '.todos', 'issues.db'))
+					return true;
 				return false;
 			});
 
@@ -193,7 +200,7 @@ describe('TdService', () => {
 			expect(result.enabled).toBe(true);
 			expect(result.initialized).toBe(true);
 			expect(result.binaryAvailable).toBe(true);
-			expect(result.tdRoot).toBe('/project');
+			expect(result.tdRoot).toBe(resolvedProject);
 		});
 
 		it('should return disabled when no .todos/ found', () => {

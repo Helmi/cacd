@@ -1,5 +1,6 @@
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {Effect, Either} from 'effect';
+import path from 'path';
 import {
 	getClaudeDir,
 	getClaudeProjectsDir,
@@ -72,7 +73,7 @@ describe('claudeDir', () => {
 
 			expect(Either.isRight(result)).toBe(true);
 			if (Either.isRight(result)) {
-				expect(result.right).toBe('/custom/claude/projects');
+				expect(result.right).toBe(path.join('/custom/claude', 'projects'));
 			}
 		});
 
@@ -92,13 +93,16 @@ describe('claudeDir', () => {
 		it('should convert absolute path to Claude naming convention', () => {
 			const result = pathToClaudeProjectName('/home/user/projects/myapp');
 
-			expect(result).toBe('-home-user-projects-myapp');
+			// path.resolve adds drive letter on Windows, so compute expected dynamically
+			expect(result).toBe(
+				path.resolve('/home/user/projects/myapp').replace(/[/\\.]/g, '-'),
+			);
 		});
 
 		it('should replace forward slashes with dashes', () => {
 			const result = pathToClaudeProjectName('/a/b/c');
 
-			expect(result).toBe('-a-b-c');
+			expect(result).toBe(path.resolve('/a/b/c').replace(/[/\\.]/g, '-'));
 		});
 
 		it('should replace backslashes with dashes (Windows)', () => {
@@ -111,7 +115,9 @@ describe('claudeDir', () => {
 		it('should replace dots with dashes', () => {
 			const result = pathToClaudeProjectName('/home/user/my.app');
 
-			expect(result).toBe('-home-user-my-app');
+			expect(result).toBe(
+				path.resolve('/home/user/my.app').replace(/[/\\.]/g, '-'),
+			);
 		});
 	});
 

@@ -9,6 +9,10 @@ import {
 } from './worktreeUtils.js';
 import {Worktree} from '../types/index.js';
 import {execSync} from 'child_process';
+import path from 'path';
+
+// Helper: normalize expected path for cross-platform compatibility
+const np = (p: string) => path.normalize(p);
 
 // Mock child_process module
 vi.mock('child_process');
@@ -24,47 +28,49 @@ describe('generateWorktreeDirectory', () => {
 	describe('with default pattern', () => {
 		it('should generate directory with sanitized branch name', () => {
 			expect(generateWorktreeDirectory(projectPath, 'feature/my-feature')).toBe(
-				'../feature-my-feature',
+				np('../feature-my-feature'),
 			);
 			expect(generateWorktreeDirectory(projectPath, 'bugfix/fix-123')).toBe(
-				'../bugfix-fix-123',
+				np('../bugfix-fix-123'),
 			);
 			expect(generateWorktreeDirectory(projectPath, 'release/v1.0.0')).toBe(
-				'../release-v1.0.0',
+				np('../release-v1.0.0'),
 			);
 		});
 
 		it('should handle branch names without slashes', () => {
-			expect(generateWorktreeDirectory(projectPath, 'main')).toBe('../main');
+			expect(generateWorktreeDirectory(projectPath, 'main')).toBe(
+				np('../main'),
+			);
 			expect(generateWorktreeDirectory(projectPath, 'develop')).toBe(
-				'../develop',
+				np('../develop'),
 			);
 			expect(generateWorktreeDirectory(projectPath, 'my-feature')).toBe(
-				'../my-feature',
+				np('../my-feature'),
 			);
 		});
 
 		it('should remove special characters', () => {
 			expect(
 				generateWorktreeDirectory(projectPath, 'feature/my@feature!'),
-			).toBe('../feature-myfeature');
+			).toBe(np('../feature-myfeature'));
 			expect(generateWorktreeDirectory(projectPath, 'bugfix/#123')).toBe(
-				'../bugfix-123',
+				np('../bugfix-123'),
 			);
 			expect(
 				generateWorktreeDirectory(projectPath, 'release/v1.0.0-beta'),
-			).toBe('../release-v1.0.0-beta');
+			).toBe(np('../release-v1.0.0-beta'));
 		});
 
 		it('should handle edge cases', () => {
 			expect(generateWorktreeDirectory(projectPath, '//feature//')).toBe(
-				'../feature',
+				np('../feature'),
 			);
 			expect(generateWorktreeDirectory(projectPath, '-feature-')).toBe(
-				'../feature',
+				np('../feature'),
 			);
 			expect(generateWorktreeDirectory(projectPath, 'FEATURE/UPPERCASE')).toBe(
-				'../feature-uppercase',
+				np('../feature-uppercase'),
 			);
 		});
 	});
@@ -77,14 +83,14 @@ describe('generateWorktreeDirectory', () => {
 					'feature/my-feature',
 					'../worktrees/{branch}',
 				),
-			).toBe('../worktrees/feature-my-feature');
+			).toBe(np('../worktrees/feature-my-feature'));
 			expect(
 				generateWorktreeDirectory(
 					projectPath,
 					'bugfix/123',
 					'/tmp/{branch}-wt',
 				),
-			).toBe('/tmp/bugfix-123-wt');
+			).toBe(np('/tmp/bugfix-123-wt'));
 		});
 
 		it('should use git repository name when in main working directory', () => {
@@ -96,7 +102,7 @@ describe('generateWorktreeDirectory', () => {
 					'feature/test',
 					'../worktrees/{project}-{branch}',
 				),
-			).toBe('../worktrees/main-repo-feature-test');
+			).toBe(np('../worktrees/main-repo-feature-test'));
 		});
 
 		it('should use git repository name when git command succeeds (worktree case)', () => {
@@ -108,7 +114,7 @@ describe('generateWorktreeDirectory', () => {
 					'feature/test',
 					'../worktrees/{project}-{branch}',
 				),
-			).toBe('../worktrees/main-repo-feature-test');
+			).toBe(np('../worktrees/main-repo-feature-test'));
 		});
 
 		it('should use custom pattern with {project} placeholder (fallback case)', () => {
@@ -124,14 +130,14 @@ describe('generateWorktreeDirectory', () => {
 					'feature/test',
 					'../worktrees/{project}-{branch}',
 				),
-			).toBe('../worktrees/myproject-feature-test');
+			).toBe(np('../worktrees/myproject-feature-test'));
 			expect(
 				generateWorktreeDirectory(
 					'/home/user/src/foo',
 					'main',
 					'/tmp/{project}',
 				),
-			).toBe('/tmp/foo');
+			).toBe(np('/tmp/foo'));
 		});
 
 		it('should handle patterns without placeholders', () => {
@@ -141,7 +147,7 @@ describe('generateWorktreeDirectory', () => {
 					'feature/test',
 					'../fixed-directory',
 				),
-			).toBe('../fixed-directory');
+			).toBe(np('../fixed-directory'));
 		});
 
 		it('should normalize paths', () => {
@@ -151,14 +157,14 @@ describe('generateWorktreeDirectory', () => {
 					'feature/test',
 					'../foo/../bar/{branch}',
 				),
-			).toBe('../bar/feature-test');
+			).toBe(np('../bar/feature-test'));
 			expect(
 				generateWorktreeDirectory(
 					projectPath,
 					'feature/test',
 					'./worktrees/{branch}',
 				),
-			).toBe('worktrees/feature-test');
+			).toBe(np('worktrees/feature-test'));
 		});
 	});
 });
