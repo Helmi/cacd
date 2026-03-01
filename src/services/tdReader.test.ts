@@ -209,6 +209,59 @@ describe('TdReader', () => {
 
 			expect(children).toHaveLength(2);
 		});
+
+		it('should sort by priority first, then updated_at', () => {
+			const db = new Database(TEST_DB_PATH);
+			db.prepare(
+				`INSERT INTO issues (id, title, status, type, priority, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			).run('td-p0', 'Critical bug', 'open', 'task', 'P0', '2024-01-01');
+			db.prepare(
+				`INSERT INTO issues (id, title, status, type, priority, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			).run('td-p3', 'Nice to have', 'open', 'task', 'P3', '2024-12-31');
+			db.close();
+
+			const reader = new TdReader(TEST_DB_PATH);
+			const issues = reader.listIssues();
+			reader.close();
+
+			const ids = issues.map(i => i.id);
+			// P0 should come first despite older updated_at
+			expect(ids.indexOf('td-p0')).toBeLessThan(ids.indexOf('td-p3'));
+			// P1 issues (td-001, td-002) should come before P2 (td-003)
+			expect(ids.indexOf('td-001')).toBeLessThan(ids.indexOf('td-003'));
+		});
+
+		it('should hide deferred issues when hideDeferred is true', () => {
+			const db = new Database(TEST_DB_PATH);
+			db.prepare(
+				`INSERT INTO issues (id, title, status, type, priority, defer_until) VALUES (?, ?, ?, ?, ?, ?)`,
+			).run('td-deferred', 'Deferred task', 'open', 'task', 'P2', '2099-01-01');
+			db.prepare(
+				`INSERT INTO issues (id, title, status, type, priority, defer_until) VALUES (?, ?, ?, ?, ?, ?)`,
+			).run(
+				'td-past-defer',
+				'Past deferred',
+				'open',
+				'task',
+				'P2',
+				'2020-01-01',
+			);
+			db.close();
+
+			const reader = new TdReader(TEST_DB_PATH);
+
+			// Without hideDeferred, all should appear
+			const all = reader.listIssues();
+			expect(all.find(i => i.id === 'td-deferred')).toBeDefined();
+			expect(all.find(i => i.id === 'td-past-defer')).toBeDefined();
+
+			// With hideDeferred, future-deferred should be hidden
+			const filtered = reader.listIssues({hideDeferred: true});
+			expect(filtered.find(i => i.id === 'td-deferred')).toBeUndefined();
+			expect(filtered.find(i => i.id === 'td-past-defer')).toBeDefined();
+
+			reader.close();
+		});
 	});
 
 	describe('getIssue', () => {
@@ -288,6 +341,48 @@ describe('TdReader', () => {
 			expect(board['in_progress']).toHaveLength(1);
 			expect(board['open']).toHaveLength(1);
 			expect(board['done']).toHaveLength(1);
+		});
+
+		it('should hide deferred issues', () => {
+			const db = new Database(TEST_DB_PATH);
+			db.prepare(
+				`INSERT INTO issues (id, title, status, type, priority, defer_until) VALUES (?, ?, ?, ?, ?, ?)`,
+			).run(
+				'td-deferred-board',
+				'Deferred board task',
+				'open',
+				'task',
+				'P2',
+				'2099-01-01',
+			);
+			db.close();
+
+			const reader = new TdReader(TEST_DB_PATH);
+			const board = reader.getBoard();
+			reader.close();
+
+			const openIds = (board['open'] || []).map(i => i.id);
+			expect(openIds).not.toContain('td-deferred-board');
+		});
+
+		it('should sort issues by priority within each status column', () => {
+			const db = new Database(TEST_DB_PATH);
+			db.prepare(
+				`INSERT INTO issues (id, title, status, type, priority) VALUES (?, ?, ?, ?, ?)`,
+			).run('td-open-p0', 'Urgent open', 'open', 'task', 'P0');
+			db.prepare(
+				`INSERT INTO issues (id, title, status, type, priority) VALUES (?, ?, ?, ?, ?)`,
+			).run('td-open-p3', 'Low open', 'open', 'task', 'P3');
+			db.close();
+
+			const reader = new TdReader(TEST_DB_PATH);
+			const board = reader.getBoard();
+			reader.close();
+
+			const openIds = (board['open'] || []).map(i => i.id);
+			expect(openIds.indexOf('td-open-p0')).toBeLessThan(
+				openIds.indexOf('td-open-p3'),
+			);
 		});
 	});
 
