@@ -10,6 +10,8 @@ import {
 import {Effect} from 'effect';
 import {coreService} from './coreService.js';
 
+const mockGetAllActiveSessions = vi.fn<() => unknown[]>(() => []);
+
 const mockExecFileSync = vi.fn();
 const mockLoadPromptTemplatesByScope = vi.fn();
 const mockTdReaderGetIssueWithDetails = vi.fn();
@@ -152,6 +154,12 @@ vi.mock('./tdReader.js', () => ({
 	})),
 }));
 
+vi.mock('./globalSessionOrchestrator.js', () => ({
+	globalSessionOrchestrator: {
+		getAllActiveSessions: mockGetAllActiveSessions,
+	},
+}));
+
 vi.mock('./sessionStore.js', () => ({
 	sessionStore: {
 		querySessions: mockSessionStoreQuerySessions,
@@ -219,6 +227,8 @@ describe('APIServer td create-with-agent validation ordering', () => {
 		}).sessionManager;
 
 		mockExecFileSync.mockReset();
+		mockGetAllActiveSessions.mockReset();
+		mockGetAllActiveSessions.mockReturnValue([]);
 		mockTdReaderGetIssueWithDetails.mockReset();
 		mockCreateWorktreeEffect.mockReset();
 		mockSessionStoreQuerySessions.mockReset();
@@ -436,5 +446,128 @@ describe('APIServer td create-with-agent validation ordering', () => {
 		expect(payload.success).toBe(true);
 		expect(payload.warnings).toEqual(['setup hook warning']);
 		expect(payload.worktree?.warnings).toEqual(['setup hook warning']);
+	});
+
+	// --- Multi-manager session visibility (td-ccdeab regression) ---
+
+	const makeFakeSession = (
+		id: string,
+		worktreePath: string,
+		agentId?: string,
+	) => ({
+		id,
+		name: undefined,
+		worktreePath,
+		isActive: true,
+		agentId,
+		process: {pid: 12345},
+		stateMutex: {
+			getSnapshot: () => ({
+				state: 'idle',
+				autoApprovalFailed: false,
+				autoApprovalReason: undefined,
+			}),
+		},
+	});
+
+	it('/api/sessions returns sessions from all project managers, not just the active one', async () => {
+		mockGetAllActiveSessions.mockReturnValue([
+			makeFakeSession('ses-project-a', '/repo-a/.worktrees/feat-1', 'claude'),
+			makeFakeSession('ses-project-b', '/repo-b/.worktrees/feat-2', 'codex'),
+			makeFakeSession('ses-global', '/repo/.worktrees/main'),
+		]);
+
+		const response = await apiServer.app.inject({
+			method: 'GET',
+			url: '/api/sessions',
+			headers: {cookie: 'cacd_session=test'},
+		});
+
+		expect(response.statusCode).toBe(200);
+		const sessions = JSON.parse(response.body) as Array<{
+			id: string;
+			path: string;
+		}>;
+		expect(sessions).toHaveLength(3);
+		expect(sessions.map(s => s.id)).toEqual(
+			expect.arrayContaining([
+				'ses-project-a',
+				'ses-project-b',
+				'ses-global',
+			]),
+		);
+	});
+
+	it('/api/sessions returns empty list when no sessions exist across any manager', async () => {
+		mockGetAllActiveSessions.mockReturnValue([]);
+
+		const response = await apiServer.app.inject({
+			method: 'GET',
+			url: '/api/sessions',
+			headers: {cookie: 'cacd_session=test'},
+		});
+
+		expect(response.statusCode).toBe(200);
+		const sessions = JSON.parse(response.body) as unknown[];
+		expect(sessions).toHaveLength(0);
+	});
+
+	it('/api/worktrees hasSession reflects sessions from all managers', async () => {
+		const {projectManager} = await import('./projectManager.js');
+		const mockedPM = projectManager as unknown as {
+			getProjects: ReturnType<typeof vi.fn>;
+			instance: {
+				getWorktreeService: ReturnType<typeof vi.fn>;
+			};
+		};
+
+		const mockWorktreeService = {
+			getWorktreesEffect: vi.fn(() =>
+				Effect.succeed([
+					{
+						path: '/repo/main',
+						branch: 'main',
+						isMainWorktree: true,
+						hasSession: false,
+					},
+					{
+						path: '/repo/.worktrees/feat-x',
+						branch: 'feat-x',
+						isMainWorktree: false,
+						hasSession: false,
+					},
+				]),
+			),
+		};
+
+		mockedPM.getProjects.mockReturnValue([
+			{path: '/repo', name: 'Repo', isValid: true},
+		]);
+		mockedPM.instance.getWorktreeService = vi.fn(() => mockWorktreeService);
+
+		// Session exists in a non-selected project manager for feat-x worktree
+		mockGetAllActiveSessions.mockReturnValue([
+			makeFakeSession('ses-other-project', '/repo/.worktrees/feat-x'),
+		]);
+
+		const response = await apiServer.app.inject({
+			method: 'GET',
+			url: '/api/worktrees',
+			headers: {cookie: 'cacd_session=test'},
+		});
+
+		expect(response.statusCode).toBe(200);
+		const worktrees = JSON.parse(response.body) as Array<{
+			path: string;
+			hasSession: boolean;
+		}>;
+
+		const mainWt = worktrees.find(w => w.path === '/repo/main');
+		const featWt = worktrees.find(
+			w => w.path === '/repo/.worktrees/feat-x',
+		);
+
+		expect(mainWt?.hasSession).toBe(false);
+		expect(featWt?.hasSession).toBe(true);
 	});
 });

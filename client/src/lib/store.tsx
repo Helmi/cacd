@@ -780,7 +780,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Socket.IO event handlers
   useEffect(() => {
-    socket.on('connect', () => setConnectionStatus('connected'))
+    socket.on('connect', () => {
+      setConnectionStatus('connected')
+      fetchSessionData()
+    })
     socket.on('disconnect', () => setConnectionStatus('disconnected'))
     socket.on('connect_error', () => setConnectionStatus('error'))
     // Use debounced session fetch for socket events - prevents API storm
@@ -809,7 +812,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       socket.off('td_review_ready')
       debouncedFetchSessionData.cancel()
     }
-  }, [fetchData, fetchAgents, debouncedFetchSessionData])
+  }, [fetchData, fetchAgents, fetchSessionData, debouncedFetchSessionData])
 
   // Keep project-specific td/config state in sync with selected project
   // Always fetch td status (availability is system-wide), only clear project-specific state

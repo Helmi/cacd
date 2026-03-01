@@ -576,6 +576,10 @@ ${commandTokens.join(' ')}
 		// Record the timestamp when this worktree was opened
 		configurationManager.setWorktreeLastOpened(worktreePath, Date.now());
 
+		logger.info(
+			`[SessionManager] Session created: ${session.id} worktree=${worktreePath} agent=${options.agentId ?? 'none'}`,
+		);
+
 		this.emit('sessionCreated', session);
 
 		return session;
@@ -838,6 +842,9 @@ ${commandTokens.join(' ')}
 	 */
 	private setupExitHandler(session: Session): void {
 		session.process.onExit(async (e: {exitCode: number; signal?: number}) => {
+			logger.info(
+				`[SessionManager] PTY exit: ${session.id} code=${e.exitCode} signal=${e.signal ?? 'none'}`,
+			);
 			// Check if we should attempt fallback
 			// Only attempt fallback for preset sessions (commandConfig exists), not agent sessions
 			if (
@@ -1014,6 +1021,9 @@ ${commandTokens.join(' ')}
 	}
 
 	private cleanupSession(session: Session): void {
+		logger.info(
+			`[SessionManager] Session cleanup: ${session.id} (process exit)`,
+		);
 		const stateData = session.stateMutex.getSnapshot();
 		if (stateData.autoApprovalAbortController) {
 			this.cancelAutoApprovalVerification(session, 'Session cleanup');
@@ -1122,6 +1132,7 @@ ${commandTokens.join(' ')}
 	destroySession(sessionId: string): void {
 		const session = this.sessions.get(sessionId);
 		if (session) {
+			logger.info(`[SessionManager] Session destroyed: ${sessionId}`);
 			const stateData = session.stateMutex.getSnapshot();
 			if (stateData.autoApprovalAbortController) {
 				this.cancelAutoApprovalVerification(session, 'Session destroyed');

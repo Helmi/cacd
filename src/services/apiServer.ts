@@ -48,6 +48,7 @@ import {
 import {sessionStore, SessionIntent} from './sessionStore.js';
 import type {SessionRecord} from './sessionStore.js';
 import {adapterRegistry} from '../adapters/index.js';
+import {globalSessionOrchestrator} from './globalSessionOrchestrator.js';
 import type {
 	AgentConfig,
 	Session,
@@ -1284,6 +1285,12 @@ export class APIServer {
 				}
 			}
 
+			// Update hasSession using all active sessions across all managers
+			const allSessions = globalSessionOrchestrator.getAllActiveSessions();
+			for (const wt of allWorktrees) {
+				wt.hasSession = allSessions.some(s => s.worktreePath === wt.path);
+			}
+
 			return allWorktrees;
 		});
 
@@ -1706,7 +1713,7 @@ export class APIServer {
 
 		// --- Sessions ---
 		this.app.get('/api/sessions', async () => {
-			const sessions = coreService.sessionManager.getAllSessions();
+			const sessions = globalSessionOrchestrator.getAllActiveSessions();
 			return sessions.map(toApiSessionPayload);
 		});
 
@@ -3415,6 +3422,7 @@ export class APIServer {
 		});
 		coreService.on('sessionUpdated', notifyUpdate);
 		coreService.on('sessionCreated', session => {
+			logger.info(`API: Session created: ${session.id}`);
 			setTimeout(() => {
 				this.persistSessionMetadataIfMissing(session);
 			}, 500);
@@ -3426,10 +3434,12 @@ export class APIServer {
 			const endedAt = Math.floor(Date.now() / 1000);
 			try {
 				sessionStore.markSessionEnded(session.id, endedAt);
+				logger.info(`API: Session destroyed: ${session.id}, markEnded=success`);
 				if (!sessionStore.getSessionById(session.id)) {
 					this.pendingFallbackSessionEndTimes.set(session.id, endedAt);
 				}
 			} catch (error) {
+				logger.info(`API: Session destroyed: ${session.id}, markEnded=failure`);
 				logger.warn(
 					`API: Failed to mark session ${session.id} as ended in store: ${String(error)}`,
 				);
