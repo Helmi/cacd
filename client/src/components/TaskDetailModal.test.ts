@@ -3,6 +3,7 @@ import type { TdIssueWithChildren } from '../lib/types'
 import {
   getLinkedSessions,
   getTaskDetailLayoutCounts,
+  hasSchedulingDetails,
   parseAcceptanceCriteria,
 } from '../lib/taskDetailLayout'
 
@@ -14,7 +15,7 @@ function makeIssue(overrides: Partial<TdIssueWithChildren> = {}): TdIssueWithChi
     status: 'open',
     type: 'task',
     priority: 'P1',
-    points: 1,
+    points: 0,
     labels: '',
     parent_id: '',
     acceptance: '',
@@ -27,9 +28,14 @@ function makeIssue(overrides: Partial<TdIssueWithChildren> = {}): TdIssueWithChi
     minor: 0,
     created_branch: '',
     creator_session: '',
+    sprint: '',
+    defer_until: null,
+    due_date: null,
+    defer_count: 0,
     children: [],
     handoffs: [],
     files: [],
+    comments: [],
     ...overrides,
   }
 }
@@ -60,6 +66,7 @@ describe('TaskDetailModal layout helpers', () => {
       description: 'Some description',
       acceptance: '- one\n- two',
       labels: 'webui, ux',
+      points: 3,
       implementer_session: 'ses_impl',
       reviewer_session: 'ses_rev',
       children: [
@@ -77,6 +84,15 @@ describe('TaskDetailModal layout helpers', () => {
           timestamp: '2026-02-20 08:30:10 +0000 UTC',
         },
       ],
+      comments: [
+        {
+          id: 'comment-1',
+          issue_id: 'td-1',
+          session_id: 'ses_impl',
+          text: 'Looks good.',
+          created_at: '2026-02-20 08:30:10 +0000 UTC',
+        },
+      ],
       files: [
         {
           id: 'file-1',
@@ -89,14 +105,87 @@ describe('TaskDetailModal layout helpers', () => {
 
     expect(getTaskDetailLayoutCounts(issue)).toEqual({
       overview: 4,
-      activity: 2,
-      details: 2,
+      activity: 3,
+      details: 3,
     })
   })
 
   it('keeps details tab available even when optional sections are empty', () => {
     const issue = makeIssue()
     expect(getTaskDetailLayoutCounts(issue)).toEqual({
+      overview: 0,
+      activity: 0,
+      details: 1,
+    })
+  })
+
+  it('adds scheduling section count only when scheduling values exist', () => {
+    const withScheduling = makeIssue({
+      due_date: '2026-02-25',
+    })
+    const withoutScheduling = makeIssue()
+
+    expect(hasSchedulingDetails(withScheduling)).toBe(true)
+    expect(hasSchedulingDetails(withoutScheduling)).toBe(false)
+
+    expect(getTaskDetailLayoutCounts(withScheduling)).toEqual({
+      overview: 0,
+      activity: 0,
+      details: 2,
+    })
+  })
+
+  it('treats defer_count as scheduling detail', () => {
+    const issue = makeIssue({
+      defer_count: 2,
+    })
+
+    expect(hasSchedulingDetails(issue)).toBe(true)
+    expect(getTaskDetailLayoutCounts(issue)).toEqual({
+      overview: 0,
+      activity: 0,
+      details: 2,
+    })
+  })
+
+  it('keeps acceptance criteria as a visible overview section without description', () => {
+    const issue = makeIssue({
+      acceptance: '- must pass',
+    })
+
+    expect(getTaskDetailLayoutCounts(issue)).toEqual({
+      overview: 1,
+      activity: 0,
+      details: 1,
+    })
+  })
+
+  it('counts comments section as activity when comments exist', () => {
+    const issue = makeIssue({
+      comments: [
+        {
+          id: 'comment-1',
+          issue_id: 'td-1',
+          session_id: 'ses_reviewer',
+          text: 'Needs one more test.',
+          created_at: '2026-02-20 08:30:10 +0000 UTC',
+        },
+      ],
+    })
+
+    expect(getTaskDetailLayoutCounts(issue)).toEqual({
+      overview: 0,
+      activity: 1,
+      details: 1,
+    })
+  })
+
+  it('does not throw when comments payload is missing', () => {
+    const legacy = makeIssue()
+    delete (legacy as { comments?: unknown }).comments
+
+    expect(() => getTaskDetailLayoutCounts(legacy)).not.toThrow()
+    expect(getTaskDetailLayoutCounts(legacy)).toEqual({
       overview: 0,
       activity: 0,
       details: 1,

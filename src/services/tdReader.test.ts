@@ -95,6 +95,14 @@ function createTestDb(): void {
 			relation_type TEXT NOT NULL DEFAULT 'depends_on',
 			UNIQUE(issue_id, depends_on_id, relation_type)
 		);
+
+		CREATE TABLE comments (
+			id TEXT PRIMARY KEY,
+			issue_id TEXT NOT NULL,
+			session_id TEXT NOT NULL,
+			text TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
 	`);
 
 	// Seed test data
@@ -129,6 +137,16 @@ function createTestDb(): void {
 	db.prepare(
 		`INSERT INTO issue_files (id, issue_id, file_path, role) VALUES (?, ?, ?, ?)`,
 	).run('f-001', 'td-002', 'src/login.tsx', 'implementation');
+
+	db.prepare(
+		`INSERT INTO comments (id, issue_id, session_id, text, created_at) VALUES (?, ?, ?, ?, ?)`,
+	).run(
+		'c-001',
+		'td-002',
+		'ses_reviewer',
+		'Please add validation error states before approval.',
+		'2026-02-20 08:45:10 +0000 UTC',
+	);
 
 	db.close();
 }
@@ -221,7 +239,7 @@ describe('TdReader', () => {
 	});
 
 	describe('getIssueWithDetails', () => {
-		it('should return issue with children, handoffs, and files', () => {
+		it('should return issue with children, handoffs, files, and comments', () => {
 			const reader = new TdReader(TEST_DB_PATH);
 			const issue = reader.getIssueWithDetails('td-002');
 			reader.close();
@@ -235,6 +253,29 @@ describe('TdReader', () => {
 			]);
 			expect(issue!.files).toHaveLength(1);
 			expect(issue!.files[0]!.file_path).toBe('src/login.tsx');
+			expect(issue!.comments).toHaveLength(1);
+			expect(issue!.comments[0]).toEqual({
+				id: 'c-001',
+				issue_id: 'td-002',
+				session_id: 'ses_reviewer',
+				text: 'Please add validation error states before approval.',
+				created_at: '2026-02-20 08:45:10 +0000 UTC',
+			});
+		});
+
+		it('should handle missing comments table by returning empty comments', () => {
+			const db = new Database(TEST_DB_PATH);
+			db.exec('DROP TABLE comments;');
+			db.close();
+
+			const reader = new TdReader(TEST_DB_PATH);
+			const issue = reader.getIssueWithDetails('td-002');
+			reader.close();
+
+			expect(issue).not.toBeNull();
+			expect(issue!.comments).toEqual([]);
+			expect(issue!.files).toHaveLength(1);
+			expect(issue!.handoffs).toHaveLength(1);
 		});
 	});
 
