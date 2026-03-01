@@ -29,7 +29,7 @@ jobs:
 
       - name: Update package.json version
         run: |
-          npm version ${{ steps.get_version.outputs.VERSION }} --no-git-tag-version
+          npm version ${{ steps.get_version.outputs.VERSION }} --no-git-tag-version --allow-same-version
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -73,7 +73,7 @@ jobs:
 
       - name: Update package.json version
         run: |
-          npm version ${{ steps.get_version.outputs.VERSION }} --no-git-tag-version
+          npm version ${{ steps.get_version.outputs.VERSION }} --no-git-tag-version --allow-same-version
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -86,13 +86,9 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
 
-      - name: Configure git
+      - name: Create GitHub Release
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-
-      - name: Commit and push version update
-        run: |
-          git add package.json
-          git commit -m "chore: update version to ${{ steps.get_version.outputs.VERSION }}"
-          git push origin HEAD:main
+          gh release create "v$VERSION" --generate-notes --title "v$VERSION"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
