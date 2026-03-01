@@ -275,6 +275,10 @@ export interface TdIssue {
   minor: number
   created_branch: string
   creator_session: string
+  sprint: string
+  defer_until: string | null
+  due_date: string | null
+  defer_count: number
 }
 
 export interface TdHandoffParsed {
@@ -295,10 +299,19 @@ export interface TdIssueFile {
   role: string
 }
 
+export interface TdComment {
+  id: string
+  issue_id: string
+  session_id: string
+  text: string
+  created_at: string
+}
+
 export interface TdIssueWithChildren extends TdIssue {
   children: TdIssue[]
   handoffs: TdHandoffParsed[]
   files: TdIssueFile[]
+  comments: TdComment[]
 }
 
 export interface TdPromptTemplate {

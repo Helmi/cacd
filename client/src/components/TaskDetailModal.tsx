@@ -4,10 +4,17 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/lib/store'
+import {
+  formatTdAbsolute,
+  formatTdDateValue,
+  formatTdRelative,
+  parseTdTimestamp,
+} from '@/lib/tdTimestamp'
 import type { TdIssueWithChildren, TdHandoffParsed, TdIssue } from '@/lib/types'
 import {
   getLinkedSessions,
   getTaskDetailLayoutCounts,
+  hasSchedulingDetails,
   parseAcceptanceCriteria,
 } from '@/lib/taskDetailLayout'
 import type { LucideIcon } from 'lucide-react'
@@ -32,17 +39,15 @@ import {
 
 type TaskDetailTab = 'overview' | 'activity' | 'details'
 
-/**
- * Parse Go-formatted timestamps like "2026-02-19 08:30:10.451538 +0100 CET m=+0.117390418"
- * into a JavaScript Date. Strips the timezone abbreviation and monotonic clock suffix.
- */
-function parseGoDate(s: string): Date | null {
-  if (!s) return null
-  // Extract: YYYY-MM-DD HH:MM:SS +ZZZZ (ignore fractional seconds, tz name, monotonic clock)
-  const match = s.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})(?:\.\d+)?\s+([+-]\d{2})(\d{2})/)
-  if (!match) return null
-  const d = new Date(`${match[1]}T${match[2]}${match[3]}:${match[4]}`)
-  return isNaN(d.getTime()) ? null : d
+function RelativeTime({ timestamp, nowMs }: { timestamp?: string | null; nowMs: number }) {
+  const date = parseTdTimestamp(timestamp ?? '')
+  if (!date) return <span>—</span>
+
+  return (
+    <time dateTime={date.toISOString()} title={formatTdAbsolute(date)}>
+      {formatTdRelative(date, nowMs)}
+    </time>
+  )
 }
 
 const statusConfig: Record<string, { icon: typeof Circle; color: string; bg: string; label: string }> = {
@@ -60,12 +65,12 @@ const priorityConfig: Record<string, { color: string; label: string }> = {
   P3: { color: 'text-muted-foreground/50 bg-muted/30', label: 'Low' },
 }
 
-function HandoffSection({ handoff }: { handoff: TdHandoffParsed }) {
+function HandoffSection({ handoff, nowMs }: { handoff: TdHandoffParsed; nowMs: number }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
         <Clock className="h-3 w-3" />
-        <span>{parseGoDate(handoff.timestamp)?.toLocaleString() ?? '—'}</span>
+        <RelativeTime timestamp={handoff.timestamp} nowMs={nowMs} />
         {handoff.sessionId && (
           <span className="font-mono">{handoff.sessionId}</span>
         )}
@@ -183,6 +188,7 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
   const [showCommentInput, setShowCommentInput] = useState(false)
   const [commentText, setCommentText] = useState('')
   const [activeTab, setActiveTab] = useState<TaskDetailTab>('overview')
+  const [nowMs, setNowMs] = useState(() => Date.now())
 
   // Animate in
   useEffect(() => {
@@ -205,6 +211,11 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleClose])
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
   // Fetch issue details
   useEffect(() => {
     setLoading(true)
@@ -224,6 +235,15 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
   const labels = issue?.labels ? issue.labels.split(',').map(label => label.trim()).filter(Boolean) : []
   const linkedSessions = issue ? getLinkedSessions(issue) : []
   const acceptanceCriteria = issue ? parseAcceptanceCriteria(issue.acceptance) : []
+  const hasScheduling = issue ? hasSchedulingDetails(issue) : false
+  const children = Array.isArray(issue?.children) ? issue.children : []
+  const handoffs = Array.isArray(issue?.handoffs) ? issue.handoffs : []
+  const comments = issue && Array.isArray(issue.comments) ? issue.comments : []
+  const files = Array.isArray(issue?.files) ? issue.files : []
+  const dueDate = typeof issue?.due_date === 'string' ? issue.due_date.trim() : ''
+  const deferUntil = typeof issue?.defer_until === 'string' ? issue.defer_until.trim() : ''
+  const sprint = typeof issue?.sprint === 'string' ? issue.sprint.trim() : ''
+  const createdBranch = issue?.created_branch ? issue.created_branch.trim() : ''
   const layoutCounts = issue
     ? getTaskDetailLayoutCounts(issue)
     : { overview: 0, activity: 0, details: 0 }
@@ -508,10 +528,10 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
                     </CollapsibleSection>
                   )}
 
-                  {issue.children.length > 0 && (
-                    <CollapsibleSection title="Subtasks" icon={Layers} count={issue.children.length} defaultOpen>
+                  {children.length > 0 && (
+                    <CollapsibleSection title="Subtasks" icon={Layers} count={children.length} defaultOpen>
                       <div className="space-y-1">
-                        {issue.children.map((child: TdIssue) => {
+                        {children.map((child: TdIssue) => {
                           const childStatus = statusConfig[child.status]
                           const ChildIcon = childStatus?.icon || Circle
                           return (
@@ -574,10 +594,10 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
                     </CollapsibleSection>
                   )}
 
-                  {issue.handoffs.length > 0 && (
-                    <CollapsibleSection title="Handoffs" icon={Clock} count={issue.handoffs.length} defaultOpen>
+                  {handoffs.length > 0 && (
+                    <CollapsibleSection title="Handoffs" icon={Clock} count={handoffs.length} defaultOpen>
                       <div className="space-y-3">
-                        {issue.handoffs.map((handoff, i) => (
+                        {handoffs.map((handoff, i) => (
                           <div key={handoff.id} className={cn(
                             'rounded border border-border p-3',
                             i === 0 && 'border-primary/30'
@@ -585,14 +605,30 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
                             {i === 0 && (
                               <span className="text-[9px] uppercase tracking-wider text-primary mb-1.5 block">Latest</span>
                             )}
-                            <HandoffSection handoff={handoff} />
+                            <HandoffSection handoff={handoff} nowMs={nowMs} />
                           </div>
                         ))}
                       </div>
                     </CollapsibleSection>
                   )}
 
-                  {linkedSessions.length === 0 && issue.handoffs.length === 0 && (
+                  {comments.length > 0 && (
+                    <CollapsibleSection title="Comments" icon={MessageSquare} count={comments.length} defaultOpen>
+                      <div className="space-y-2">
+                        {comments.map(comment => (
+                          <article key={comment.id} className="rounded border border-border p-2.5">
+                            <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">{comment.text}</p>
+                            <div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
+                              <RelativeTime timestamp={comment.created_at} nowMs={nowMs} />
+                              <span className="font-mono">{comment.session_id}</span>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+
+                  {linkedSessions.length === 0 && handoffs.length === 0 && comments.length === 0 && (
                     <div className="rounded border border-dashed border-border p-3 text-xs text-muted-foreground">
                       No activity yet.
                     </div>
@@ -600,10 +636,10 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
                 </TabsContent>
 
                 <TabsContent value="details" className="mt-2 space-y-2">
-                  {issue.files.length > 0 && (
-                    <CollapsibleSection title="Files" icon={FileText} count={issue.files.length} defaultOpen>
+                  {files.length > 0 && (
+                    <CollapsibleSection title="Files" icon={FileText} count={files.length} defaultOpen>
                       <div className="space-y-1">
-                        {issue.files.map(file => (
+                        {files.map(file => (
                           <div key={file.id} className="flex items-center gap-2 text-xs">
                             <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
                             <span className="font-mono text-muted-foreground truncate">{file.file_path}</span>
@@ -616,18 +652,73 @@ export function TaskDetailModal({ issueId, onClose, onNavigate, onStartWorking, 
                     </CollapsibleSection>
                   )}
 
+                  {hasScheduling && (
+                    <CollapsibleSection title="Scheduling" icon={Clock} defaultOpen>
+                      <div className="grid grid-cols-2 gap-y-1 text-xs">
+                        {dueDate && (
+                          <>
+                            <span className="text-muted-foreground">Due</span>
+                            <span>{formatTdDateValue(dueDate)}</span>
+                          </>
+                        )}
+                        {deferUntil && (
+                          <>
+                            <span className="text-muted-foreground">Deferred Until</span>
+                            <span>{formatTdDateValue(deferUntil)}</span>
+                          </>
+                        )}
+                        {issue.points > 0 && (
+                          <>
+                            <span className="text-muted-foreground">Points</span>
+                            <span>{issue.points}</span>
+                          </>
+                        )}
+                        {sprint && (
+                          <>
+                            <span className="text-muted-foreground">Sprint</span>
+                            <span>{sprint}</span>
+                          </>
+                        )}
+                        {issue.minor === 1 && (
+                          <>
+                            <span className="text-muted-foreground">Minor</span>
+                            <span>Yes</span>
+                          </>
+                        )}
+                        {issue.defer_count > 0 && (
+                          <>
+                            <span className="text-muted-foreground">Defer Count</span>
+                            <span>{issue.defer_count}</span>
+                          </>
+                        )}
+                        {createdBranch && (
+                          <>
+                            <span className="text-muted-foreground">Branch</span>
+                            <span className="font-mono">{createdBranch}</span>
+                          </>
+                        )}
+                      </div>
+                    </CollapsibleSection>
+                  )}
+
                   <CollapsibleSection title="Metadata" icon={Clock} defaultOpen>
                     <div className="grid grid-cols-2 gap-y-1 text-xs">
                       <span className="text-muted-foreground">Created</span>
-                      <span>{parseGoDate(issue.created_at)?.toLocaleString() ?? '—'}</span>
+                      <RelativeTime timestamp={issue.created_at} nowMs={nowMs} />
                       <span className="text-muted-foreground">Updated</span>
-                      <span>{parseGoDate(issue.updated_at)?.toLocaleString() ?? '—'}</span>
-                      {issue.created_branch && (
+                      <RelativeTime timestamp={issue.updated_at} nowMs={nowMs} />
+                      {issue.closed_at && (
                         <>
-                          <span className="text-muted-foreground">Branch</span>
-                          <span className="font-mono">{issue.created_branch}</span>
+                          <span className="text-muted-foreground">Closed</span>
+                          <RelativeTime timestamp={issue.closed_at} nowMs={nowMs} />
                         </>
                       )}
+                      <span className="text-muted-foreground">Parent ID</span>
+                      <span className="font-mono">{issue.parent_id || '—'}</span>
+                      <span className="text-muted-foreground">Creator Session</span>
+                      <span className="font-mono">{issue.creator_session || '—'}</span>
+                      <span className="text-muted-foreground">Defer Count</span>
+                      <span>{issue.defer_count}</span>
                     </div>
                   </CollapsibleSection>
                 </TabsContent>

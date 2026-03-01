@@ -66,6 +66,14 @@ export interface TdIssueDependency {
 	relation_type: string;
 }
 
+export interface TdComment {
+	id: string;
+	issue_id: string;
+	session_id: string;
+	text: string;
+	created_at: string;
+}
+
 // --- Parsed types for UI consumption ---
 
 export interface TdHandoffParsed {
@@ -83,6 +91,7 @@ export interface TdIssueWithChildren extends TdIssue {
 	children: TdIssue[];
 	handoffs: TdHandoffParsed[];
 	files: TdIssueFile[];
+	comments: TdComment[];
 }
 
 /**
@@ -221,6 +230,7 @@ export class TdReader {
 			children: this.listIssues({parentId: issueId}),
 			handoffs: this.getHandoffs(issueId),
 			files: this.getIssueFiles(issueId),
+			comments: this.getComments(issueId),
 		};
 	}
 
@@ -307,6 +317,23 @@ export class TdReader {
 				.all(issueId) as TdIssueFile[];
 		} catch (error) {
 			logger.error(`[TdReader] Failed to get files for ${issueId}`, error);
+			return [];
+		}
+	}
+
+	/**
+	 * Get comments for an issue.
+	 */
+	getComments(issueId: string): TdComment[] {
+		try {
+			const db = this.open();
+			return db
+				.prepare(
+					'SELECT * FROM comments WHERE issue_id = ? ORDER BY created_at ASC',
+				)
+				.all(issueId) as TdComment[];
+		} catch (error) {
+			logger.error(`[TdReader] Failed to get comments for ${issueId}`, error);
 			return [];
 		}
 	}

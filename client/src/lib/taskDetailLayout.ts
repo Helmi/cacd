@@ -26,6 +26,26 @@ export function getLinkedSessions(
 		)
 }
 
+function hasText(value: string | null | undefined): boolean {
+	return typeof value === 'string' && value.trim().length > 0
+}
+
+function asArray<T>(value: unknown): T[] {
+	return Array.isArray(value) ? (value as T[]) : []
+}
+
+export function hasSchedulingDetails(issue: TdIssueWithChildren): boolean {
+	return (
+		hasText(issue.due_date) ||
+		hasText(issue.defer_until) ||
+		issue.points > 0 ||
+		hasText(issue.sprint) ||
+		issue.minor === 1 ||
+		hasText(issue.created_branch) ||
+		issue.defer_count > 0
+	)
+}
+
 export function getTaskDetailLayoutCounts(
 	issue: TdIssueWithChildren,
 ): TaskDetailTabCounts {
@@ -37,15 +57,21 @@ export function getTaskDetailLayoutCounts(
 		: []
 	const acceptance = parseAcceptanceCriteria(issue.acceptance)
 	const linkedSessions = getLinkedSessions(issue)
+	const children = asArray<TdIssue>(issue.children)
+	const handoffs = asArray(issue.handoffs)
+	const comments = asArray((issue as {comments?: unknown}).comments)
+	const files = asArray(issue.files)
 
 	return {
 		overview:
 			(issue.description ? 1 : 0) +
 			(acceptance.length > 0 ? 1 : 0) +
-			(issue.children.length > 0 ? 1 : 0) +
+			(children.length > 0 ? 1 : 0) +
 			(labels.length > 0 ? 1 : 0),
 		activity:
-			(linkedSessions.length > 0 ? 1 : 0) + (issue.handoffs.length > 0 ? 1 : 0),
-		details: (issue.files.length > 0 ? 1 : 0) + 1,
+			(linkedSessions.length > 0 ? 1 : 0) +
+			(handoffs.length > 0 ? 1 : 0) +
+			(comments.length > 0 ? 1 : 0),
+		details: (files.length > 0 ? 1 : 0) + (hasSchedulingDetails(issue) ? 1 : 0) + 1,
 	}
 }
