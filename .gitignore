@@ -37,3 +37,6 @@ docs.archive/
 
 # Stale task files
 TASK.md
+
+# Use bun.lock, not package-lock.json
+package-lock.json
