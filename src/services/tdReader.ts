@@ -155,6 +155,7 @@ export class TdReader {
 		status?: string;
 		type?: string;
 		parentId?: string;
+		hideDeferred?: boolean;
 	}): TdIssue[] {
 		try {
 			const db = this.open();
@@ -182,8 +183,12 @@ export class TdReader {
 				sql += ' AND parent_id = ?';
 				params.push(options.parentId);
 			}
+			if (options?.hideDeferred) {
+				sql += " AND (defer_until IS NULL OR defer_until <= datetime('now'))";
+			}
 
-			sql += ' ORDER BY updated_at DESC';
+			sql +=
+				" ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END ASC, updated_at DESC";
 
 			return db.prepare(sql).all(...params) as TdIssue[];
 		} catch (error) {
@@ -242,7 +247,7 @@ export class TdReader {
 	 * Get issues by status for board view (grouped by status).
 	 */
 	getBoard(): Record<string, TdIssue[]> {
-		const issues = this.listIssues();
+		const issues = this.listIssues({hideDeferred: true});
 		const board: Record<string, TdIssue[]> = {};
 
 		for (const issue of issues) {
