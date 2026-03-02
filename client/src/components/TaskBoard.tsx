@@ -21,7 +21,6 @@ import {
   FolderGit2,
   RefreshCw,
   XCircle,
-  ChevronRight,
 } from 'lucide-react'
 
 // Status column configuration
@@ -44,7 +43,7 @@ function priorityBadgeClass(priority: string): string {
   if (priority === 'P0') return 'bg-red-500/15 text-red-400'
   if (priority === 'P1') return 'bg-orange-500/15 text-orange-400'
   if (priority === 'P2') return 'bg-muted text-muted-foreground'
-  return 'bg-muted/50 text-muted-foreground/50'
+  return 'bg-muted text-muted-foreground'
 }
 
 function IssueCard({ issue, compact, indent, onSelect, childCount }: { issue: TdIssue; compact?: boolean; indent?: boolean; onSelect: (id: string) => void; childCount?: number }) {
@@ -52,36 +51,36 @@ function IssueCard({ issue, compact, indent, onSelect, childCount }: { issue: Td
     <button
       onClick={() => onSelect(issue.id)}
       className={cn(
-        'w-full text-left rounded border border-border/50 bg-card p-2 transition-colors',
+        'w-full text-left rounded border border-border/50 bg-card p-2.5 transition-colors',
         'hover:bg-accent/50 hover:border-border',
-        compact && 'p-1.5',
+        compact && 'p-2',
         indent && 'ml-4',
       )}
     >
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2">
         {/* Title — full width */}
-        <p className="text-xs leading-snug line-clamp-2">
+        <p className="text-sm leading-snug line-clamp-2">
           {issue.title}
         </p>
         {/* Bottom row */}
         <div className="flex items-center justify-between gap-1">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             {/* Priority badge */}
-            <span className={cn('text-[9px] font-medium px-1 py-0 rounded', priorityBadgeClass(issue.priority))}>
+            <span className={cn('text-xs font-medium px-1.5 py-0.5 rounded', priorityBadgeClass(issue.priority))}>
               {issue.priority}
             </span>
             {/* Epic child count */}
             {issue.type === 'epic' && (
               <div className="flex items-center gap-0.5">
-                <Layers className="h-2.5 w-2.5 text-purple-400" />
+                <Layers className="h-3 w-3 text-purple-400" />
                 {childCount != null && childCount > 0 && (
-                  <span className="text-[9px] text-muted-foreground">{childCount}</span>
+                  <span className="text-xs text-muted-foreground">{childCount}</span>
                 )}
               </div>
             )}
           </div>
           {/* Task ID */}
-          <span className="text-[9px] font-mono text-muted-foreground/60 shrink-0">
+          <span className="text-xs font-mono text-muted-foreground shrink-0">
             {issue.id}
           </span>
         </div>
@@ -129,73 +128,52 @@ function StatusColumn({ status, issues, onSelect, childCountByEpicId }: {
   childCountByEpicId: Map<string, number>
 }) {
   const StatusIcon = status.icon
-  const [isCollapsed, setIsCollapsed] = useState(issues.length === 0)
   const [showAllClosed, setShowAllClosed] = useState(false)
 
-  useEffect(() => {
-    if (issues.length === 0) setIsCollapsed(true)
-  }, [issues.length])
+  // Collapse only when empty — no manual toggle, derived purely from data
+  const isCollapsed = issues.length === 0
 
   const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000).toISOString()
   const visibleIssues = (status.key === 'closed' && !showAllClosed)
     ? issues.filter(i => (i.closed_at ?? '') >= threeDaysAgo)
     : issues
+  const hiddenClosedCount = issues.length - visibleIssues.length
 
   if (isCollapsed) {
     return (
       <div
-        className="flex flex-col items-center gap-2 py-2 px-1 rounded border border-border/30 bg-muted/10 cursor-pointer w-8 shrink-0"
-        onClick={() => setIsCollapsed(false)}
-        title={`${status.label} (${issues.length})`}
+        className="flex flex-col items-center gap-1.5 py-2 px-1 rounded border border-border/30 bg-muted/10 w-10 shrink-0"
+        title={`${status.label} (0)`}
       >
-        <StatusIcon className={cn('h-3 w-3', status.color)} />
-        <span
-          className="text-[9px] text-muted-foreground font-medium"
-          style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
-        >
-          {status.label}
-        </span>
-        <span className="text-[9px] text-muted-foreground/60">{issues.length}</span>
+        <StatusIcon className={cn('h-3.5 w-3.5', status.color)} />
+        <span className="text-xs text-muted-foreground font-medium">{issues.length}</span>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col flex-1">
-      <div className={cn('flex items-center gap-1.5 px-2 py-1.5 rounded-t', status.bg)}>
-        <StatusIcon className={cn('h-3 w-3', status.color)} />
-        <span className="text-xs font-medium">{status.label}</span>
-        <span className="text-[10px] text-muted-foreground ml-auto">{issues.length}</span>
-        <button
-          onClick={() => setIsCollapsed(true)}
-          className="ml-1 text-muted-foreground/40 hover:text-muted-foreground"
-          title="Collapse column"
-        >
-          <ChevronRight className="h-3 w-3" />
-        </button>
+    <div className="flex flex-col flex-1 min-w-[220px] max-w-[480px]">
+      <div className={cn('flex items-center gap-1.5 px-2 py-2 rounded-t', status.bg)}>
+        <StatusIcon className={cn('h-3.5 w-3.5', status.color)} />
+        <span className="text-sm font-medium">{status.label}</span>
+        <span className="text-xs text-muted-foreground ml-auto">{issues.length}</span>
       </div>
       <ScrollArea className="flex-1 min-h-0">
-        <div className="space-y-1.5 p-1.5">
-          {visibleIssues.length === 0 ? (
-            <p className="text-[10px] text-muted-foreground/50 text-center py-4">
-              No issues
-            </p>
-          ) : (
-            visibleIssues.map(issue => (
-              <IssueCard
-                key={issue.id}
-                issue={issue}
-                onSelect={onSelect}
-                childCount={issue.type === 'epic' ? childCountByEpicId.get(issue.id) : undefined}
-              />
-            ))
-          )}
-          {status.key === 'closed' && !showAllClosed && issues.length > visibleIssues.length && (
+        <div className="space-y-2 p-2">
+          {visibleIssues.map(issue => (
+            <IssueCard
+              key={issue.id}
+              issue={issue}
+              onSelect={onSelect}
+              childCount={issue.type === 'epic' ? childCountByEpicId.get(issue.id) : undefined}
+            />
+          ))}
+          {status.key === 'closed' && hiddenClosedCount > 0 && (
             <button
               onClick={() => setShowAllClosed(true)}
-              className="w-full text-[10px] text-muted-foreground/60 hover:text-muted-foreground py-1.5 text-center"
+              className="w-full text-xs text-muted-foreground hover:text-foreground py-2 text-center border border-border/30 rounded"
             >
-              Show more
+              Show {hiddenClosedCount} older
             </button>
           )}
         </div>
@@ -385,7 +363,7 @@ export function TaskBoard() {
       {/* Board View */}
       {viewMode === 'board' ? (
         <div className="flex-1 overflow-x-auto">
-          <div className="flex gap-2 p-2 h-full min-w-max">
+          <div className="flex gap-2 p-2 h-full">
             {STATUS_COLUMNS.map(status => (
               <StatusColumn
                 key={status.key}

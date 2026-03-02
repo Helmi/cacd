@@ -13,9 +13,8 @@ describe('Board UX regression checks', () => {
     expect(source).not.toContain('{tdStatus?.projectState?.enabled && (')
   })
 
-  it('uses plain "Show more" text for closed-column progressive reveal', () => {
+  it('uses count-aware "Show N older" text for closed-column progressive reveal', () => {
     const source = readSource('client/src/components/TaskBoard.tsx')
-    expect(source).toContain('Show more')
-    expect(source).not.toContain('Show {issues.length - visibleIssues.length} older')
+    expect(source).toContain('Show {hiddenClosedCount} older')
   })
 })
