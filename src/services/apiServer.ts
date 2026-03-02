@@ -3542,12 +3542,14 @@ export class APIServer {
 	 * Forwards change events to connected clients via socket.io.
 	 */
 	private setupFileWatchers(): void {
-		// Start watching all registered projects
-		const projects = projectManager.getProjects();
-		const projectPaths = projects
-			.filter(p => p.isValid !== false)
-			.map(p => p.path);
-		fileWatcherService.startWatching(projectPaths);
+		// Start watching projects.json global file
+		fileWatcherService.startWatchingProjects();
+
+		// Start watching the currently selected project's worktrees
+		const selectedProject = coreService.getSelectedProject();
+		if (selectedProject) {
+			fileWatcherService.startWatchingWorktrees(selectedProject.path);
+		}
 
 		// Forward worktrees_changed events to clients
 		fileWatcherService.on(
@@ -3563,31 +3565,16 @@ export class APIServer {
 		// Forward projects_changed events to clients
 		fileWatcherService.on('projects_changed', () => {
 			logger.info('API: File watcher detected projects.json change');
+			
+			// Reload projects from disk
+			projectManager.loadProjects();
+			
 			this.io?.emit('projects_changed');
-
-			// Update watchers for new project list
-			const updatedProjects = projectManager.getProjects();
-			const updatedPaths = updatedProjects
-				.filter(p => p.isValid !== false)
-				.map(p => p.path);
-			fileWatcherService.updateWatchedProjects(updatedPaths);
 		});
 
-		// Also update watchers when project is added/removed via UI
-		coreService.on('projectAdded', () => {
-			const updatedProjects = projectManager.getProjects();
-			const updatedPaths = updatedProjects
-				.filter(p => p.isValid !== false)
-				.map(p => p.path);
-			fileWatcherService.updateWatchedProjects(updatedPaths);
-		});
-
-		coreService.on('projectRemoved', () => {
-			const updatedProjects = projectManager.getProjects();
-			const updatedPaths = updatedProjects
-				.filter(p => p.isValid !== false)
-				.map(p => p.path);
-			fileWatcherService.updateWatchedProjects(updatedPaths);
+		// Update watchers on project switch
+		coreService.on('projectSelected', (project) => {
+			fileWatcherService.updateWatchedProjects(project ? [project.path] : []);
 		});
 	}
 

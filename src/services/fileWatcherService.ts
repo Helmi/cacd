@@ -97,7 +97,7 @@ class FileWatcherService extends EventEmitter {
 		if (watcher) {
 			watcher.close();
 			this.worktreeWatchers.delete(normalizedPath);
-			this.clearDebounceTimer(`worktrees:${normalizedPath}`);
+			this.clearDebounceTimer(`worktrees_changed:${normalizedPath}`);
 			logger.info(
 				`[FileWatcher] Stopped watching worktrees for ${normalizedPath}`,
 			);
@@ -150,7 +150,7 @@ class FileWatcherService extends EventEmitter {
 		if (this.projectsWatcher) {
 			this.projectsWatcher.close();
 			this.projectsWatcher = null;
-			this.clearDebounceTimer('projects');
+			this.clearDebounceTimer('projects_changed');
 			logger.info(`[FileWatcher] Stopped watching projects.json`);
 		}
 	}
