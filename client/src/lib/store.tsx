@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useMemo, R
 import { io, Socket } from 'socket.io-client'
 import type { Session, Worktree, Project, ThemeType, FontType, ConnectionStatus, AppConfig, ChangedFile, AgentConfig, AgentsConfig, TdStatus, TdIssue, ProjectConfig, TdPromptTemplate } from './types'
 import { mapBackendToFrontend, mapFrontendToBackend, getDefaultConfig } from './configMapper'
+import { resolveTdIssueWorktreePath } from './tdWorktreeResolver'
 
 // Debounce utility
 function debounce<T extends (...args: Parameters<T>) => void>(
@@ -30,6 +31,7 @@ type AddSessionIntent = 'work' | 'review'
 interface AddSessionContext {
   intent?: AddSessionIntent
   sessionName?: string
+  createdBranch?: string
 }
 
 interface AppState {
@@ -1167,7 +1169,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAddWorktreeProjectPath(null)
   }
   const openAddSession = (worktreePath?: string, projectPath?: string, tdTaskId?: string, context?: AddSessionContext) => {
-    setAddSessionWorktreePath(worktreePath || null)
+    const taskCreatedBranch = context?.createdBranch || tdIssues.find(issue => issue.id === tdTaskId)?.created_branch
+    const inferredWorktreePath =
+      worktreePath ||
+      resolveTdIssueWorktreePath(worktrees, taskCreatedBranch, projectPath || currentProject?.path || undefined)
+
+    setAddSessionWorktreePath(inferredWorktreePath || null)
     setAddSessionProjectPath(projectPath || null)
     setAddSessionTdTaskId(tdTaskId || null)
     setAddSessionIntent(context?.intent || null)
