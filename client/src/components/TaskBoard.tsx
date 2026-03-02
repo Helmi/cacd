@@ -34,11 +34,6 @@ const STATUS_COLUMNS = [
 
 type ViewMode = 'board' | 'list'
 
-function normalizeBranchName(branch?: string): string {
-  if (!branch) return ''
-  return branch.replace(/^refs\/heads\//, '').trim()
-}
-
 function priorityBadgeClass(priority: string): string {
   if (priority === 'P0') return 'bg-red-500/15 text-red-400'
   if (priority === 'P1') return 'bg-orange-500/15 text-orange-400'
@@ -207,28 +202,6 @@ export function TaskBoard() {
     })
     return counts
   }, [tdIssues])
-
-  const projectWorktrees = useMemo(() => {
-    if (!currentProject) return []
-    const projectName = currentProject.path.split('/').pop() || ''
-    return worktrees.filter(worktree =>
-      worktree.path.startsWith(currentProject.path) ||
-      worktree.path.includes(`/.worktrees/${projectName}/`)
-    )
-  }, [worktrees, currentProject?.path])
-
-  const resolveReviewWorktreePath = useCallback((createdBranch?: string): string | undefined => {
-    const issueBranch = normalizeBranchName(createdBranch)
-    if (!issueBranch) return undefined
-
-    const candidates = projectWorktrees.filter(worktree => {
-      const branch = normalizeBranchName(worktree.branch)
-      return branch === issueBranch || worktree.path.endsWith(`/${issueBranch}`)
-    })
-
-    if (candidates.length === 0) return undefined
-    return candidates.find(c => !c.hasSession)?.path || candidates[0]?.path
-  }, [projectWorktrees])
 
   // Fetch board data on mount and when project changes
   useEffect(() => {
@@ -416,16 +389,20 @@ export function TaskBoard() {
           onClose={() => setSelectedIssueId(null)}
           onNavigate={setSelectedIssueId}
           onStartWorking={(taskId) => {
+            const issue = tdIssues.find(i => i.id === taskId)
             closeTaskBoard()
-            openAddSession(undefined, currentProject?.path, taskId, { intent: 'work' })
+            openAddSession(undefined, currentProject?.path, taskId, {
+              intent: 'work',
+              createdBranch: issue?.created_branch || undefined,
+            })
           }}
           onStartReview={(taskId, createdBranch) => {
             const issue = tdIssues.find(i => i.id === taskId)
-            const worktreePath = resolveReviewWorktreePath(issue?.created_branch || createdBranch)
             closeTaskBoard()
-            openAddSession(worktreePath, currentProject?.path, taskId, {
+            openAddSession(undefined, currentProject?.path, taskId, {
               intent: 'review',
               sessionName: `Review: ${taskId}`,
+              createdBranch: issue?.created_branch || createdBranch,
             })
           }}
           onRefresh={() => { fetchTdBoard(); fetchTdIssues() }}
