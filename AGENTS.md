@@ -85,6 +85,26 @@ const config = await Bun.file(path.join(dir, 'config.json')).json()  // ✓
 - **Types:** Explicit, avoid `any`. Prefer functional array methods (`map`, `filter`, `flatMap`) over `for` loops.
 - **Backend naming:** PascalCase for services/components, camelCase for functions/variables.
 
+## WebUI Design Conventions
+
+### Typography & Density
+The UI runs at a density that balances information and readability. Do not go smaller than these baselines:
+
+- **Primary text** (task titles, session names, content): `text-sm` (14px)
+- **Secondary text** (labels, badges, counts, IDs): `text-xs` (12px)
+- **Do not use** `text-[9px]`, `text-[10px]`, or `text-[11px]` — these are too small to read comfortably
+
+### Contrast
+- Never apply opacity modifiers (`/50`, `/60`) to text that is already `text-muted-foreground` — it becomes unreadable
+- `text-muted-foreground` is the floor for secondary text; use `text-foreground` for primary content
+- Colored accents (priority badges, status dots) should use `text-red-400`, `text-orange-400` etc. — not further dimmed with opacity
+
+### Board / Kanban
+- Columns collapse automatically when `issues.length === 0` — derived from data, no `useState` for this
+- Never use `min-w-max` on the board container — columns must share the viewport width via flex
+- Expanded columns: `flex-1 min-w-[220px] max-w-[480px]`
+- Collapsed columns: `w-10 shrink-0` (icon + count only, no manual toggle)
+
 ## Conventions
 
 - **Commits:** Conventional Commits — `type: subject` (e.g., `feat: add session restore`, `fix: worktree cleanup on exit`). Note if change affects backend, frontend, or both.
